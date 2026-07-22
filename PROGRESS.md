@@ -18,3 +18,19 @@
 - Caught and fixed a near-miss: first `git init` accidentally ran at the parent `image-automation` folder (would have pushed local Claude settings + the original mockup HTML to a public repo). Deleted that `.git` and re-initialized inside `adgen-studio/` only.
 - Initial commit (54 files) pushed to **https://github.com/pol-dev-shinroo/adgen-studio** (public, branch `main`).
 - Remaining: user connects the repo to Vercel via dashboard (Import Git Repository) for auto-deploy on push.
+
+## 2026-07-22 — Vercel connected, deployment confirmed live (Claude Cowork)
+- User imported `pol-dev-shinroo/adgen-studio` into Vercel via the dashboard.
+- Verified via the Vercel MCP connector (`get_project`): framework auto-detected as `vite`, latest deployment `readyState: READY`, `target: production`.
+- Live URL: https://adgen-studio-red.vercel.app
+- Pipeline is now fully wired: push to `main` → Vercel auto-builds → auto-deploys. No further manual deploy steps needed.
+- Full loop confirmed working end-to-end: Cowork plans/scaffolds → Claude Code implements/verifies/pushes → Vercel auto-deploys → Cowork can check status via the connector without hopping tools.
+
+## 2026-07-22 — Native Meta Ads collection backend, n8n dropped (Claude Code)
+- **Decision: n8n is dropped entirely.** The Meta Ads collection pipeline is now a native Express backend under `backend/`, replicating the logic of the old n8n workflow (`(벡엔드) 1. Meta Ads v2.json`, kept outside the repo as reference).
+- Flow: `POST /api/collect {keywords}` → 202 + jobId (job runs in background, in-memory job store) → Apify `facebook-ads-scraper` sync actor per keyword → pure mapper to the 20-column layout → Google Sheets upsert matched on Ad Archive ID. `GET /api/collect/:jobId` for status, `GET /api/health`.
+- **Sheets auth pivoted mid-session from service-account key to OAuth2 + refresh token** — org policy `iam.disableServiceAccountKeyCreation` blocks key creation. One-time `scripts/google-auth.js` helper obtains the refresh token (localhost:3001 callback). Note: consent screen is in Testing mode → Google expires refresh tokens after ~7 days; publish to Production or re-run the script on `invalid_grant`.
+- Mapper unit tests (node built-in runner): 4/4 pass — camelCase fixture, snake_case variants, near-empty item, column order.
+- Real end-to-end run verified with keyword `뉴트리원`: 77 ads fetched, 77 appended / 0 updated (first run), sheet confirmed at 78 rows incl. header; existing sheet header matched our 20 columns exactly. Sample rows spot-checked — field alignment correct (note: keyword search also pulls third-party ads mentioning the keyword, e.g. Naver smartstore DPA ads).
+- Secrets: `backend/.env` gitignored (verified with `git check-ignore` before commit); no tokens in code or logs.
+- Frontend still calls nothing — wiring the feed screen's "실시간 수집" to `POST /api/collect` is the natural next step.

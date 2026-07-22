@@ -1,0 +1,37 @@
+{
+  "adArchiveID": "1234567890123456",
+  "pageName": "뉴트리원",
+  "pageId": "111222333444555",
+  "isActive": true,
+  "startDate": 1751328000,
+  "endDate": 1753920000,
+  "collationCount": 4,
+  "publisherPlatform": ["FACEBOOK", "INSTAGRAM"],
+  "url": "https://www.facebook.com/ads/library/?id=1234567890123456",
+  "snapshot": {
+    "displayFormat": "DCO",
+    "title": "장 건강엔 유산균",
+    "linkDescription": "1+1 특가 이벤트",
+    "ctaText": "지금 구매하기",
+    "linkUrl": "https://smartstore.example.com/nutrione",
+    "body": { "text": "장 건강, 하루 한 포로 챙기세요!" },
+    "images": [
+      {
+        "originalImageUrl": "https://scontent.example.com/img1_orig.jpg",
+        "resizedImageUrl": "https://scontent.example.com/img1_small.jpg"
+      }
+    ],
+    "cards": [
+      {
+        "originalImageUrl": "https://scontent.example.com/card1_orig.jpg",
+        "videoHdUrl": "https://video.example.com/card1_hd.mp4",
+        "videoPreviewImageUrl": "https://scontent.example.com/card1_preview.jpg"
+      },
+      {
+        "resizedImageUrl": "https://scontent.example.com/card2_small.jpg",
+        "videoHdUrl": "https://video.example.com/card1_hd.mp4"
+      }
+    ],
+    "videos": []
+  }
+}
