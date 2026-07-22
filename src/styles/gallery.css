@@ -1,0 +1,6 @@
+.res .thumb{height:220px;border-radius:var(--r) var(--r) 0 0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;position:relative}
+.res .thumb .badge{position:absolute;top:10px;left:10px}
+.res .body{padding:12px}
+.res .acts{display:flex;gap:6px;margin-top:10px}
+.prog{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:8px}
+.prog i{display:block;height:100%;background:var(--brand);border-radius:99px}

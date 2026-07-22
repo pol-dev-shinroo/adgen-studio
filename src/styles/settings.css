@@ -1,0 +1,21 @@
+.set-sect{padding:20px;margin-bottom:16px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.row .t{font-weight:700}
+.row .d{font-size:12px;color:var(--sub);margin-top:2px}
+.status-ok{color:var(--green);font-weight:700;font-size:12.5px}
+.prod-review{border:1px solid var(--line);border-radius:10px;margin-top:10px;overflow:hidden}
+.pr-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#fafbfe;cursor:pointer}
+.pr-head .t{font-weight:700;font-size:13px}
+.pr-body{padding:14px;border-top:1px solid var(--line);display:none}
+.prod-review.open .pr-body{display:block}
+.pr-field{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.pr-field:last-child{border-bottom:none}
+.pr-field .fl{width:110px;font-size:12px;font-weight:700;color:var(--sub);padding-top:3px}
+.pr-field .fv{flex:1;font-size:13px}
+.pr-field .fv .opt{display:block;padding:2px 0;color:var(--sub)}
+.pr-field .fv .opt b{color:var(--ink);font-weight:600}
+.pr-field .ov{font-size:11px;color:var(--brand);font-weight:700}
+.badge.rev-ok{background:#e3f6ee;color:var(--green)}
+.badge.rev-no{background:#fdf1e3;color:var(--amber)}
+.badge.rev-chg{background:#fdeaea;color:var(--red)}
