@@ -1,21 +1,18 @@
 import { google } from 'googleapis'
 import { config } from '../config/index.js'
+import { getAuthClient } from './google.client.js'
 import { AD_COLUMNS, toRow } from '../mappers/ad.mapper.js'
 
 let sheetsClient = null
 
 function getClient() {
   if (!sheetsClient) {
-    // OAuth2 with a stored refresh token (org policy blocks service-account
-    // keys). The googleapis client refreshes access tokens automatically.
-    const auth = new google.auth.OAuth2(config.googleClientId, config.googleClientSecret)
-    auth.setCredentials({ refresh_token: config.googleRefreshToken })
-    sheetsClient = google.sheets({ version: 'v4', auth })
+    sheetsClient = google.sheets({ version: 'v4', auth: getAuthClient() })
   }
   return sheetsClient
 }
 
-const LAST_COLUMN = 'T' // 20 columns, A..T
+const LAST_COLUMN = 'V' // 22 columns, A..V
 
 function tabRange(cells) {
   return `'${config.sheetTabName}'!${cells}`

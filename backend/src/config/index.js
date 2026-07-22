@@ -22,5 +22,8 @@ export const config = {
   googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN.trim(),
   sheetId: process.env.SHEET_ID.trim(),
   sheetTabName: (process.env.SHEET_TAB_NAME || '시트1').trim(),
+  // Optional: pin the Drive media-archive root folder instead of
+  // finding/creating "AdGen Media Archive" by name.
+  driveFolderId: (process.env.DRIVE_FOLDER_ID || '').trim() || null,
   port: Number(process.env.PORT) || 4000,
 }

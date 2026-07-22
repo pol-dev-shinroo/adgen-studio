@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { runFacebookAdsScraper } from './apify.service.js'
 import { upsertAdRows } from './sheets.service.js'
+import { uploadFromUrl } from './drive.service.js'
 import { mapAd } from '../mappers/ad.mapper.js'
+import { mapWithConcurrency } from '../utils/pool.js'
 
 // In-memory job store. Jobs are lost on restart, which is fine for the
 // current single-user workflow — revisit if this ever runs multi-instance.
 const jobs = new Map()
+
+const MEDIA_CONCURRENCY = 3 // parallel downloads per ad
 
 export function startCollection(keywords) {
   const job = {
@@ -19,6 +23,9 @@ export function startCollection(keywords) {
       totalAds: 0,
       appended: 0,
       updated: 0,
+      mediaUploaded: 0,
+      mediaReused: 0,
+      mediaFailed: 0,
       perKeyword: [],
       sampleRows: [],
     },
@@ -38,11 +45,46 @@ export function getJob(jobId) {
   return jobs.get(jobId) ?? null
 }
 
+// Downloads one media URL into Drive; a failure logs and returns null so a
+// single dead CDN link never fails the whole collection job.
+async function archiveOne(url, meta, counters) {
+  try {
+    const { link, reused } = await uploadFromUrl(url, meta)
+    counters[reused ? 'mediaReused' : 'mediaUploaded'] += 1
+    return link
+  } catch (err) {
+    counters.mediaFailed += 1
+    console.warn(`media archive failed (ad ${meta.adArchiveId}, ${meta.index}): ${err.message}`)
+    return null
+  }
+}
+
+async function archiveAdMedia(ad, counters) {
+  const brand = ad['Brand']
+  const adArchiveId = ad['Ad Archive ID']
+  if (!adArchiveId) return
+
+  const imageUrls = ad['Image Links'] ? ad['Image Links'].split('\n').filter(Boolean) : []
+  const imageLinks = await mapWithConcurrency(imageUrls, MEDIA_CONCURRENCY, (url, i) =>
+    archiveOne(url, { brand, adArchiveId, index: i }, counters)
+  )
+  ad['Archived Image Links'] = imageLinks.filter(Boolean).join('\n')
+
+  if (ad['Video Thumbnail']) {
+    const link = await archiveOne(ad['Video Thumbnail'], { brand, adArchiveId, index: 'thumb' }, counters)
+    ad['Archived Thumbnail'] = link ?? ''
+  }
+}
+
 async function runJob(job) {
   for (const keyword of job.keywords) {
     const items = await runFacebookAdsScraper(keyword)
     const scrapedAt = new Date().toISOString()
     const mapped = items.map((item) => mapAd(item, { keyword, scrapedAt }))
+
+    for (const ad of mapped) {
+      await archiveAdMedia(ad, job.summary)
+    }
 
     const { appended, updated } = mapped.length > 0
       ? await upsertAdRows(mapped)

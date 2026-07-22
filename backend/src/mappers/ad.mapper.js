@@ -16,6 +16,8 @@ export const AD_COLUMNS = [
   'CTA Text',
   'Landing URL',
   'Image Links',
+  'Archived Image Links',
+  'Archived Thumbnail',
   'Video Link',
   'Video Thumbnail',
   'Variant Count',
@@ -87,6 +89,10 @@ export function mapAd(item, { keyword = '', scrapedAt = new Date().toISOString()
     'CTA Text': pick(snapshot, ['ctaText', 'cta_text']) ?? '',
     'Landing URL': pick(snapshot, ['linkUrl', 'link_url']) ?? '',
     'Image Links': imageLinks,
+    // Filled in by collect.service after the Drive uploads finish; the
+    // mapper itself stays a pure raw-item → row transform.
+    'Archived Image Links': '',
+    'Archived Thumbnail': '',
     'Video Link': videoLink,
     'Video Thumbnail': videoThumbnail,
     'Variant Count': pick(item, ['collationCount', 'collation_count']) ?? '',

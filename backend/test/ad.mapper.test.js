@@ -31,6 +31,8 @@ test('maps a realistic camelCase actor item to all 20 columns', () => {
       'https://scontent.example.com/card1_orig.jpg',
       'https://scontent.example.com/card2_small.jpg',
     ].join('\n'),
+    'Archived Image Links': '',
+    'Archived Thumbnail': '',
     'Video Link': 'https://video.example.com/card1_hd.mp4',
     'Video Thumbnail': 'https://scontent.example.com/card1_preview.jpg',
     'Variant Count': 4,
@@ -87,11 +89,13 @@ test('handles a near-empty item without throwing', () => {
   assert.equal(mapped['Date Scraped'], CTX.scrapedAt)
 })
 
-test('toRow keeps the 20 columns in sheet order', () => {
+test('toRow keeps the 22 columns in sheet order', () => {
   const row = toRow(mapAd(fixture, CTX))
 
-  assert.equal(row.length, 20)
+  assert.equal(row.length, 22)
   assert.equal(row[0], '1234567890123456')
   assert.equal(row[AD_COLUMNS.indexOf('Brand')], '뉴트리원')
+  assert.equal(AD_COLUMNS.indexOf('Archived Image Links'), 14, 'archived links sit right after Image Links (col O)')
+  assert.equal(AD_COLUMNS.indexOf('Archived Thumbnail'), 15)
   assert.equal(row[AD_COLUMNS.indexOf('Page ID')], '111222333444555')
 })

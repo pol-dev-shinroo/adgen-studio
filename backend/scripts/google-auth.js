@@ -27,14 +27,17 @@ if (!clientId || !clientSecret) {
 
 const PORT = 3001
 const REDIRECT_URI = `http://localhost:${PORT}/oauth2callback`
-const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
+const SCOPES = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.file', // create/manage only files this app creates
+]
 
 const oauth2 = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI)
 
 const consentUrl = oauth2.generateAuthUrl({
   access_type: 'offline',
   prompt: 'consent', // force a refresh token even if previously approved
-  scope: SCOPE,
+  scope: SCOPES,
 })
 
 const server = http.createServer(async (req, res) => {

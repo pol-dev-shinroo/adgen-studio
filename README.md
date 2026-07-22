@@ -18,9 +18,19 @@ Then open **http://localhost:3000** (port is fixed in `vite.config.js`).
 ## Backend (`backend/`)
 
 Express service that replaces the old n8n workflow: keywords in → Apify
-`facebook-ads-scraper` actor → 20-column rows upserted into the client's
+`facebook-ads-scraper` actor → 22-column rows upserted into the client's
 Google Sheet (matched on **Ad Archive ID**: existing rows are updated,
 new ones appended).
+
+Because Facebook CDN URLs are signed and expire, ad images and video
+thumbnails are downloaded at collection time (while the signatures are still
+fresh) and archived to Google Drive under `AdGen Media Archive/<brand>/` as
+`<adArchiveId>_<index>.<ext>`, shared as "anyone with link can view". The
+sheet stores the permanent Drive links in **Archived Image Links** /
+**Archived Thumbnail** (columns O/P) alongside the original fbcdn URLs.
+Re-scrapes skip files that already exist; a single failed download logs a
+warning and leaves the cell empty without failing the job. Video files
+themselves are not archived (thumbnails only).
 
 ### Setup
 
@@ -35,11 +45,17 @@ Fill in `.env`:
 | Variable | What it is |
 | --- | --- |
 | `APIFY_TOKEN` | Apify console → Settings → Integrations |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth client (Web application) with authorized redirect URI `http://localhost:3001/oauth2callback`; Google Sheets API must be enabled and the signing-in account added as a test user on the consent screen |
-| `GOOGLE_REFRESH_TOKEN` | One-time: `node scripts/google-auth.js`, approve in the browser **signed in as an account with edit access to the target sheet**, paste the printed token |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth client (Web application) with authorized redirect URI `http://localhost:3001/oauth2callback`; **Google Sheets API and Google Drive API** must be enabled and the signing-in account added as a test user on the consent screen |
+| `GOOGLE_REFRESH_TOKEN` | One-time: `node scripts/google-auth.js` (requests `spreadsheets` + `drive.file` scopes), approve in the browser **signed in as an account with edit access to the target sheet**, paste the printed token |
 | `SHEET_ID` | The long ID in the spreadsheet URL |
 | `SHEET_TAB_NAME` | Tab name (default `시트1`) |
+| `DRIVE_FOLDER_ID` | Optional — pin the media-archive root folder; empty = find/create "AdGen Media Archive" automatically |
 | `PORT` | Default `4000` |
+
+Migrating a sheet created with the old 20-column layout:
+`node scripts/migrate-sheet-22cols.js` (idempotent; inserts the two archive
+columns at O/P and rewrites the header, shifting existing data to stay
+aligned).
 
 Sheets auth uses OAuth2 + refresh token (not a service-account key — org
 policy blocks key creation). While the OAuth consent screen is in Testing

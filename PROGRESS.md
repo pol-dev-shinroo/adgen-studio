@@ -34,3 +34,11 @@
 - Real end-to-end run verified with keyword `뉴트리원`: 77 ads fetched, 77 appended / 0 updated (first run), sheet confirmed at 78 rows incl. header; existing sheet header matched our 20 columns exactly. Sample rows spot-checked — field alignment correct (note: keyword search also pulls third-party ads mentioning the keyword, e.g. Naver smartstore DPA ads).
 - Secrets: `backend/.env` gitignored (verified with `git check-ignore` before commit); no tokens in code or logs.
 - Frontend still calls nothing — wiring the feed screen's "실시간 수집" to `POST /api/collect` is the natural next step.
+
+## 2026-07-23 — Drive media archiving (fbcdn URLs expire) (Claude Code)
+- Problem solved: fbcdn URLs in the sheet are signed/short-lived. Media is now downloaded at collection time (signatures still fresh) and archived permanently to Google Drive: `AdGen Media Archive/<brand>/<adArchiveId>_<index>.<ext>`, "anyone with link" viewer permission.
+- Sheet grew to 22 columns (A..V): `Archived Image Links` / `Archived Thumbnail` inserted at O/P after `Image Links`; original fbcdn columns kept for reference. Existing sheet migrated with `scripts/migrate-sheet-22cols.js` (inserts columns so old rows stay aligned; idempotent).
+- OAuth re-scoped: refresh token now carries `spreadsheets` + `drive.file` (user re-ran `scripts/google-auth.js`); **Drive API had to be enabled in the Cloud project** — the token had the scope but the API was off, failing with "has not been used in project... or it is disabled".
+- New `drive.service.js` (folder ensure/cache, per-brand subfolders, streaming upload, re-scrape dedupe via cached folder listing), `utils/pool.js` (3 parallel downloads per ad, no new deps), shared `google.client.js` for Sheets+Drive auth. Download failures log + leave cell empty, never fail the job.
+- Verified with a real `뉴트리원` run: 77 ads → 0 appended / **77 updated** (upsert matching proven on re-scrape), **161 files uploaded, 0 failed**, Drive links confirmed in sheet cells O/P and click-verified.
+- Video files still not archived (thumbnails only) — revisit if needed; consider Drive storage quota if many brands are collected.
