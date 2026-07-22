@@ -42,3 +42,10 @@
 - New `drive.service.js` (folder ensure/cache, per-brand subfolders, streaming upload, re-scrape dedupe via cached folder listing), `utils/pool.js` (3 parallel downloads per ad, no new deps), shared `google.client.js` for Sheets+Drive auth. Download failures log + leave cell empty, never fail the job.
 - Verified with a real `뉴트리원` run: 77 ads → 0 appended / **77 updated** (upsert matching proven on re-scrape), **161 files uploaded, 0 failed**, Drive links confirmed in sheet cells O/P and click-verified.
 - Video files still not archived (thumbnails only) — revisit if needed; consider Drive storage quota if many brands are collected.
+
+## 2026-07-23 — Column reorder + destructive full reset (Claude Code)
+- Reordered `AD_COLUMNS` so archived (permanent Drive) links are primary and raw fbcdn links are reference-only: `Archived Image Links` now sits before `Image Links`, `Archived Thumbnail` before `Video Thumbnail`. Still 22 columns A..V; `sheets.service.js` `LAST_COLUMN` untouched (already `'V'`). Mapper tests updated for the new indices, still 4/4 passing.
+- **Full reset, client-approved**: new `scripts/reset-archive.js` clears the whole sheet tab (A:V, header included) and trashes (not permanently deletes — 30-day Drive trash recovery) the old "AdGen Media Archive" folder tree. Ran it: sheet cleared, old root folder (id `1H_dMcQNQN3xe5Wky4Sk5etktDr3pNtla`) trashed.
+- Restarted the backend process afterward — `drive.service.js` caches folder IDs in memory for process lifetime, so a stale process would've kept uploading into the trashed folder. Confirmed a fresh process recreates "AdGen Media Archive" cleanly (new id `1CzOIlVVR_oNpWaoLf9YeHTkBi1a4a8Hj`) with no manual folder cleanup needed.
+- Fresh end-to-end verification with keyword `안티칼` on the reset archive: 15 ads → 15 appended / 0 updated, 24 files uploaded / 0 failed. Header row confirmed in the new column order; sample Drive links (brand `antical.1`) click-verified.
+- `reset-archive.js` kept in the repo as a reusable admin script (no secrets — reads env like everything else).
