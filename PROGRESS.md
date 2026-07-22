@@ -12,3 +12,9 @@
 - GitHub push blocked: `gh` (GitHub CLI) is not installed on this machine, so `gh auth status` fails before auth can even be checked. Did not run `git init`/commit yet, per the plan's "stop and tell me" branch.
 - Open item: user needs to either install + `gh auth login` the GitHub CLI, or create the `adgen-studio` repo manually (public) at github.com/new — then Claude Code can do `git init`, first commit, `git remote add origin <url>`, `git push -u origin main`.
 - Vercel connection still untouched, per instructions — user will do that manually via the dashboard once the repo exists.
+
+## 2026-07-22 — GitHub repo created and pushed (Claude Code)
+- GitHub CLI was installed since the last session (needed the full path `C:\Program Files\GitHub CLI\gh.exe` — not yet on this shell's PATH); authenticated as `pol-dev-shinroo`.
+- Caught and fixed a near-miss: first `git init` accidentally ran at the parent `image-automation` folder (would have pushed local Claude settings + the original mockup HTML to a public repo). Deleted that `.git` and re-initialized inside `adgen-studio/` only.
+- Initial commit (54 files) pushed to **https://github.com/pol-dev-shinroo/adgen-studio** (public, branch `main`).
+- Remaining: user connects the repo to Vercel via dashboard (Import Git Repository) for auto-deploy on push.
