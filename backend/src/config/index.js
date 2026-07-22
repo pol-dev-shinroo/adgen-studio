@@ -25,5 +25,6 @@ export const config = {
   // Optional: pin the Drive media-archive root folder instead of
   // finding/creating "AdGen Media Archive" by name.
   driveFolderId: (process.env.DRIVE_FOLDER_ID || '').trim() || null,
+  corsOrigin: (process.env.CORS_ORIGIN || 'http://localhost:3000').trim(),
   port: Number(process.env.PORT) || 4000,
 }

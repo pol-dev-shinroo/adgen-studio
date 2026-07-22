@@ -79,3 +79,17 @@ export async function upsertAdRows(mappedAds) {
     appended: appends.length - (sheetIsEmpty ? 1 : 0),
   }
 }
+
+// Reads every archived ad row and converts each to an object keyed by
+// AD_COLUMNS (same shape mapAd() produces), for the frontend feed.
+export async function getAllAds() {
+  const sheets = getClient()
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheetId,
+    range: tabRange(`A:${LAST_COLUMN}`),
+  })
+  const rows = res.data.values || []
+  return rows.slice(1).map((cells) => (
+    Object.fromEntries(AD_COLUMNS.map((column, i) => [column, cells[i] ?? '']))
+  ))
+}

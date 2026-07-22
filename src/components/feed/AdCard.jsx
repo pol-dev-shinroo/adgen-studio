@@ -18,7 +18,7 @@ export default function AdCard({ ad, note }) {
 
   return (
     <div className="card ad">
-      <Thumb gradient={ad.gradient}>
+      <Thumb gradient={ad.gradient} image={ad.image}>
         <Badge variant={ad.live ? 'live' : 'arch'} className="state">
           {ad.live ? '게재중' : '아카이브'}
         </Badge>

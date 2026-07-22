@@ -60,18 +60,18 @@ async function archiveOne(url, meta, counters) {
 }
 
 async function archiveAdMedia(ad, counters) {
-  const brand = ad['Brand']
+  const keyword = ad['Search Keyword']
   const adArchiveId = ad['Ad Archive ID']
   if (!adArchiveId) return
 
   const imageUrls = ad['Image Links'] ? ad['Image Links'].split('\n').filter(Boolean) : []
   const imageLinks = await mapWithConcurrency(imageUrls, MEDIA_CONCURRENCY, (url, i) =>
-    archiveOne(url, { brand, adArchiveId, index: i }, counters)
+    archiveOne(url, { keyword, adArchiveId, index: i }, counters)
   )
   ad['Archived Image Links'] = imageLinks.filter(Boolean).join('\n')
 
   if (ad['Video Thumbnail']) {
-    const link = await archiveOne(ad['Video Thumbnail'], { brand, adArchiveId, index: 'thumb' }, counters)
+    const link = await archiveOne(ad['Video Thumbnail'], { keyword, adArchiveId, index: 'thumb' }, counters)
     ad['Archived Thumbnail'] = link ?? ''
   }
 }

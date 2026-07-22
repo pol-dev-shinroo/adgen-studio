@@ -10,10 +10,14 @@ Node/Express backend that collects competitor ads from the Meta Ads Library
 ```bash
 cd adgen-studio
 npm install
+cp .env.example .env    # VITE_API_BASE_URL, defaults to http://localhost:4000
 npm run dev
 ```
 
-Then open **http://localhost:3000** (port is fixed in `vite.config.js`).
+Then open **http://localhost:3000** (port is fixed in `vite.config.js`). The
+backend must be running too (see below) — the Feed screen (경쟁사 광고 피드)
+loads and searches real archived ads through it; without a backend it falls
+back to sample data and shows a toast.
 
 ## Backend (`backend/`)
 
@@ -24,13 +28,21 @@ new ones appended).
 
 Because Facebook CDN URLs are signed and expire, ad images and video
 thumbnails are downloaded at collection time (while the signatures are still
-fresh) and archived to Google Drive under `AdGen Media Archive/<brand>/` as
-`<adArchiveId>_<index>.<ext>`, shared as "anyone with link can view". The
-sheet stores the permanent Drive links in **Archived Image Links** /
-**Archived Thumbnail** (columns O/P) alongside the original fbcdn URLs.
-Re-scrapes skip files that already exist; a single failed download logs a
-warning and leaves the cell empty without failing the job. Video files
-themselves are not archived (thumbnails only).
+fresh) and archived to Google Drive under `AdGen Media Archive/<search keyword>/`
+as `<adArchiveId>_<index>.<ext>`, shared as "anyone with link can view".
+Folders are grouped by **search keyword**, not by the ad's Facebook Page name
+— a deliberate tradeoff: ads from different real advertisers that happen to
+match the same keyword land in the same folder. The sheet stores the
+permanent Drive links in **Archived Image Links** / **Archived Thumbnail**
+(columns N/Q — listed before the raw fbcdn columns, since the Drive links are
+the primary/permanent ones). Re-scrapes skip files that already exist; a
+single failed download logs a warning and leaves the cell empty without
+failing the job. Video files themselves are not archived (thumbnails only).
+
+Full reset (clears the sheet and trashes — not permanently deletes — the
+whole Drive archive folder): `node scripts/reset-archive.js`. Destructive;
+confirm with whoever owns the data before running. **Restart the backend
+process afterward** — Drive folder IDs are cached in memory per process.
 
 ### Setup
 
@@ -50,6 +62,7 @@ Fill in `.env`:
 | `SHEET_ID` | The long ID in the spreadsheet URL |
 | `SHEET_TAB_NAME` | Tab name (default `시트1`) |
 | `DRIVE_FOLDER_ID` | Optional — pin the media-archive root folder; empty = find/create "AdGen Media Archive" automatically |
+| `CORS_ORIGIN` | Origin allowed to call this API; default `http://localhost:3000` (the Vite dev server) |
 | `PORT` | Default `4000` |
 
 Migrating a sheet created with the old 20-column layout:
@@ -75,6 +88,7 @@ npm start        # or: npm run dev (auto-restart on change)
 | --- | --- |
 | `POST /api/collect` `{ "keywords": ["뉴트리원"] }` | Starts a collection job, returns `202 { jobId }` immediately; scraping runs in the background |
 | `GET /api/collect/:jobId` | Job status: `running` / `done` / `failed` + per-keyword summary (ads fetched, appended, updated) and sample rows |
+| `GET /api/ads` | Every archived row from the sheet, as JSON objects keyed by the 22-column layout — what the frontend feed reads |
 | `GET /api/health` | `{ ok: true }` |
 
 ### Tests
@@ -119,6 +133,10 @@ src/
 - Edits (rename brand, override a product field) still use `window.prompt()`
   to match the mockup's interaction — swap for a real modal whenever you're
   ready to polish the UI.
-- This is UI-only: no real Meta Ads / Cafe24 / Pinecone / n8n calls are made.
-  Wiring those up means replacing the mock data + the functions inside each
-  context with real API/webhook calls.
+- **The Feed screen (경쟁사 광고 피드) is wired to the real backend** — it loads
+  the archived Meta ad set via `GET /api/ads` and "실시간 수집" runs a real
+  Apify collection job. Studio/Gallery/Settings are still UI-only with mock
+  data, since their real data sources (Cafe24/Pinecone, image generation)
+  don't exist yet. Note: because `AdsContext` is shared app-wide, the Studio
+  wizard's "레퍼런스 브랜드" step (which reads the same ad archive) now shows
+  real collected ads too, even though Studio's own code wasn't touched.

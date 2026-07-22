@@ -18,7 +18,7 @@ const EXT_BY_CONTENT_TYPE = {
 
 let driveClient = null
 let rootFolderIdPromise = null
-const brandFolderPromises = new Map() // brand name → Promise<{ id, fileNames:Set }>
+const keywordFolderPromises = new Map() // search keyword → Promise<{ id, fileNames:Set }>
 
 function getClient() {
   if (!driveClient) {
@@ -61,13 +61,17 @@ function getRootFolderId() {
   return rootFolderIdPromise
 }
 
-// One subfolder per brand. Alongside the folder id we cache the names of the
-// files already in it, so re-scrapes can skip existing uploads without one
-// files.list call per candidate file.
-function getBrandFolder(brand) {
-  const name = (brand || '').trim() || '(unknown brand)'
-  if (!brandFolderPromises.has(name)) {
-    brandFolderPromises.set(name, (async () => {
+// One subfolder per search keyword. Alongside the folder id we cache the
+// names of the files already in it, so re-scrapes can skip existing uploads
+// without one files.list call per candidate file.
+//
+// Note: grouping by keyword (not by the ad's actual Facebook Page name)
+// means ads from different real advertisers that both matched the same
+// search term land in the same folder — an accepted tradeoff, not a bug.
+function getKeywordFolder(keyword) {
+  const name = (keyword || '').trim() || '(unknown keyword)'
+  if (!keywordFolderPromises.has(name)) {
+    keywordFolderPromises.set(name, (async () => {
       const drive = getClient()
       const rootId = await getRootFolderId()
       const id = await findOrCreateFolder(name, rootId)
@@ -88,7 +92,7 @@ function getBrandFolder(brand) {
       return { id, fileNames }
     })())
   }
-  return brandFolderPromises.get(name)
+  return keywordFolderPromises.get(name)
 }
 
 async function findExistingByBaseName(folderId, baseName) {
@@ -104,13 +108,13 @@ async function findExistingByBaseName(folderId, baseName) {
 
 /**
  * Downloads a (fresh, still-signed) CDN URL and stores it permanently in
- * Drive under <root>/<brand>/<adArchiveId>_<index>.<ext>. Returns the file's
- * webViewLink. If a file with that base name already exists in the brand
- * folder, the existing link is returned and nothing is downloaded.
+ * Drive under <root>/<keyword>/<adArchiveId>_<index>.<ext>. Returns the
+ * file's webViewLink. If a file with that base name already exists in the
+ * keyword folder, the existing link is returned and nothing is downloaded.
  */
-export async function uploadFromUrl(fileUrl, { brand, adArchiveId, index }) {
+export async function uploadFromUrl(fileUrl, { keyword, adArchiveId, index }) {
   const drive = getClient()
-  const folder = await getBrandFolder(brand)
+  const folder = await getKeywordFolder(keyword)
   const baseName = `${adArchiveId}_${index}`
 
   const cached = [...folder.fileNames].find((n) => n.startsWith(`${baseName}.`))
