@@ -34,3 +34,11 @@ export function updateAdField(adArchiveId, field, value) {
     body: JSON.stringify({ field, value }),
   })
 }
+
+export function discardAds(keyword, adArchiveIds) {
+  return request('/api/ads/discard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword, adArchiveIds }),
+  })
+}

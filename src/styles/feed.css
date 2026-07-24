@@ -5,6 +5,13 @@
 .collect-limit{display:flex;align-items:center;gap:10px}
 .collect-limit-label{font-size:12.5px;color:var(--sub);font-weight:600;white-space:nowrap}
 .collect-limit input[type=range]{accent-color:var(--brand);width:220px}
+.searchbar button.btn.pri{position:relative;display:inline-flex;align-items:center}
+.searchbar button.btn.pri:disabled{opacity:.65;cursor:not-allowed}
+.collect-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:6px;animation:collect-pulse 1.2s ease-in-out infinite}
+@keyframes collect-pulse{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:.4;transform:scale(1.35)}
+}
 .tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line)}
 .tab{all:unset;padding:10px 16px;font-weight:700;color:var(--sub);cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1px;font-size:13.5px}
 .tab.on{color:var(--brand);border-color:var(--brand)}
@@ -16,6 +23,13 @@
 .ad .thumb.has-image::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.5));z-index:1}
 .ad .thumb.has-image > span{position:relative;z-index:2}
 .card.ad{cursor:pointer}
+.card.ad.selected{outline:2px solid var(--brand);outline-offset:-1px}
+.select-check{position:absolute;top:10px;left:10px;z-index:2;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.9);border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--brand);cursor:pointer}
+.select-check.checked{background:var(--brand);color:#fff;border-color:var(--brand)}
+.select-toolbar{display:flex;align-items:center;margin-bottom:14px}
+.select-all{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--sub);cursor:pointer}
+.select-all input{accent-color:var(--brand)}
+.select-actions{display:flex;gap:8px;margin-left:auto}
 .ad .body{padding:12px}
 .ad .name{font-weight:700;display:flex;align-items:center;gap:6px}
 .ad .name .edit{cursor:pointer;font-size:12px;opacity:.5}

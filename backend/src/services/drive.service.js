@@ -175,3 +175,30 @@ export async function uploadFromUrl(fileUrl, { keyword, adArchiveId, index }) {
   folder.fileNames.add(created.fileName)
   return { link: created.data.webViewLink, reused: false }
 }
+
+// Trashes (not permanently deletes — same "recoverable from Drive trash"
+// convention as reset-archive.js) every file belonging to one ad in a
+// keyword's folder. Files are named `${adArchiveId}_${index}.${ext}`, so a
+// substring search on the ID prefix followed by an exact-prefix filter
+// (Drive's "contains" is a plain substring match, not anchored) finds all
+// of them regardless of how many images/thumbnail it had.
+export async function deleteAdMedia(keyword, adArchiveId) {
+  const drive = getClient()
+  const folder = await getKeywordFolder(keyword)
+  const prefix = `${adArchiveId}_`
+
+  const res = await callDrive(() => drive.files.list({
+    q: `'${escapeQuery(folder.id)}' in parents and name contains '${escapeQuery(prefix)}' and trashed = false`,
+    fields: 'files(id, name)',
+    pageSize: 50,
+  }))
+  const matches = (res.data.files || []).filter((f) => f.name.startsWith(prefix))
+
+  let trashed = 0
+  for (const file of matches) {
+    await callDrive(() => drive.files.update({ fileId: file.id, requestBody: { trashed: true } }))
+    folder.fileNames.delete(file.name)
+    trashed += 1
+  }
+  return trashed
+}

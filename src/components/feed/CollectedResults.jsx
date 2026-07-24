@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useAds } from '../../context/AdsContext.jsx'
+import { useNavigation } from '../../context/NavigationContext.jsx'
 import AdCard from './AdCard.jsx'
 
 // Friendly Korean labels for the AD_COLUMNS names most likely to show up in
@@ -41,7 +43,10 @@ function StatusNote({ ad }) {
 }
 
 export default function CollectedResults({ onOpenDetail }) {
-  const { collected, lastQuery } = useAds()
+  const { collected, lastQuery, discardAds } = useAds()
+  const { showToast } = useNavigation()
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
 
   if (!collected.length) {
     return (
@@ -55,6 +60,44 @@ export default function CollectedResults({ onOpenDetail }) {
   const updatedCount = collected.filter((a) => a.status === 'updated').length
   const unchangedCount = collected.filter((a) => a.status === 'unchanged').length
 
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  // Everything starts checked ("keep") — the user unchecks the few they
+  // want to discard, rather than having to check every item they want to keep.
+  const enterSelectMode = () => {
+    setSelectedIds(new Set(collected.map((a) => a.id)))
+    setSelectMode(true)
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => (
+      prev.size === collected.length ? new Set() : new Set(collected.map((a) => a.id))
+    ))
+  }
+
+  const toggleOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleKeep = async () => {
+    const uncheckedIds = collected.filter((a) => !selectedIds.has(a.id)).map((a) => a.id)
+    if (uncheckedIds.length === 0) {
+      showToast('모든 항목이 보관되었습니다')
+      exitSelectMode()
+      return
+    }
+    await discardAds(uncheckedIds)
+    exitSelectMode()
+  }
+
   return (
     <div>
       {newCount === 0 && updatedCount === 0 && (
@@ -65,6 +108,32 @@ export default function CollectedResults({ onOpenDetail }) {
       <p className="sub" style={{ marginBottom: 14 }}>
         "{lastQuery}" 수집 완료 — 신규 {newCount}건, 업데이트 {updatedCount}건, 변경없음 {unchangedCount}건
       </p>
+
+      <div className="select-toolbar">
+        {selectMode ? (
+          <>
+            <label className="select-all">
+              <input
+                type="checkbox"
+                checked={selectedIds.size === collected.length}
+                onChange={toggleSelectAll}
+              />
+              전체 선택
+            </label>
+            <div className="select-actions">
+              <button className="btn ghost sm" onClick={exitSelectMode}>취소</button>
+              <button className="btn pri sm" onClick={handleKeep}>
+                {selectedIds.size}개 선택됨 · 보관하기
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="select-actions">
+            <button className="btn ghost sm" onClick={enterSelectMode}>선택하기</button>
+          </div>
+        )}
+      </div>
+
       <div className="grid">
         {collected.map((ad, i) => (
           <AdCard
@@ -72,6 +141,9 @@ export default function CollectedResults({ onOpenDetail }) {
             ad={ad}
             onOpenDetail={onOpenDetail}
             note={<StatusNote ad={ad} />}
+            selectable={selectMode}
+            selected={selectedIds.has(ad.id)}
+            onToggleSelect={toggleOne}
           />
         ))}
       </div>

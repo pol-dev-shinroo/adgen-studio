@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { initialAds } from '../data/initialAds.js'
 import { useNavigation } from './NavigationContext.jsx'
-import { getAds, startCollect, getJobStatus, updateAdField } from '../api/backendClient.js'
+import { getAds, startCollect, getJobStatus, updateAdField, discardAds as discardAdsApi } from '../api/backendClient.js'
 import { adaptAd } from '../api/adaptAd.js'
 
 const AdsContext = createContext(null)
@@ -132,6 +132,26 @@ export function AdsProvider({ children }) {
     }
   }, [ads, showToast])
 
+  // Discards the ads the user unchecked in select mode: trashes their Drive
+  // media and removes their sheet rows (auto-save stays on scrape — this is
+  // the after-the-fact undo path, not a stage-then-commit pipeline). Removes
+  // the same IDs from both `collected` and `ads` on success.
+  const discardAds = useCallback(async (adArchiveIds) => {
+    try {
+      const result = await discardAdsApi(lastQuery, adArchiveIds)
+      const idsToRemove = new Set(adArchiveIds.map(String))
+      const keptCount = collected.filter((a) => !idsToRemove.has(String(a.id))).length
+      setAds((prev) => prev.filter((a) => !idsToRemove.has(String(a.id))))
+      setCollected((prev) => prev.filter((a) => !idsToRemove.has(String(a.id))))
+      showToast(`보관 ${keptCount}건 · 폐기 ${result.deleted}건`)
+      return result
+    } catch (err) {
+      console.error('Discard failed:', err)
+      showToast(`폐기 실패: ${err.message}`)
+      throw err
+    }
+  }, [lastQuery, collected, showToast])
+
   // Clicking the already-active chip resets to 'all' — same toggle pattern
   // used by the other chip filters in this app.
   const toggleMediaFilter = useCallback((value) => {
@@ -149,7 +169,7 @@ export function AdsProvider({ children }) {
       ads, brands, brandFilter, setBrandFilter,
       mediaFilter, toggleMediaFilter,
       recentOnly, toggleRecentOnly,
-      collected, lastQuery, collect, renameBrand, activeJob,
+      collected, lastQuery, collect, renameBrand, activeJob, discardAds,
     }}>
       {children}
     </AdsContext.Provider>

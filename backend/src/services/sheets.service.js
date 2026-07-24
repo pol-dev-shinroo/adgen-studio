@@ -26,6 +26,23 @@ function tabRange(cells) {
   return `'${config.sheetTabName}'!${cells}`
 }
 
+// The tab's internal numeric sheetId (gid) — needed for deleteDimension
+// requests, which address sheets by gid, not by name. Fetched once and
+// cached, same pattern as drive.service.js's root folder ID.
+let sheetGidPromise = null
+function getSheetGid() {
+  if (!sheetGidPromise) {
+    sheetGidPromise = (async () => {
+      const sheets = getClient()
+      const meta = await callSheets(() => sheets.spreadsheets.get({ spreadsheetId: config.sheetId }))
+      const tab = meta.data.sheets.find((s) => s.properties.title === config.sheetTabName)
+      if (!tab) throw new Error(`Tab "${config.sheetTabName}" not found in spreadsheet.`)
+      return tab.properties.sheetId
+    })()
+  }
+  return sheetGidPromise
+}
+
 // 0 -> A, 1 -> B, ... 25 -> Z. AD_COLUMNS is 22 wide, well within single-letter range.
 function columnLetter(index) {
   return String.fromCharCode(65 + index)
@@ -158,6 +175,57 @@ export async function updateAdField(adArchiveId, columnName, value) {
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
   }))
+}
+
+// Actually removes rows (not just clears their values) for the given Ad
+// Archive IDs, found the same way upsertAdRows/updateAdField match rows
+// (scan column A). Row numbers are sorted descending before building the
+// batch so deleting a later row never shifts the index of an earlier one
+// still queued for deletion in the same request.
+export async function deleteAdRows(adArchiveIds) {
+  const sheets = getClient()
+  const gid = await getSheetGid()
+
+  const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheetId,
+    range: tabRange('A:A'),
+  }))
+  const columnA = idColumn.data.values || []
+
+  const idsToDelete = new Set(adArchiveIds.map((id) => String(id).trim()))
+  const foundIds = new Set()
+  const rowNumbers = [] // 1-based, matching columnA's own indexing
+
+  columnA.forEach((cells, i) => {
+    const id = String(cells?.[0] ?? '').trim()
+    if (id && idsToDelete.has(id)) {
+      rowNumbers.push(i + 1)
+      foundIds.add(id)
+    }
+  })
+
+  const notFoundIds = [...idsToDelete].filter((id) => !foundIds.has(id))
+  if (rowNumbers.length === 0) return { deleted: 0, notFoundIds }
+
+  rowNumbers.sort((a, b) => b - a) // descending
+
+  const requests = rowNumbers.map((rowNumber) => ({
+    deleteDimension: {
+      range: {
+        sheetId: gid,
+        dimension: 'ROWS',
+        startIndex: rowNumber - 1, // deleteDimension row indexes are 0-based
+        endIndex: rowNumber,
+      },
+    },
+  }))
+
+  await callSheets(() => sheets.spreadsheets.batchUpdate({
+    spreadsheetId: config.sheetId,
+    requestBody: { requests },
+  }))
+
+  return { deleted: rowNumbers.length, notFoundIds }
 }
 
 // Reads every archived ad row and converts each to an object keyed by

@@ -7,11 +7,18 @@ const DEFAULT_LIMIT = 50
 const STEP = 10
 
 export default function SearchBar() {
-  const { collect } = useAds()
+  const { collect, activeJob } = useAds()
   const [query, setQuery] = useState('')
   const [limit, setLimit] = useState(DEFAULT_LIMIT)
+  const isRunning = Boolean(activeJob)
 
-  const handleCollect = () => collect(query, limit)
+  // Guarding here (not just via the button's disabled attribute) covers the
+  // Enter-key path too, so a double-click or a stray Enter can't fire a
+  // second overlapping collection job.
+  const handleCollect = () => {
+    if (isRunning) return
+    collect(query, limit)
+  }
 
   return (
     <div className="searchbar-wrap">
@@ -22,7 +29,10 @@ export default function SearchBar() {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleCollect() }}
         />
-        <button className="btn pri" onClick={handleCollect}>🔍 실시간 수집</button>
+        <button className="btn pri" onClick={handleCollect} disabled={isRunning}>
+          {isRunning && <span className="collect-dot" />}
+          🔍 실시간 수집
+        </button>
       </div>
       <div className="collect-limit">
         <span className="collect-limit-label">최대 {limit}개 수집</span>

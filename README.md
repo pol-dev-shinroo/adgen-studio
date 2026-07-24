@@ -69,6 +69,16 @@ re-collecting the same keyword twice in a row and seeing 100% "updated"
 before this exclusion was added). The Drive-hosted `Archived ...`
 counterparts are stable and do count.
 
+**Everything is still auto-saved on scrape — discarding is an after-the-fact
+undo, not a staging gate.** `deleteAdRows` genuinely removes rows (a
+`deleteDimension` batch request, not a values-clear) and `deleteAdMedia`
+trashes the matching Drive files (same recoverable-trash convention as
+`reset-archive.js`), both behind `POST /api/ads/discard`. Row numbers are
+collected then sorted **descending** before building the delete batch, so
+removing a later row never shifts the index of an earlier one still queued
+in the same request — verified live: deleting two out of fifteen rows left
+the other thirteen's fields correctly aligned, not shifted.
+
 ### Setup
 
 ```bash
@@ -115,6 +125,7 @@ npm start        # or: npm run dev (auto-restart on change)
 | `GET /api/collect/:jobId` | Job status: `running` / `done` / `failed`, `errorCode` (`'RATE_LIMITED'` / `'UPSTREAM_ERROR'` / `null`), live `progress` (`{phase, currentKeyword, totalAdsFound, adsProcessed, recentItems[]}` — `phase` is `'scraping'` → `'archiving'` → `'saving'` → `'done'`), per-keyword `summary` (ads fetched, appended/updated/unchanged counts, `statuses[]` — one `{adArchiveId, status, changedFields}` per touched ad) and sample rows |
 | `GET /api/ads` | Every archived row from the sheet, as JSON objects keyed by the 22-column layout — what the frontend feed reads |
 | `PATCH /api/ads/:adArchiveId` `{ "field": "Search Keyword", "value": "..." }` | Edits one cell for that ad's row. `field` is allowlisted — only `Search Keyword` for now — everything else in the sheet is scraper-owned |
+| `POST /api/ads/discard` `{ "keyword": "안티칼", "adArchiveIds": [...] }` | Removes the given ads' sheet rows and trashes their Drive media. Returns `{ deleted, driveFilesTrashed, failures[] }` — a failure on one ad's Drive cleanup or sheet row never blocks the others, everything is attempted and every failure reported |
 | `GET /api/health` | `{ ok: true }` |
 
 ### Tests
@@ -230,3 +241,22 @@ src/
   `Thumb.jsx` falls back to its existing gradient placeholder once retries
   are exhausted, and the detail modal / lightbox show a plain "이미지를
   불러올 수 없습니다" message instead of a broken-image icon.
+- **Select mode on the collected-results tab**: "선택하기" enters select
+  mode with every ad pre-checked (i.e. "keep everything" is the default —
+  you uncheck the few you don't want, not check the ones you do). A
+  per-card checkbox replaces the status badge while active (top-left of the
+  thumbnail); the pencil/CTA are hidden — editing or generating from an ad
+  you might be about to discard doesn't make sense. "보관하기" discards
+  whatever's left unchecked via `AdsContext.discardAds()` → `POST
+  /api/ads/discard`, removing those IDs from both `collected` and `ads` on
+  success and reporting kept-vs-discarded counts in a toast; if nothing's
+  unchecked it just exits select mode with a "모든 항목이 보관되었습니다"
+  toast instead of calling the backend at all.
+- **The "실시간 수집" button pulses while a job is running and can't be
+  double-clicked**: a small green dot (only rendered — and only
+  animating — while `activeJob` is truthy, not just hidden) plus
+  `disabled={!!activeJob}`. The guard actually lives in the click handler
+  itself (checked before calling `collect()`), not only the `disabled`
+  attribute, so a stray Enter keypress in the search input can't slip a
+  second overlapping job past it either — this closes a real double-submit
+  race an earlier session's testing had noted but not fixed at the time.
