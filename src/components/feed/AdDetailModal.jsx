@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Modal from '../common/Modal.jsx'
 import ImageLightbox from '../common/ImageLightbox.jsx'
+import RetryImage from '../common/RetryImage.jsx'
 import { useStudio } from '../../context/StudioContext.jsx'
 import { toEmbeddableImageUrl } from '../../api/adaptAd.js'
 
@@ -55,7 +56,13 @@ export default function AdDetailModal({ ad, onClose }) {
         <div className="dtl-gallery">
           {galleryImages.length > 0 ? (
             galleryImages.map((src, i) => (
-              <img key={i} src={src} alt="" onClick={() => setLightboxIndex(i)} />
+              <RetryImage
+                key={i}
+                src={src}
+                alt=""
+                onClick={() => setLightboxIndex(i)}
+                fallback={<div className={`thumb ${ad.gradient}`} style={{ cursor: 'default' }} />}
+              />
             ))
           ) : (
             <div className={`thumb ${ad.gradient}`} />

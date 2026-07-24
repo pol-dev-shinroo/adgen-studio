@@ -57,6 +57,11 @@ export default function CollectedResults({ onOpenDetail }) {
 
   return (
     <div>
+      {newCount === 0 && updatedCount === 0 && (
+        <p className="sub" style={{ marginBottom: 4, fontWeight: 700, color: 'var(--ink)' }}>
+          새로 추가되거나 업데이트된 광고가 없습니다 — 모두 최신 상태입니다
+        </p>
+      )}
       <p className="sub" style={{ marginBottom: 14 }}>
         "{lastQuery}" 수집 완료 — 신규 {newCount}건, 업데이트 {updatedCount}건, 변경없음 {unchangedCount}건
       </p>

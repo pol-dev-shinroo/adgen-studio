@@ -15,11 +15,11 @@ export function getAds() {
   return request('/api/ads')
 }
 
-export function startCollect(keywords) {
+export function startCollect(keywords, { resultsLimit } = {}) {
   return request('/api/collect', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keywords }),
+    body: JSON.stringify({ keywords, resultsLimit }),
   })
 }
 

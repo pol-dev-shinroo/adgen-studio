@@ -44,6 +44,19 @@ whole Drive archive folder): `node scripts/reset-archive.js`. Destructive;
 confirm with whoever owns the data before running. **Restart the backend
 process afterward** — Drive folder IDs are cached in memory per process.
 
+**Rate-limit resilience**: every Apify/Google Sheets/Drive call goes through
+`utils/retry.js`'s `withRetry` (exponential backoff, 1s/2s/4s by default) —
+Apify 429/5xx responses and Google 429s / 403-with-quota-reason errors get
+retried automatically rather than failing the job outright. If retries are
+exhausted, the job fails with `errorCode: 'RATE_LIMITED'` (or
+`'UPSTREAM_ERROR'` for Apify 5xx) so the frontend can show a specific "try
+again shortly" toast instead of a generic failure message. One subtlety in
+`drive.service.js`: the image download + Drive upload are retried together
+(re-fetching the source URL fresh on every attempt) rather than retrying
+the upload alone, because the upload streams the downloaded bytes directly
+— a stream can only be read once, so retrying with a stale one would
+silently upload a truncated file.
+
 **Re-scrapes are classified new / updated / unchanged**, not just
 appended-vs-updated. `upsertAdRows` compares the incoming row to what was
 already in the sheet and reports which of the 22 columns actually changed.
@@ -98,8 +111,8 @@ npm start        # or: npm run dev (auto-restart on change)
 
 | Method & path | Purpose |
 | --- | --- |
-| `POST /api/collect` `{ "keywords": ["뉴트리원"] }` | Starts a collection job, returns `202 { jobId }` immediately; scraping runs in the background |
-| `GET /api/collect/:jobId` | Job status: `running` / `done` / `failed` + per-keyword summary (ads fetched, appended/updated/unchanged counts, `statuses[]` — one `{adArchiveId, status, changedFields}` per touched ad) and sample rows |
+| `POST /api/collect` `{ "keywords": ["뉴트리원"], "resultsLimit": 50 }` | Starts a collection job, returns `202 { jobId }` immediately; scraping runs in the background. `resultsLimit` is optional (default 200), must be an integer 10–200 — how many ads Apify returns per keyword, capped for sync-endpoint timeout safety |
+| `GET /api/collect/:jobId` | Job status: `running` / `done` / `failed`, `errorCode` (`'RATE_LIMITED'` / `'UPSTREAM_ERROR'` / `null`), live `progress` (`{phase, currentKeyword, totalAdsFound, adsProcessed, recentItems[]}` — `phase` is `'scraping'` → `'archiving'` → `'saving'` → `'done'`), per-keyword `summary` (ads fetched, appended/updated/unchanged counts, `statuses[]` — one `{adArchiveId, status, changedFields}` per touched ad) and sample rows |
 | `GET /api/ads` | Every archived row from the sheet, as JSON objects keyed by the 22-column layout — what the frontend feed reads |
 | `PATCH /api/ads/:adArchiveId` `{ "field": "Search Keyword", "value": "..." }` | Edits one cell for that ad's row. `field` is allowlisted — only `Search Keyword` for now — everything else in the sheet is scraper-owned |
 | `GET /api/health` | `{ ok: true }` |
@@ -130,9 +143,11 @@ src/
   data/                  mock data (stand-ins for Meta/Cafe24/n8n responses)
   components/
     layout/              Sidebar, Toast
-    common/               Badge, Chip, Thumb, Modal, ImageLightbox, MultiLineText (shared primitives)
+    common/               Badge, Chip, Thumb, Modal, ImageLightbox, RetryImage, MultiLineText
     feed/                 competitor ad feed screen (AdCard is compact; AdDetailModal
-                           shows the full 22-field record on click)
+                           shows the full 22-field record on click; CollectionProgress
+                           renders the live search/archive/save progress while a
+                           collection job is running)
     studio/               generation wizard (steps/ holds the 4 step panels)
     gallery/              result gallery screen
     settings/             brand sync + product review + n8n integration
@@ -189,3 +204,29 @@ src/
   reuse the shared `Modal` component's own Escape handling, so the detail
   view's `onClose` is wrapped to swallow the first Escape while the
   lightbox is open rather than closing both at once.
+- **실시간 수집 now shows live progress instead of a blank wait**: clicking
+  the button switches to the results tab *instantly* (before the network
+  request even goes out — `AdsContext.collect()` sets a placeholder
+  `activeJob` synchronously on click), then `CollectionProgress` renders an
+  indeterminate bar during the search phase, a real percentage bar during
+  archiving, and a live newest-first list of ads as they're processed
+  (thumbnail, brand, snippet, a status chip). Poll interval dropped to
+  900ms (from 1.5s) so this actually feels live. When a run finds nothing
+  new or changed, the results view leads with a plain-language "모두 최신
+  상태입니다" line instead of just bare zero counts.
+- **User-controlled collection size**: a slider next to the search bar (10–200,
+  step 10, default 50) controls how many ads Apify returns per search —
+  purely a fetch-size knob, the dedupe/diff logic underneath is unaffected.
+  Kept as local state in `SearchBar.jsx` itself (not `AdsContext`) since
+  it's only ever read at the moment `collect()` is called and nothing else
+  needs it.
+- **Thumbnail images retry before falling back**: `drive.google.com/thumbnail`
+  is an undocumented endpoint that can intermittently throttle under bursts
+  of many simultaneous requests (a full grid loading at once) or fail
+  briefly right after a file's sharing permission is set but hasn't
+  propagated yet — neither means the image is actually missing. `RetryImage`
+  retries the same URL up to twice more (with a cache-busting query param
+  so the browser doesn't just replay the cached failure) before giving up;
+  `Thumb.jsx` falls back to its existing gradient placeholder once retries
+  are exhausted, and the detail modal / lightbox show a plain "이미지를
+  불러올 수 없습니다" message instead of a broken-image icon.

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import Modal from './Modal.jsx'
+import RetryImage from './RetryImage.jsx'
 import { toEmbeddableImageUrl } from '../../api/adaptAd.js'
 
 // images: array of the ORIGINAL Drive webViewLinks (not the embeddable
@@ -22,7 +23,11 @@ export default function ImageLightbox({ images, index, onIndexChange, onClose })
     <Modal onClose={onClose} overlayClassName="lightbox-overlay" dialogClassName="lightbox-dialog">
       <div className="lightbox">
         <button className="modal-close" onClick={onClose} aria-label="닫기">✕</button>
-        <img src={largeSrc} alt="" />
+        <RetryImage
+          src={largeSrc}
+          alt=""
+          fallback={<div className="lightbox-fallback">이미지를 불러올 수 없습니다</div>}
+        />
         <a className="lightbox-original-link" href={originalLink} target="_blank" rel="noopener noreferrer">
           원본 파일 열기 (Drive) ↗
         </a>

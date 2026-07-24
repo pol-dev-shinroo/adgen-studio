@@ -6,7 +6,7 @@ import { adaptAd } from '../api/adaptAd.js'
 
 const AdsContext = createContext(null)
 
-const POLL_INTERVAL_MS = 1500
+const POLL_INTERVAL_MS = 900 // dropped from 1500ms so the live progress UI feels responsive
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -20,6 +20,7 @@ export function AdsProvider({ children }) {
   const [recentOnly, setRecentOnly] = useState(false)
   const [collected, setCollected] = useState([])
   const [lastQuery, setLastQuery] = useState('')
+  const [activeJob, setActiveJob] = useState(null)
 
   // Load the real archive from the backend on mount. If the backend is
   // unreachable, fall back to the mock fixture so the screen still renders.
@@ -45,7 +46,7 @@ export function AdsProvider({ children }) {
   // against what was already in the sheet — see sheets.service.js), so the
   // frontend just looks that up rather than re-guessing from what it
   // happened to have cached locally beforehand.
-  const collect = useCallback(async (query) => {
+  const collect = useCallback(async (query, resultsLimit) => {
     const q = query.trim()
     if (!q) {
       showToast('브랜드명 또는 AD ID를 입력하세요')
@@ -53,19 +54,39 @@ export function AdsProvider({ children }) {
     }
 
     setLastQuery(q)
+    // Set before even awaiting startCollect's network response so the tab
+    // switch to "실시간 수집 결과" happens in the same render as the click,
+    // not after the first poll comes back.
+    setActiveJob({
+      status: 'running',
+      progress: {
+        phase: 'scraping',
+        currentKeywordIndex: 0,
+        totalKeywords: 1,
+        currentKeyword: q,
+        totalAdsFound: 0,
+        adsProcessed: 0,
+        recentItems: [],
+      },
+    })
     showToast(`"${q}" 실시간 수집 중... (이미지·동영상 다운로드)`)
 
     try {
-      const { jobId } = await startCollect([q])
+      const { jobId } = await startCollect([q], { resultsLimit })
 
       let job
       do {
         await sleep(POLL_INTERVAL_MS)
         job = await getJobStatus(jobId)
+        setActiveJob(job)
       } while (job.status === 'running')
 
       if (job.status === 'failed') {
-        showToast(`수집 실패: ${job.error || '알 수 없는 오류'}`)
+        if (job.errorCode === 'RATE_LIMITED') {
+          showToast('API 요청 한도를 초과했습니다 — 잠시 후 다시 시도해주세요')
+        } else {
+          showToast(`수집 실패: ${job.error || '알 수 없는 오류'}`)
+        }
         return
       }
 
@@ -88,6 +109,8 @@ export function AdsProvider({ children }) {
     } catch (err) {
       console.error('Collection failed:', err)
       showToast(`수집 중 오류가 발생했습니다: ${err.message}`)
+    } finally {
+      setActiveJob(null)
     }
   }, [showToast])
 
@@ -126,7 +149,7 @@ export function AdsProvider({ children }) {
       ads, brands, brandFilter, setBrandFilter,
       mediaFilter, toggleMediaFilter,
       recentOnly, toggleRecentOnly,
-      collected, lastQuery, collect, renameBrand,
+      collected, lastQuery, collect, renameBrand, activeJob,
     }}>
       {children}
     </AdsContext.Provider>

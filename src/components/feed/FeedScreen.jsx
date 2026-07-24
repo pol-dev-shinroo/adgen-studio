@@ -5,19 +5,22 @@ import FeedTabs from './FeedTabs.jsx'
 import BrandFilterBar from './BrandFilterBar.jsx'
 import AdGrid from './AdGrid.jsx'
 import CollectedResults from './CollectedResults.jsx'
+import CollectionProgress from './CollectionProgress.jsx'
 import AdDetailModal from './AdDetailModal.jsx'
 import { useAds } from '../../context/AdsContext.jsx'
 
 export default function FeedScreen() {
-  const { ads, collected } = useAds()
+  const { ads, collected, activeJob } = useAds()
   const [tab, setTab] = useState('archive')
   const [selectedAd, setSelectedAd] = useState(null)
 
-  // Mirrors the mockup's behavior of jumping to the "collected" tab as soon
-  // as a real-time collection run finishes.
+  // activeJob is set synchronously the moment "실시간 수집" is clicked (see
+  // AdsContext.collect), so switching on it — rather than waiting for
+  // `collected` to be populated at the very end — makes the tab change
+  // happen in the same render as the click.
   useEffect(() => {
-    if (collected.length > 0) setTab('collected')
-  }, [collected])
+    if (activeJob) setTab('collected')
+  }, [activeJob])
 
   return (
     <section>
@@ -34,6 +37,8 @@ export default function FeedScreen() {
           <BrandFilterBar />
           <AdGrid onOpenDetail={setSelectedAd} />
         </div>
+      ) : activeJob ? (
+        <CollectionProgress job={activeJob} />
       ) : (
         <CollectedResults onOpenDetail={setSelectedAd} />
       )}

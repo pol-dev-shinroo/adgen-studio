@@ -2,6 +2,7 @@ import { google } from 'googleapis'
 import { config } from '../config/index.js'
 import { getAuthClient } from './google.client.js'
 import { AD_COLUMNS, toRow } from '../mappers/ad.mapper.js'
+import { withRetry, googleIsRetryable } from '../utils/retry.js'
 
 let sheetsClient = null
 
@@ -10,6 +11,13 @@ function getClient() {
     sheetsClient = google.sheets({ version: 'v4', auth: getAuthClient() })
   }
   return sheetsClient
+}
+
+// Every Sheets API call in this file goes through this so rate-limit/quota
+// errors (429, or 403 with a rateLimitExceeded reason) get retried with
+// backoff instead of failing the whole collection job outright.
+function callSheets(fn) {
+  return withRetry(fn, { isRetryable: googleIsRetryable })
 }
 
 const LAST_COLUMN = 'V' // 22 columns, A..V
@@ -44,10 +52,10 @@ const DIFF_IGNORED_INDEXES = new Set([...DIFF_IGNORED_COLUMNS].map((c) => AD_COL
 export async function upsertAdRows(mappedAds) {
   const sheets = getClient()
 
-  const existingRes = await sheets.spreadsheets.values.get({
+  const existingRes = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
     range: tabRange(`A:${LAST_COLUMN}`),
-  })
+  }))
   const existingRows = existingRes.data.values || []
   const sheetIsEmpty = existingRows.length === 0
 
@@ -97,19 +105,19 @@ export async function upsertAdRows(mappedAds) {
   if (sheetIsEmpty) appends.unshift([...AD_COLUMNS])
 
   if (updates.length > 0) {
-    await sheets.spreadsheets.values.batchUpdate({
+    await callSheets(() => sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: config.sheetId,
       requestBody: { valueInputOption: 'RAW', data: updates },
-    })
+    }))
   }
   if (appends.length > 0) {
-    await sheets.spreadsheets.values.append({
+    await callSheets(() => sheets.spreadsheets.values.append({
       spreadsheetId: config.sheetId,
       range: tabRange(`A:${LAST_COLUMN}`),
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: appends },
-    })
+    }))
   }
 
   return {
@@ -130,10 +138,10 @@ export async function updateAdField(adArchiveId, columnName, value) {
     throw new Error(`Unknown column "${columnName}"`)
   }
 
-  const idColumn = await sheets.spreadsheets.values.get({
+  const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
     range: tabRange('A:A'),
-  })
+  }))
   const columnA = idColumn.data.values || []
   const rowNumber = columnA.findIndex((cells) => String(cells?.[0] ?? '').trim() === String(adArchiveId).trim())
   if (rowNumber < 1) { // -1 (not found) or 0 (the header row) both count as not found
@@ -144,22 +152,22 @@ export async function updateAdField(adArchiveId, columnName, value) {
 
   const letter = columnLetter(columnIndex)
   const range = tabRange(`${letter}${rowNumber + 1}:${letter}${rowNumber + 1}`)
-  await sheets.spreadsheets.values.update({
+  await callSheets(() => sheets.spreadsheets.values.update({
     spreadsheetId: config.sheetId,
     range,
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
-  })
+  }))
 }
 
 // Reads every archived ad row and converts each to an object keyed by
 // AD_COLUMNS (same shape mapAd() produces), for the frontend feed.
 export async function getAllAds() {
   const sheets = getClient()
-  const res = await sheets.spreadsheets.values.get({
+  const res = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
     range: tabRange(`A:${LAST_COLUMN}`),
-  })
+  }))
   const rows = res.data.values || []
   return rows.slice(1).map((cells) => (
     Object.fromEntries(AD_COLUMNS.map((column, i) => [column, cells[i] ?? '']))
