@@ -23,11 +23,13 @@ export function startCollection(keywords) {
       totalAds: 0,
       appended: 0,
       updated: 0,
+      unchanged: 0,
       mediaUploaded: 0,
       mediaReused: 0,
       mediaFailed: 0,
       perKeyword: [],
       sampleRows: [],
+      statuses: [],
     },
   }
   jobs.set(job.id, job)
@@ -86,14 +88,16 @@ async function runJob(job) {
       await archiveAdMedia(ad, job.summary)
     }
 
-    const { appended, updated } = mapped.length > 0
+    const { appended, updated, unchanged, statuses } = mapped.length > 0
       ? await upsertAdRows(mapped)
-      : { appended: 0, updated: 0 }
+      : { appended: 0, updated: 0, unchanged: 0, statuses: [] }
 
     job.summary.totalAds += items.length
     job.summary.appended += appended
     job.summary.updated += updated
-    job.summary.perKeyword.push({ keyword, ads: items.length, appended, updated })
+    job.summary.unchanged += unchanged
+    job.summary.statuses.push(...statuses)
+    job.summary.perKeyword.push({ keyword, ads: items.length, appended, updated, unchanged })
     if (job.summary.sampleRows.length < 3) {
       job.summary.sampleRows.push(...mapped.slice(0, 3 - job.summary.sampleRows.length))
     }

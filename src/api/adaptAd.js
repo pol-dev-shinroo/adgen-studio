@@ -23,9 +23,9 @@ function firstLink(newlineJoined) {
 // serves the actual image for anyone-with-link files. Exported so the detail
 // modal can convert the rest of the gallery (adaptAd only converts the one
 // card-thumbnail link).
-export function toEmbeddableImageUrl(driveViewLink) {
+export function toEmbeddableImageUrl(driveViewLink, size = 'w1000') {
   const id = driveViewLink.match(/\/file\/d\/([^/]+)/)?.[1]
-  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : driveViewLink
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=${size}` : driveViewLink
 }
 
 function formatScrapedDate(iso) {

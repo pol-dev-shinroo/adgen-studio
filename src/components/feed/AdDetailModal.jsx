@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import Modal from '../common/Modal.jsx'
+import ImageLightbox from '../common/ImageLightbox.jsx'
 import { useStudio } from '../../context/StudioContext.jsx'
 import { toEmbeddableImageUrl } from '../../api/adaptAd.js'
 
@@ -23,24 +25,38 @@ function Field({ label, value, href }) {
 
 export default function AdDetailModal({ ad, onClose }) {
   const { prefillFromAd } = useStudio()
+  const [lightboxIndex, setLightboxIndex] = useState(null)
   if (!ad) return null
 
   const raw = ad.raw ?? {}
-  const galleryImages = ad.images.length > 0 ? ad.images.map(toEmbeddableImageUrl) : []
+  const galleryImages = ad.images.length > 0 ? ad.images.map((link) => toEmbeddableImageUrl(link)) : []
 
   const handleGenerate = () => {
     prefillFromAd(ad.brand, ad.id)
     onClose()
   }
 
+  // If the lightbox is open, the first Escape/backdrop click closes just
+  // that (handled here since both Modals share one document keydown
+  // listener and this outer one fires first); a second closes the detail view.
+  const handleModalClose = () => {
+    if (lightboxIndex !== null) {
+      setLightboxIndex(null)
+    } else {
+      onClose()
+    }
+  }
+
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={handleModalClose}>
       <div className="ad-detail">
-        <button className="modal-close" onClick={onClose} aria-label="닫기">✕</button>
+        <button className="modal-close" onClick={handleModalClose} aria-label="닫기">✕</button>
 
         <div className="dtl-gallery">
           {galleryImages.length > 0 ? (
-            galleryImages.map((src, i) => <img key={i} src={src} alt="" />)
+            galleryImages.map((src, i) => (
+              <img key={i} src={src} alt="" onClick={() => setLightboxIndex(i)} />
+            ))
           ) : (
             <div className={`thumb ${ad.gradient}`} />
           )}
@@ -97,6 +113,14 @@ export default function AdDetailModal({ ad, onClose }) {
           </button>
         </div>
       </div>
+      {lightboxIndex !== null && (
+        <ImageLightbox
+          images={ad.images}
+          index={lightboxIndex}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </Modal>
   )
 }

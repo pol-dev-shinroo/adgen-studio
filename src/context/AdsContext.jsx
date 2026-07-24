@@ -16,6 +16,8 @@ export function AdsProvider({ children }) {
   const { showToast } = useNavigation()
   const [ads, setAds] = useState([])
   const [brandFilter, setBrandFilter] = useState('전체')
+  const [mediaFilter, setMediaFilterState] = useState('all') // 'all' | 'image' | 'video'
+  const [recentOnly, setRecentOnly] = useState(false)
   const [collected, setCollected] = useState([])
   const [lastQuery, setLastQuery] = useState('')
 
@@ -38,9 +40,11 @@ export function AdsProvider({ children }) {
   }, [showToast])
 
   // Runs a real collection job against the backend: starts it, polls until
-  // done/failed, then re-fetches the full archive and diffs it against what
-  // the UI already knew (by Ad Archive ID) to tell fresh ads from ones that
-  // were already archived — same fresh/dup UX as the old simulation.
+  // done/failed, then re-fetches the full archive. The job itself already
+  // classified each touched ad as new/updated/unchanged (real diffing
+  // against what was already in the sheet — see sheets.service.js), so the
+  // frontend just looks that up rather than re-guessing from what it
+  // happened to have cached locally beforehand.
   const collect = useCallback(async (query) => {
     const q = query.trim()
     if (!q) {
@@ -48,7 +52,6 @@ export function AdsProvider({ children }) {
       return
     }
 
-    const knownIds = new Set(ads.map((a) => a.id))
     setLastQuery(q)
     showToast(`"${q}" 실시간 수집 중... (이미지·동영상 다운로드)`)
 
@@ -69,19 +72,24 @@ export function AdsProvider({ children }) {
       const refreshed = (await getAds()).map(adaptAd)
       setAds(refreshed)
 
-      const withDup = refreshed
+      const statusById = new Map((job.summary.statuses ?? []).map((s) => [String(s.adArchiveId), s]))
+      const withStatus = refreshed
         .filter((a) => a.searchKeyword === q)
-        .map((a) => ({ ...a, isDup: knownIds.has(a.id) }))
-      setCollected(withDup)
+        .map((a) => {
+          const s = statusById.get(String(a.id))
+          return { ...a, status: s?.status ?? 'unchanged', changedFields: s?.changedFields ?? [] }
+        })
+      setCollected(withStatus)
 
-      const freshCount = withDup.filter((a) => !a.isDup).length
-      const dupCount = withDup.length - freshCount
-      showToast(`수집 완료: 신규 ${freshCount}건 · 중복 ${dupCount}건`)
+      const newCount = withStatus.filter((a) => a.status === 'new').length
+      const updatedCount = withStatus.filter((a) => a.status === 'updated').length
+      const unchangedCount = withStatus.filter((a) => a.status === 'unchanged').length
+      showToast(`수집 완료: 신규 ${newCount}건 · 업데이트 ${updatedCount}건 · 변경없음 ${unchangedCount}건`)
     } catch (err) {
       console.error('Collection failed:', err)
       showToast(`수집 중 오류가 발생했습니다: ${err.message}`)
     }
-  }, [ads, showToast])
+  }, [showToast])
 
   // Renaming the card's brand label actually edits the "Search Keyword"
   // sheet column (that's what the label is sourced from — see adaptAd.js).
@@ -101,10 +109,25 @@ export function AdsProvider({ children }) {
     }
   }, [ads, showToast])
 
+  // Clicking the already-active chip resets to 'all' — same toggle pattern
+  // used by the other chip filters in this app.
+  const toggleMediaFilter = useCallback((value) => {
+    setMediaFilterState((prev) => (prev === value ? 'all' : value))
+  }, [])
+
+  const toggleRecentOnly = useCallback(() => {
+    setRecentOnly((prev) => !prev)
+  }, [])
+
   const brands = [...new Set(ads.map((a) => a.brand))]
 
   return (
-    <AdsContext.Provider value={{ ads, brands, brandFilter, setBrandFilter, collected, lastQuery, collect, renameBrand }}>
+    <AdsContext.Provider value={{
+      ads, brands, brandFilter, setBrandFilter,
+      mediaFilter, toggleMediaFilter,
+      recentOnly, toggleRecentOnly,
+      collected, lastQuery, collect, renameBrand,
+    }}>
       {children}
     </AdsContext.Provider>
   )

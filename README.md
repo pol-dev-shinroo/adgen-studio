@@ -44,6 +44,18 @@ whole Drive archive folder): `node scripts/reset-archive.js`. Destructive;
 confirm with whoever owns the data before running. **Restart the backend
 process afterward** — Drive folder IDs are cached in memory per process.
 
+**Re-scrapes are classified new / updated / unchanged**, not just
+appended-vs-updated. `upsertAdRows` compares the incoming row to what was
+already in the sheet and reports which of the 22 columns actually changed.
+A few columns are deliberately excluded from that comparison:
+`Date Scraped` (always differs, that's its job), and the raw
+`Image Links` / `Video Link` / `Video Thumbnail` columns — these hold
+signed Facebook CDN URLs that get re-signed with a new query string on
+*every* scrape regardless of whether the ad itself changed (confirmed by
+re-collecting the same keyword twice in a row and seeing 100% "updated"
+before this exclusion was added). The Drive-hosted `Archived ...`
+counterparts are stable and do count.
+
 ### Setup
 
 ```bash
@@ -87,7 +99,7 @@ npm start        # or: npm run dev (auto-restart on change)
 | Method & path | Purpose |
 | --- | --- |
 | `POST /api/collect` `{ "keywords": ["뉴트리원"] }` | Starts a collection job, returns `202 { jobId }` immediately; scraping runs in the background |
-| `GET /api/collect/:jobId` | Job status: `running` / `done` / `failed` + per-keyword summary (ads fetched, appended, updated) and sample rows |
+| `GET /api/collect/:jobId` | Job status: `running` / `done` / `failed` + per-keyword summary (ads fetched, appended/updated/unchanged counts, `statuses[]` — one `{adArchiveId, status, changedFields}` per touched ad) and sample rows |
 | `GET /api/ads` | Every archived row from the sheet, as JSON objects keyed by the 22-column layout — what the frontend feed reads |
 | `PATCH /api/ads/:adArchiveId` `{ "field": "Search Keyword", "value": "..." }` | Edits one cell for that ad's row. `field` is allowlisted — only `Search Keyword` for now — everything else in the sheet is scraper-owned |
 | `GET /api/health` | `{ ok: true }` |
@@ -118,7 +130,7 @@ src/
   data/                  mock data (stand-ins for Meta/Cafe24/n8n responses)
   components/
     layout/              Sidebar, Toast
-    common/               Badge, Chip, Thumb, Modal, MultiLineText (shared primitives)
+    common/               Badge, Chip, Thumb, Modal, ImageLightbox, MultiLineText (shared primitives)
     feed/                 competitor ad feed screen (AdCard is compact; AdDetailModal
                            shows the full 22-field record on click)
     studio/               generation wizard (steps/ holds the 4 step panels)
@@ -160,3 +172,20 @@ src/
   the feed's primary label follows the same axis for consistency. The ad's
   actual Page name survives as `ad.pageName` and shows as a muted sub-line
   when it differs (e.g. a real page literally named "antical.1").
+- **Re-scrape status is real, not guessed**: the collected-results tab shows
+  new / updated / unchanged per ad, sourced from the backend's actual diff
+  (see backend section) rather than a "was this ID already in the list I
+  had loaded" client-side guess. Updated ads show which fields changed,
+  translated to friendly Korean labels where one's defined.
+- **Feed filter chips are wired up** (archive tab only): 🖼 이미지 / 🎬 동영상
+  filter by media type (click the active one again to reset to all — same
+  toggle pattern as the brand chips), 🗓 최근 7일 filters to ads scraped in
+  the last 7 days. All three combine with the brand filter.
+- **Gallery images open a full-size lightbox** on click (`ImageLightbox`,
+  stacked on `AdDetailModal`): larger Drive thumbnail request (`sz=w1600`
+  vs the grid's `w1000`), a link to the true original file, and
+  left/right-arrow navigation when there's more than one image. Escape
+  closes the lightbox first and the detail view on a second press — both
+  reuse the shared `Modal` component's own Escape handling, so the detail
+  view's `onClose` is wrapped to swallow the first Escape while the
+  lightbox is open rather than closing both at once.

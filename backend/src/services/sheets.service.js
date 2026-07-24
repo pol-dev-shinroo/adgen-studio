@@ -23,41 +23,74 @@ function columnLetter(index) {
   return String.fromCharCode(65 + index)
 }
 
+// Columns excluded from the changed/unchanged diff below. "Date Scraped"
+// always differs by design (that's the point of it). "Image Links" /
+// "Video Link" / "Video Thumbnail" hold raw Facebook CDN URLs, which are
+// signed and get re-signed with a new query string on every single scrape
+// regardless of whether the underlying creative changed at all — verified
+// empirically (re-collecting the same keyword twice, same day, showed 100%
+// "updated" with only those columns in changedFields). The Drive-hosted
+// "Archived ..." counterparts are the stable, meaningful ones and stay in
+// the comparison.
+const DIFF_IGNORED_COLUMNS = new Set(['Date Scraped', 'Image Links', 'Video Link', 'Video Thumbnail'])
+const DIFF_IGNORED_INDEXES = new Set([...DIFF_IGNORED_COLUMNS].map((c) => AD_COLUMNS.indexOf(c)))
+
 // Upserts mapped ads into the sheet, matching on the "Ad Archive ID" column:
 // known IDs get their row overwritten in place, unknown ones are appended.
+// Every matched row is written regardless (so Date Scraped always refreshes
+// to show "last verified"), but each is classified new/updated/unchanged by
+// comparing the incoming row to what was already there, ignoring the columns
+// above.
 export async function upsertAdRows(mappedAds) {
   const sheets = getClient()
 
-  const idColumn = await sheets.spreadsheets.values.get({
+  const existingRes = await sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
-    range: tabRange('A:A'),
+    range: tabRange(`A:${LAST_COLUMN}`),
   })
-  const columnA = idColumn.data.values || []
-  const sheetIsEmpty = columnA.length === 0
+  const existingRows = existingRes.data.values || []
+  const sheetIsEmpty = existingRows.length === 0
 
   // Row numbers are 1-based and row 1 is the header.
   const idToRowNumber = new Map()
-  columnA.slice(1).forEach((cells, i) => {
+  const idToExistingValues = new Map()
+  existingRows.slice(1).forEach((cells, i) => {
     const id = String(cells?.[0] ?? '').trim()
-    if (id && !idToRowNumber.has(id)) idToRowNumber.set(id, i + 2)
+    if (id && !idToRowNumber.has(id)) {
+      idToRowNumber.set(id, i + 2)
+      idToExistingValues.set(id, cells)
+    }
   })
 
   const updates = []
   const appends = []
   const appendIndexById = new Map() // dedupe same-ID rows within one batch: last one wins
+  const statuses = []
 
   for (const ad of mappedAds) {
     const row = toRow(ad)
     const id = String(ad['Ad Archive ID'] ?? '').trim()
-    const existingRow = id ? idToRowNumber.get(id) : undefined
+    const existingRowNumber = id ? idToRowNumber.get(id) : undefined
 
-    if (existingRow) {
-      updates.push({ range: tabRange(`A${existingRow}:${LAST_COLUMN}${existingRow}`), values: [row] })
+    if (existingRowNumber) {
+      updates.push({ range: tabRange(`A${existingRowNumber}:${LAST_COLUMN}${existingRowNumber}`), values: [row] })
+
+      const existingValues = idToExistingValues.get(id) || []
+      const changedFields = AD_COLUMNS.filter((column, i) => {
+        if (DIFF_IGNORED_INDEXES.has(i)) return false
+        return String(existingValues[i] ?? '') !== String(row[i] ?? '')
+      })
+      statuses.push({
+        adArchiveId: id,
+        status: changedFields.length > 0 ? 'updated' : 'unchanged',
+        changedFields,
+      })
     } else if (id && appendIndexById.has(id)) {
       appends[appendIndexById.get(id)] = row
     } else {
       if (id) appendIndexById.set(id, appends.length)
       appends.push(row)
+      statuses.push({ adArchiveId: id, status: 'new', changedFields: [] })
     }
   }
 
@@ -80,8 +113,10 @@ export async function upsertAdRows(mappedAds) {
   }
 
   return {
-    updated: updates.length,
     appended: appends.length - (sheetIsEmpty ? 1 : 0),
+    updated: statuses.filter((s) => s.status === 'updated').length,
+    unchanged: statuses.filter((s) => s.status === 'unchanged').length,
+    statuses,
   }
 }
 

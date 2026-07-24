@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-export default function Modal({ onClose, children }) {
+export default function Modal({ onClose, children, overlayClassName, dialogClassName }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose()
@@ -10,8 +10,8 @@ export default function Modal({ onClose, children }) {
   }, [onClose])
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+    <div className={['modal-overlay', overlayClassName].filter(Boolean).join(' ')} onClick={onClose}>
+      <div className={['modal-dialog', dialogClassName].filter(Boolean).join(' ')} onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
