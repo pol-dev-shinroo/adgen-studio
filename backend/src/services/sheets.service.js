@@ -18,6 +18,11 @@ function tabRange(cells) {
   return `'${config.sheetTabName}'!${cells}`
 }
 
+// 0 -> A, 1 -> B, ... 25 -> Z. AD_COLUMNS is 22 wide, well within single-letter range.
+function columnLetter(index) {
+  return String.fromCharCode(65 + index)
+}
+
 // Upserts mapped ads into the sheet, matching on the "Ad Archive ID" column:
 // known IDs get their row overwritten in place, unknown ones are appended.
 export async function upsertAdRows(mappedAds) {
@@ -78,6 +83,38 @@ export async function upsertAdRows(mappedAds) {
     updated: updates.length,
     appended: appends.length - (sheetIsEmpty ? 1 : 0),
   }
+}
+
+// Updates a single cell for the row matching adArchiveId, found the same
+// way upsertAdRows matches rows (scan column A). Throws with `.notFound =
+// true` if no row has that Ad Archive ID.
+export async function updateAdField(adArchiveId, columnName, value) {
+  const sheets = getClient()
+  const columnIndex = AD_COLUMNS.indexOf(columnName)
+  if (columnIndex === -1) {
+    throw new Error(`Unknown column "${columnName}"`)
+  }
+
+  const idColumn = await sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheetId,
+    range: tabRange('A:A'),
+  })
+  const columnA = idColumn.data.values || []
+  const rowNumber = columnA.findIndex((cells) => String(cells?.[0] ?? '').trim() === String(adArchiveId).trim())
+  if (rowNumber < 1) { // -1 (not found) or 0 (the header row) both count as not found
+    const err = new Error(`No row found for Ad Archive ID "${adArchiveId}"`)
+    err.notFound = true
+    throw err
+  }
+
+  const letter = columnLetter(columnIndex)
+  const range = tabRange(`${letter}${rowNumber + 1}:${letter}${rowNumber + 1}`)
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: config.sheetId,
+    range,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[value]] },
+  })
 }
 
 // Reads every archived ad row and converts each to an object keyed by

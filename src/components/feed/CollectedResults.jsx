@@ -1,7 +1,7 @@
 import { useAds } from '../../context/AdsContext.jsx'
 import AdCard from './AdCard.jsx'
 
-export default function CollectedResults() {
+export default function CollectedResults({ onOpenDetail }) {
   const { collected, lastQuery } = useAds()
 
   if (!collected.length) {
@@ -25,6 +25,7 @@ export default function CollectedResults() {
           <AdCard
             key={`${ad.id}-${i}`}
             ad={ad}
+            onOpenDetail={onOpenDetail}
             note={
               ad.isDup ? (
                 <div className="dupnote">🗂 이미 아카이빙된 광고 — 중복 저장하지 않음</div>

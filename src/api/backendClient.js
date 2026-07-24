@@ -26,3 +26,11 @@ export function startCollect(keywords) {
 export function getJobStatus(jobId) {
   return request(`/api/collect/${jobId}`)
 }
+
+export function updateAdField(adArchiveId, field, value) {
+  return request(`/api/ads/${encodeURIComponent(adArchiveId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field, value }),
+  })
+}

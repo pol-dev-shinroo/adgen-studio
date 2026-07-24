@@ -5,11 +5,13 @@ import FeedTabs from './FeedTabs.jsx'
 import BrandFilterBar from './BrandFilterBar.jsx'
 import AdGrid from './AdGrid.jsx'
 import CollectedResults from './CollectedResults.jsx'
+import AdDetailModal from './AdDetailModal.jsx'
 import { useAds } from '../../context/AdsContext.jsx'
 
 export default function FeedScreen() {
   const { ads, collected } = useAds()
   const [tab, setTab] = useState('archive')
+  const [selectedAd, setSelectedAd] = useState(null)
 
   // Mirrors the mockup's behavior of jumping to the "collected" tab as soon
   // as a real-time collection run finishes.
@@ -30,11 +32,12 @@ export default function FeedScreen() {
       {tab === 'archive' ? (
         <div>
           <BrandFilterBar />
-          <AdGrid />
+          <AdGrid onOpenDetail={setSelectedAd} />
         </div>
       ) : (
-        <CollectedResults />
+        <CollectedResults onOpenDetail={setSelectedAd} />
       )}
+      {selectedAd && <AdDetailModal ad={selectedAd} onClose={() => setSelectedAd(null)} />}
     </section>
   )
 }

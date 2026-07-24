@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { initialAds } from '../data/initialAds.js'
 import { useNavigation } from './NavigationContext.jsx'
-import { getAds, startCollect, getJobStatus } from '../api/backendClient.js'
+import { getAds, startCollect, getJobStatus, updateAdField } from '../api/backendClient.js'
 import { adaptAd } from '../api/adaptAd.js'
 
 const AdsContext = createContext(null)
@@ -83,10 +83,23 @@ export function AdsProvider({ children }) {
     }
   }, [ads, showToast])
 
-  const renameBrand = useCallback((id, newName) => {
+  // Renaming the card's brand label actually edits the "Search Keyword"
+  // sheet column (that's what the label is sourced from — see adaptAd.js).
+  // Updates optimistically, then rolls back and shows an error toast if the
+  // backend write fails.
+  const renameBrand = useCallback(async (id, newName) => {
+    const previousAds = ads
     setAds((prev) => prev.map((a) => (a.id === id ? { ...a, brand: newName } : a)))
-    showToast(`브랜드명이 '${newName}'(으)로 수정됐습니다 — 이후 브랜드별 조회에 반영`)
-  }, [showToast])
+
+    try {
+      await updateAdField(id, 'Search Keyword', newName)
+      showToast(`브랜드명이 '${newName}'(으)로 수정됐습니다 — 이후 브랜드별 조회에 반영`)
+    } catch (err) {
+      console.error('Rename failed:', err)
+      setAds(previousAds)
+      showToast(`수정 실패: ${err.message}`)
+    }
+  }, [ads, showToast])
 
   const brands = [...new Set(ads.map((a) => a.brand))]
 

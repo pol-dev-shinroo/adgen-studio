@@ -20,8 +20,10 @@ function firstLink(newlineJoined) {
 // The sheet stores Drive's webViewLink (.../file/d/<id>/view — an HTML
 // viewer page, not raw image bytes), so it can't be used directly as an
 // <img src>. Convert it to Drive's public thumbnail endpoint instead, which
-// serves the actual image for anyone-with-link files.
-function toEmbeddableImageUrl(driveViewLink) {
+// serves the actual image for anyone-with-link files. Exported so the detail
+// modal can convert the rest of the gallery (adaptAd only converts the one
+// card-thumbnail link).
+export function toEmbeddableImageUrl(driveViewLink) {
   const id = driveViewLink.match(/\/file\/d\/([^/]+)/)?.[1]
   return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : driveViewLink
 }
@@ -48,13 +50,19 @@ export function adaptAd(ad) {
 
   return {
     id,
-    brand: ad['Brand'] || '(브랜드 미상)',
+    // Primary label is the search keyword (matches how Drive folders are
+    // grouped); the ad's real Facebook Page name survives separately as
+    // pageName since it's often noisy/inconsistent (e.g. "antical.1").
+    brand: ad['Search Keyword'] || ad['Brand'] || '(브랜드 미상)',
+    pageName: ad['Brand'] || '',
     title: buildTitle(ad),
     gradient: gradientFor(id),
     media: ad['Video Link'] ? 'video' : 'image',
     desc: [dateStr && `${dateStr} 수집`, format].filter(Boolean).join(' · '),
     live: ad['Status'] === '게재중',
     image: imageLink ? toEmbeddableImageUrl(imageLink) : '',
+    images: (ad['Archived Image Links'] || '').split('\n').filter(Boolean),
     searchKeyword: ad['Search Keyword'] || '',
+    raw: ad,
   }
 }

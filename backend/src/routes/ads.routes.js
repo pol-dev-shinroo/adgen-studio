@@ -1,8 +1,9 @@
 import { Router } from 'express'
-import { getAds } from '../controllers/ads.controller.js'
+import { getAds, patchAdField } from '../controllers/ads.controller.js'
 
 const router = Router()
 
 router.get('/', getAds)
+router.patch('/:adArchiveId', patchAdField)
 
 export default router
