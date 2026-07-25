@@ -1,4 +1,4 @@
-import { getAllAds, updateAdField, deleteAdRows } from '../services/sheets.service.js'
+import { getAllAds, updateAdField, deleteAdRows, revertAdRow } from '../services/sheets.service.js'
 import { deleteAdMedia } from '../services/drive.service.js'
 
 // Fields the frontend is allowed to edit directly. Everything else in the
@@ -34,40 +34,71 @@ export async function patchAdField(req, res, next) {
   }
 }
 
-// Discards ads the user unchecked after a collection run: trashes their
-// Drive media and removes their sheet rows. A failure in one ad's Drive
-// cleanup or sheet deletion never blocks the others — everything is
-// attempted and every failure is collected and reported back.
+// Discards ads the user unchecked after a collection run. Two kinds of
+// items: 'delete' (a 'new' ad — trash its Drive media and remove its sheet
+// row entirely) and 'revert' (an 'updated' ad — restore the sheet row to
+// its previousValues, leave Drive alone). A failure on any one item never
+// blocks the others — everything is attempted and every failure collected.
+//
+// Simplification, noted rather than solved: reverting doesn't roll back
+// Drive media. If this scrape uploaded new files for an 'updated' ad
+// (replacing what was previously archived), those newly-uploaded files
+// stay in Drive as harmless orphans even after the sheet row reverts to
+// pointing at the old (still-valid) Archived Image Links. Full media
+// rollback would mean diffing old vs new file lists — out of scope here.
 export async function discardAds(req, res) {
-  const { keyword, adArchiveIds } = req.body ?? {}
+  const { keyword, items } = req.body ?? {}
   if (typeof keyword !== 'string' || !keyword.trim()) {
     return res.status(400).json({ error: '"keyword" must be a non-empty string' })
   }
-  if (!Array.isArray(adArchiveIds) || adArchiveIds.length === 0) {
-    return res.status(400).json({ error: '"adArchiveIds" must be a non-empty array' })
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: '"items" must be a non-empty array' })
   }
+  for (const item of items) {
+    if (!item || !['delete', 'revert'].includes(item.action) || !item.adArchiveId) {
+      return res.status(400).json({ error: 'Each item needs an adArchiveId and action of "delete" or "revert"' })
+    }
+    if (item.action === 'revert' && !Array.isArray(item.previousValues)) {
+      return res.status(400).json({ error: '"revert" items need a previousValues array' })
+    }
+  }
+
+  const deleteItems = items.filter((i) => i.action === 'delete')
+  const revertItems = items.filter((i) => i.action === 'revert')
 
   const failures = []
   let driveFilesTrashed = 0
 
-  for (const adArchiveId of adArchiveIds) {
+  for (const item of deleteItems) {
     try {
-      driveFilesTrashed += await deleteAdMedia(keyword.trim(), String(adArchiveId))
+      driveFilesTrashed += await deleteAdMedia(keyword.trim(), String(item.adArchiveId))
     } catch (err) {
-      failures.push({ adArchiveId, stage: 'drive', error: err.message })
+      failures.push({ adArchiveId: item.adArchiveId, stage: 'drive', error: err.message })
     }
   }
 
   let deleted = 0
-  try {
-    const result = await deleteAdRows(adArchiveIds)
-    deleted = result.deleted
-    for (const adArchiveId of result.notFoundIds) {
-      failures.push({ adArchiveId, stage: 'sheet', error: 'Row not found' })
+  if (deleteItems.length > 0) {
+    try {
+      const result = await deleteAdRows(deleteItems.map((i) => i.adArchiveId))
+      deleted = result.deleted
+      for (const adArchiveId of result.notFoundIds) {
+        failures.push({ adArchiveId, stage: 'sheet', error: 'Row not found' })
+      }
+    } catch (err) {
+      failures.push({ stage: 'sheet', error: err.message })
     }
-  } catch (err) {
-    failures.push({ stage: 'sheet', error: err.message })
   }
 
-  res.json({ deleted, driveFilesTrashed, failures })
+  let reverted = 0
+  for (const item of revertItems) {
+    try {
+      await revertAdRow(item.adArchiveId, item.previousValues)
+      reverted += 1
+    } catch (err) {
+      failures.push({ adArchiveId: item.adArchiveId, stage: 'revert', error: err.message })
+    }
+  }
+
+  res.json({ deleted, reverted, driveFilesTrashed, failures })
 }

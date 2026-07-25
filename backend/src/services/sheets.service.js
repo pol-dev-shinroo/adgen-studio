@@ -105,10 +105,19 @@ export async function upsertAdRows(mappedAds) {
         if (DIFF_IGNORED_INDEXES.has(i)) return false
         return String(existingValues[i] ?? '') !== String(row[i] ?? '')
       })
+      const isUpdated = changedFields.length > 0
       statuses.push({
         adArchiveId: id,
-        status: changedFields.length > 0 ? 'updated' : 'unchanged',
+        status: isUpdated ? 'updated' : 'unchanged',
         changedFields,
+        // Only 'updated' needs this — by the time a user reviews the
+        // collection, the sheet already holds the new values, so the old
+        // ones would otherwise be gone if they want to revert this one ad.
+        // Padded to the full column count: Sheets omits trailing empty
+        // cells from a row's returned values, and a short array here would
+        // leave stale trailing columns untouched on revert instead of
+        // clearing them back to empty.
+        ...(isUpdated ? { previousValues: AD_COLUMNS.map((_, i) => existingValues[i] ?? '') } : {}),
       })
     } else if (id && appendIndexById.has(id)) {
       appends[appendIndexById.get(id)] = row
@@ -174,6 +183,34 @@ export async function updateAdField(adArchiveId, columnName, value) {
     range,
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
+  }))
+}
+
+// Restores a whole row to previousValues (as captured on an 'updated'
+// status entry from upsertAdRows), found the same way updateAdField finds
+// a row. Same mechanism as updateAdField, just the full A:LAST_COLUMN
+// range instead of one cell.
+export async function revertAdRow(adArchiveId, previousValues) {
+  const sheets = getClient()
+
+  const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheetId,
+    range: tabRange('A:A'),
+  }))
+  const columnA = idColumn.data.values || []
+  const rowNumber = columnA.findIndex((cells) => String(cells?.[0] ?? '').trim() === String(adArchiveId).trim())
+  if (rowNumber < 1) {
+    const err = new Error(`No row found for Ad Archive ID "${adArchiveId}"`)
+    err.notFound = true
+    throw err
+  }
+
+  const range = tabRange(`A${rowNumber + 1}:${LAST_COLUMN}${rowNumber + 1}`)
+  await callSheets(() => sheets.spreadsheets.values.update({
+    spreadsheetId: config.sheetId,
+    range,
+    valueInputOption: 'RAW',
+    requestBody: { values: [previousValues] },
   }))
 }
 

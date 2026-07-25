@@ -43,12 +43,12 @@ function StatusNote({ ad }) {
 }
 
 export default function CollectedResults({ onOpenDetail }) {
-  const { collected, lastQuery, discardAds } = useAds()
+  const { collected, collectedUnchangedCount, lastQuery, discardAds } = useAds()
   const { showToast } = useNavigation()
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
 
-  if (!collected.length) {
+  if (!collected.length && collectedUnchangedCount === 0) {
     return (
       <p className="sub" style={{ marginBottom: 14 }}>
         아직 수집 결과가 없습니다. 위에서 검색해 실시간 수집을 실행하세요.
@@ -58,7 +58,7 @@ export default function CollectedResults({ onOpenDetail }) {
 
   const newCount = collected.filter((a) => a.status === 'new').length
   const updatedCount = collected.filter((a) => a.status === 'updated').length
-  const unchangedCount = collected.filter((a) => a.status === 'unchanged').length
+  const unchangedCount = collectedUnchangedCount
 
   const exitSelectMode = () => {
     setSelectMode(false)
@@ -88,13 +88,13 @@ export default function CollectedResults({ onOpenDetail }) {
   }
 
   const handleKeep = async () => {
-    const uncheckedIds = collected.filter((a) => !selectedIds.has(a.id)).map((a) => a.id)
-    if (uncheckedIds.length === 0) {
+    const uncheckedAds = collected.filter((a) => !selectedIds.has(a.id))
+    if (uncheckedAds.length === 0) {
       showToast('모든 항목이 보관되었습니다')
       exitSelectMode()
       return
     }
-    await discardAds(uncheckedIds)
+    await discardAds(uncheckedAds)
     exitSelectMode()
   }
 
@@ -109,44 +109,53 @@ export default function CollectedResults({ onOpenDetail }) {
         "{lastQuery}" 수집 완료 — 신규 {newCount}건, 업데이트 {updatedCount}건, 변경없음 {unchangedCount}건
       </p>
 
-      <div className="select-toolbar">
-        {selectMode ? (
-          <>
-            <label className="select-all">
-              <input
-                type="checkbox"
-                checked={selectedIds.size === collected.length}
-                onChange={toggleSelectAll}
-              />
-              전체 선택
-            </label>
-            <div className="select-actions">
-              <button className="btn ghost sm" onClick={exitSelectMode}>취소</button>
-              <button className="btn pri sm" onClick={handleKeep}>
-                {selectedIds.size}개 선택됨 · 보관하기
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="select-actions">
-            <button className="btn ghost sm" onClick={enterSelectMode}>선택하기</button>
+      {collected.length > 0 && (
+        <>
+          {selectMode && (
+            <p className="sub" style={{ marginBottom: 8, fontSize: 12 }}>
+              신규 항목은 해제 시 삭제되고, 업데이트 항목은 해제 시 이전 정보로 복원됩니다.
+            </p>
+          )}
+          <div className="select-toolbar">
+            {selectMode ? (
+              <>
+                <label className="select-all">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === collected.length}
+                    onChange={toggleSelectAll}
+                  />
+                  전체 선택
+                </label>
+                <div className="select-actions">
+                  <button className="btn ghost sm" onClick={exitSelectMode}>취소</button>
+                  <button className="btn pri sm" onClick={handleKeep}>
+                    {selectedIds.size}개 선택됨 · 보관하기
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="select-actions">
+                <button className="btn ghost sm" onClick={enterSelectMode}>선택하기</button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="grid">
-        {collected.map((ad, i) => (
-          <AdCard
-            key={`${ad.id}-${i}`}
-            ad={ad}
-            onOpenDetail={onOpenDetail}
-            note={<StatusNote ad={ad} />}
-            selectable={selectMode}
-            selected={selectedIds.has(ad.id)}
-            onToggleSelect={toggleOne}
-          />
-        ))}
-      </div>
+          <div className="grid">
+            {collected.map((ad, i) => (
+              <AdCard
+                key={`${ad.id}-${i}`}
+                ad={ad}
+                onOpenDetail={onOpenDetail}
+                note={<StatusNote ad={ad} />}
+                selectable={selectMode}
+                selected={selectedIds.has(ad.id)}
+                onToggleSelect={toggleOne}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

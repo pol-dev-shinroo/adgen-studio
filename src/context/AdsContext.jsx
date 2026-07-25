@@ -18,7 +18,8 @@ export function AdsProvider({ children }) {
   const [brandFilter, setBrandFilter] = useState('전체')
   const [mediaFilter, setMediaFilterState] = useState('all') // 'all' | 'image' | 'video'
   const [recentOnly, setRecentOnly] = useState(false)
-  const [collected, setCollected] = useState([])
+  const [collected, setCollected] = useState([]) // new/updated only — unchanged ads aren't shown as review cards
+  const [collectedUnchangedCount, setCollectedUnchangedCount] = useState(0)
   const [lastQuery, setLastQuery] = useState('')
   const [activeJob, setActiveJob] = useState(null)
 
@@ -98,13 +99,24 @@ export function AdsProvider({ children }) {
         .filter((a) => a.searchKeyword === q)
         .map((a) => {
           const s = statusById.get(String(a.id))
-          return { ...a, status: s?.status ?? 'unchanged', changedFields: s?.changedFields ?? [] }
+          return {
+            ...a,
+            status: s?.status ?? 'unchanged',
+            changedFields: s?.changedFields ?? [],
+            previousValues: s?.previousValues ?? null,
+          }
         })
-      setCollected(withStatus)
 
       const newCount = withStatus.filter((a) => a.status === 'new').length
       const updatedCount = withStatus.filter((a) => a.status === 'updated').length
       const unchangedCount = withStatus.filter((a) => a.status === 'unchanged').length
+
+      // Only new/updated ads are worth reviewing as cards; unchanged ones
+      // would just be noise. The count still needs to be shown somewhere,
+      // though, so it's kept separately rather than derived from `collected`.
+      setCollected(withStatus.filter((a) => a.status !== 'unchanged'))
+      setCollectedUnchangedCount(unchangedCount)
+
       showToast(`수집 완료: 신규 ${newCount}건 · 업데이트 ${updatedCount}건 · 변경없음 ${unchangedCount}건`)
     } catch (err) {
       console.error('Collection failed:', err)
@@ -132,22 +144,38 @@ export function AdsProvider({ children }) {
     }
   }, [ads, showToast])
 
-  // Discards the ads the user unchecked in select mode: trashes their Drive
-  // media and removes their sheet rows (auto-save stays on scrape — this is
-  // the after-the-fact undo path, not a stage-then-commit pipeline). Removes
-  // the same IDs from both `collected` and `ads` on success.
-  const discardAds = useCallback(async (adArchiveIds) => {
+  // Discards the ads the user unchecked in select mode: auto-save stays on
+  // scrape (this is an after-the-fact undo, not a stage-then-commit
+  // pipeline). A 'new' ad is actually deleted (sheet row + Drive media); an
+  // 'updated' ad is reverted to its pre-scrape values instead (its Drive
+  // media is left alone — see the backend controller for why). Takes full
+  // ad objects (not just IDs) since it needs each one's status and, for
+  // reverts, its previousValues.
+  const discardAds = useCallback(async (adsToDiscard) => {
+    const items = adsToDiscard.map((ad) => (
+      ad.status === 'updated'
+        ? { adArchiveId: ad.id, action: 'revert', previousValues: ad.previousValues }
+        : { adArchiveId: ad.id, action: 'delete' }
+    ))
+
     try {
-      const result = await discardAdsApi(lastQuery, adArchiveIds)
-      const idsToRemove = new Set(adArchiveIds.map(String))
+      const result = await discardAdsApi(lastQuery, items)
+      const idsToRemove = new Set(adsToDiscard.map((a) => String(a.id)))
       const keptCount = collected.filter((a) => !idsToRemove.has(String(a.id))).length
-      setAds((prev) => prev.filter((a) => !idsToRemove.has(String(a.id))))
+
+      // Re-fetch rather than simulate the revert locally — a reverted ad's
+      // fields need to reflect whatever the sheet actually has now, and
+      // re-fetching guarantees that instead of hand-rolling the same logic
+      // twice.
+      const refreshed = (await getAds()).map(adaptAd)
+      setAds(refreshed)
       setCollected((prev) => prev.filter((a) => !idsToRemove.has(String(a.id))))
-      showToast(`보관 ${keptCount}건 · 폐기 ${result.deleted}건`)
+
+      showToast(`보관 ${keptCount}건 · 삭제 ${result.deleted}건 · 복원 ${result.reverted}건`)
       return result
     } catch (err) {
       console.error('Discard failed:', err)
-      showToast(`폐기 실패: ${err.message}`)
+      showToast(`처리 실패: ${err.message}`)
       throw err
     }
   }, [lastQuery, collected, showToast])
@@ -169,7 +197,7 @@ export function AdsProvider({ children }) {
       ads, brands, brandFilter, setBrandFilter,
       mediaFilter, toggleMediaFilter,
       recentOnly, toggleRecentOnly,
-      collected, lastQuery, collect, renameBrand, activeJob, discardAds,
+      collected, collectedUnchangedCount, lastQuery, collect, renameBrand, activeJob, discardAds,
     }}>
       {children}
     </AdsContext.Provider>

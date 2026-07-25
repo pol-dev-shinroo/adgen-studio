@@ -70,14 +70,26 @@ before this exclusion was added). The Drive-hosted `Archived ...`
 counterparts are stable and do count.
 
 **Everything is still auto-saved on scrape — discarding is an after-the-fact
-undo, not a staging gate.** `deleteAdRows` genuinely removes rows (a
-`deleteDimension` batch request, not a values-clear) and `deleteAdMedia`
-trashes the matching Drive files (same recoverable-trash convention as
-`reset-archive.js`), both behind `POST /api/ads/discard`. Row numbers are
-collected then sorted **descending** before building the delete batch, so
-removing a later row never shifts the index of an earlier one still queued
-in the same request — verified live: deleting two out of fifteen rows left
-the other thirteen's fields correctly aligned, not shifted.
+undo, not a staging gate.** `POST /api/ads/discard` takes a list of
+`{ adArchiveId, action }` items and handles two different undo shapes:
+- `action: 'delete'` (for `'new'` ads) — `deleteAdRows` genuinely removes
+  the row (a `deleteDimension` batch request, not a values-clear) and
+  `deleteAdMedia` trashes the matching Drive files (same recoverable-trash
+  convention as `reset-archive.js`). Row numbers are sorted **descending**
+  before building the delete batch, so removing a later row never shifts
+  the index of an earlier one still queued in the same request.
+- `action: 'revert'` (for `'updated'` ads, carrying a `previousValues`
+  array) — `revertAdRow` overwrites the whole row back to its pre-scrape
+  values. **Simplification, not a bug**: this doesn't roll back Drive
+  media. If the scrape uploaded new files for that ad, they stay in Drive
+  as harmless orphans even after the row reverts to pointing at the old
+  (still-valid) Archived Image Links — full media rollback would mean
+  diffing old vs new file lists, out of scope here.
+
+Verified live for both: deleting left the other rows' fields correctly
+aligned (not shifted); reverting an ad whose `CTA Text` had been manually
+dirtied to a test value showed the sheet cell restored to that exact test
+value after "보관하기", while its Drive files stayed completely untouched.
 
 ### Setup
 
@@ -125,7 +137,7 @@ npm start        # or: npm run dev (auto-restart on change)
 | `GET /api/collect/:jobId` | Job status: `running` / `done` / `failed`, `errorCode` (`'RATE_LIMITED'` / `'UPSTREAM_ERROR'` / `null`), live `progress` (`{phase, currentKeyword, totalAdsFound, adsProcessed, recentItems[]}` — `phase` is `'scraping'` → `'archiving'` → `'saving'` → `'done'`), per-keyword `summary` (ads fetched, appended/updated/unchanged counts, `statuses[]` — one `{adArchiveId, status, changedFields}` per touched ad) and sample rows |
 | `GET /api/ads` | Every archived row from the sheet, as JSON objects keyed by the 22-column layout — what the frontend feed reads |
 | `PATCH /api/ads/:adArchiveId` `{ "field": "Search Keyword", "value": "..." }` | Edits one cell for that ad's row. `field` is allowlisted — only `Search Keyword` for now — everything else in the sheet is scraper-owned |
-| `POST /api/ads/discard` `{ "keyword": "안티칼", "adArchiveIds": [...] }` | Removes the given ads' sheet rows and trashes their Drive media. Returns `{ deleted, driveFilesTrashed, failures[] }` — a failure on one ad's Drive cleanup or sheet row never blocks the others, everything is attempted and every failure reported |
+| `POST /api/ads/discard` `{ "keyword": "안티칼", "items": [{ "adArchiveId": "...", "action": "delete"\|"revert", "previousValues": [...] }] }` | `'delete'` items are removed entirely (sheet row + Drive media, both trashed not blanked); `'revert'` items have their sheet row restored to `previousValues` (Drive media untouched). Returns `{ deleted, reverted, driveFilesTrashed, failures[] }` — one item's failure never blocks the others |
 | `GET /api/health` | `{ ok: true }` |
 
 ### Tests
@@ -241,17 +253,28 @@ src/
   `Thumb.jsx` falls back to its existing gradient placeholder once retries
   are exhausted, and the detail modal / lightbox show a plain "이미지를
   불러올 수 없습니다" message instead of a broken-image icon.
-- **Select mode on the collected-results tab**: "선택하기" enters select
-  mode with every ad pre-checked (i.e. "keep everything" is the default —
-  you uncheck the few you don't want, not check the ones you do). A
-  per-card checkbox replaces the status badge while active (top-left of the
-  thumbnail); the pencil/CTA are hidden — editing or generating from an ad
-  you might be about to discard doesn't make sense. "보관하기" discards
-  whatever's left unchecked via `AdsContext.discardAds()` → `POST
-  /api/ads/discard`, removing those IDs from both `collected` and `ads` on
-  success and reporting kept-vs-discarded counts in a toast; if nothing's
-  unchecked it just exits select mode with a "모든 항목이 보관되었습니다"
-  toast instead of calling the backend at all.
+- **Collected-results tab only shows new/updated ads** — unchanged ones
+  would just be noise to review. The unchanged count is still reported in
+  the summary line, just sourced from a separate `collectedUnchangedCount`
+  (from `job.summary.unchanged`) rather than derived from `collected`,
+  since `collected` no longer contains any.
+- **Select mode on the collected-results tab, delete vs revert**:
+  "선택하기" enters select mode with every ad pre-checked (i.e. "keep
+  everything" is the default — you uncheck the few you don't want, not
+  check the ones you do). A per-card checkbox replaces the status badge
+  while active (top-left of the thumbnail); the pencil/CTA are hidden —
+  editing or generating from an ad you might be about to discard doesn't
+  make sense. A short helper line explains that unchecking means different
+  things per type: a `'new'` ad gets deleted, an `'updated'` one gets
+  reverted to its pre-scrape values instead (see backend section).
+  "보관하기" calls `AdsContext.discardAds()` with the unchecked ad
+  *objects* (not just IDs — it needs each one's `status` and, for reverts,
+  its `previousValues`, both already carried on the ad from `collect()`'s
+  status lookup), which builds the right `action` per ad, re-fetches `ads`
+  fresh afterward (rather than hand-simulating what a revert changed
+  locally), and reports kept/deleted/reverted counts in a toast. Nothing
+  unchecked short-circuits to a "모든 항목이 보관되었습니다" toast without
+  calling the backend at all.
 - **The "실시간 수집" button pulses while a job is running and can't be
   double-clicked**: a small green dot (only rendered — and only
   animating — while `activeJob` is truthy, not just hidden) plus
@@ -260,3 +283,19 @@ src/
   attribute, so a stray Enter keypress in the search input can't slip a
   second overlapping job past it either — this closes a real double-submit
   race an earlier session's testing had noted but not fixed at the time.
+- **Studio Step 2 (광고소재 선택) matches the Feed screen's visual
+  standard** instead of the original mockup's cramped 150px gradient-box
+  row: a responsive grid (`.refrow`, same `auto-fill`/`minmax` pattern as
+  the feed's `.grid`) of cards with a real photo (`Thumb`/`RetryImage`,
+  same gradient fallback as everywhere else), corner status/media badges
+  (the same `Badge` component the feed uses), and a truncated one-line copy
+  snippet below the photo instead of text overlaid on it. Selection is
+  still plain click-to-toggle multi-select (no separate "select mode" —
+  every card here is always selectable, unlike the feed's review flow); a
+  small "상세보기" link (stopPropagation) opens `AdDetailModal` — reused
+  as-is, not rebuilt — so you can inspect an ad's full record without
+  losing the in-progress selection. Its footer's "이 광고로 생성하기" is
+  left alone rather than hidden/relabeled for this context: clicking it
+  would collapse the wizard's selection down to just that one ad, which is
+  a defensible shortcut, not a bug. Empty state (0 archived ads for the
+  chosen brand) gets a friendly message instead of a blank grid.

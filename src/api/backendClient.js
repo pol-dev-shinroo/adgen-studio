@@ -35,10 +35,11 @@ export function updateAdField(adArchiveId, field, value) {
   })
 }
 
-export function discardAds(keyword, adArchiveIds) {
+// items: [{ adArchiveId, action: 'delete'|'revert', previousValues? }]
+export function discardAds(keyword, items) {
   return request('/api/ads/discard', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keyword, adArchiveIds }),
+    body: JSON.stringify({ keyword, items }),
   })
 }
