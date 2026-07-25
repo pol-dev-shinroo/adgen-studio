@@ -87,10 +87,17 @@ async function runJob(job) {
     try {
       const analysis = await analyzeProduct(brandKey, rawProduct, pineconeService)
       const embedding = await embedText(buildEmbeddingText(analysis))
+      // No raw Cafe24 product data in metadata: nothing reads it back (only
+      // aiAnalysis is ever parsed, by queryFewShot's few-shot lookup), and a
+      // real product's detail-page HTML (description/mobile_description)
+      // routinely runs 10-25KB+ — comfortably over Pinecone's 40KB
+      // per-vector metadata cap on its own, let alone alongside everything
+      // else. Confirmed live: healthykiki's first real sync had exactly
+      // this vector upsert fail with "Metadata size ... exceeds the limit
+      // of 40960 bytes" before this field was dropped.
       await pineconeService.upsertProduct(brandKey, productId, embedding, {
         productId,
         brand: brandKey,
-        rawData: JSON.stringify(rawProduct),
         aiAnalysis: JSON.stringify(analysis),
       })
 
