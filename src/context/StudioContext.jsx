@@ -1,34 +1,45 @@
 import { createContext, useContext, useState, useCallback } from 'react'
-import { initialMyBrands } from '../data/initialBrands.js'
 import { useNavigation } from './NavigationContext.jsx'
 import { useGallery } from './GalleryContext.jsx'
+import { useProducts } from './ProductsContext.jsx'
 
 const StudioContext = createContext(null)
 
 const DEFAULT_FORMATS = ['1:1 피드', '4:5 피드']
+const DEFAULT_ACTIVE_BRAND_KEY = 'healthykiki' // mirrors the old mock's single-brand-active-by-default
 
 function defaultSelectionFor(brand) {
   const firstProduct = Object.keys(brand.products)[0]
-  return { product: firstProduct, priceIdx: 0, promoIdx: 0, msgIdx: 0 }
+  return { product: firstProduct }
 }
 
 export function StudioProvider({ children }) {
   const { showToast, go } = useNavigation()
   const { addResult } = useGallery()
+  const { brands: productBrands } = useProducts()
 
   const [step, setStepRaw] = useState(1)
   const [refBrand, setRefBrandState] = useState(null)
   const [refAdIds, setRefAdIds] = useState([])
-  const [myBrands, setMyBrands] = useState(initialMyBrands)
-  const [selections, setSelections] = useState(() => {
-    const init = {}
-    initialMyBrands.filter((b) => b.active).forEach((b) => { init[b.name] = defaultSelectionFor(b) })
-    return init
-  })
+  const [activeBrandKeys, setActiveBrandKeys] = useState(() => new Set([DEFAULT_ACTIVE_BRAND_KEY]))
+  // Only holds a brand's selection once the user explicitly picks a product;
+  // otherwise it falls back to defaultSelectionFor below. This also means a
+  // stale pick (a product that's since dropped out of a resync) quietly
+  // self-heals back to the first available product instead of pointing at
+  // nothing.
+  const [productOverrides, setProductOverrides] = useState({})
   const [formats, setFormats] = useState(DEFAULT_FORMATS)
   const [quantity, setQuantity] = useState('2장')
   const [styleIntensity, setStyleIntensity] = useState(60)
   const [instructions, setInstructions] = useState('')
+
+  const myBrands = productBrands.map((b) => ({ ...b, active: activeBrandKeys.has(b.key) }))
+
+  const selections = {}
+  myBrands.filter((b) => b.active).forEach((b) => {
+    const override = productOverrides[b.name]
+    selections[b.name] = override && b.products[override.product] ? override : defaultSelectionFor(b)
+  })
 
   const pickRefBrand = useCallback((brand) => {
     setRefBrandState(brand)
@@ -40,25 +51,18 @@ export function StudioProvider({ children }) {
   }, [])
 
   const toggleMyBrand = useCallback((index) => {
-    setMyBrands((prev) => {
-      const next = prev.map((b, i) => (i === index ? { ...b, active: !b.active } : b))
-      const brand = next[index]
-      setSelections((sel) => {
-        if (brand.active && !sel[brand.name]) {
-          return { ...sel, [brand.name]: defaultSelectionFor(brand) }
-        }
-        return sel
-      })
+    const key = productBrands[index]?.key
+    if (!key) return
+    setActiveBrandKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
-  }, [])
+  }, [productBrands])
 
   const setProductName = useCallback((brandName, productName) => {
-    setSelections((sel) => ({ ...sel, [brandName]: { product: productName, priceIdx: 0, promoIdx: 0, msgIdx: 0 } }))
-  }, [])
-
-  const setProductField = useCallback((brandName, field, idx) => {
-    setSelections((sel) => ({ ...sel, [brandName]: { ...sel[brandName], [field]: idx } }))
+    setProductOverrides((prev) => ({ ...prev, [brandName]: { product: productName } }))
   }, [])
 
   const toggleFormat = useCallback((fmt) => {
@@ -120,7 +124,7 @@ export function StudioProvider({ children }) {
         refBrand, pickRefBrand,
         refAdIds, toggleRefAd,
         myBrands, toggleMyBrand,
-        selections, setProductName, setProductField,
+        selections, setProductName,
         formats, toggleFormat,
         quantity, setQuantity,
         styleIntensity, setStyleIntensity,

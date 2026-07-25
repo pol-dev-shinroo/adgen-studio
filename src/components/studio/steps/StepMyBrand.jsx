@@ -1,8 +1,17 @@
 import { useStudio } from '../../../context/StudioContext.jsx'
-import ProductField from './ProductField.jsx'
+import { useProducts } from '../../../context/ProductsContext.jsx'
+import SyncProgress from './SyncProgress.jsx'
+
+function formatSyncedAt(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+}
 
 export default function StepMyBrand() {
-  const { myBrands, toggleMyBrand, selections, setProductName, setProductField } = useStudio()
+  const { myBrands, toggleMyBrand, selections, setProductName } = useStudio()
+  const { sync, activeJob } = useProducts()
   const activeBrands = myBrands.filter((b) => b.active)
 
   return (
@@ -23,32 +32,62 @@ export default function StepMyBrand() {
 
       <div className="sect" style={{ marginTop: 20 }}>
         제품 정보 지정 <span className="auto">● 자사몰 API</span>{' '}
-        <span className="hint">— 복수 옵션이 있는 항목은 1개만 선택해 생성에 사용됩니다</span>
+        <span className="hint">— 가격·프로모션·광고 카피는 동기화된 데이터를 그대로 사용합니다</span>
       </div>
 
       {activeBrands.length === 0 && <p className="sub">브랜드를 먼저 선택하세요.</p>}
 
       {activeBrands.map((b) => {
         const sel = selections[b.name]
-        if (!sel) return null
         const productNames = Object.keys(b.products)
-        const product = b.products[sel.product]
+        const product = sel ? b.products[sel.product] : null
+        const isSyncing = activeJob?.brandKey === b.key
+        const syncedAtLabel = formatSyncedAt(b.lastSynced)
+
         return (
           <div key={b.name} className="prodcfg">
-            <div className="bt"><span className="dot" style={{ background: b.color }}>{b.name[0]}</span>{b.name}</div>
-            <div className="info-grid">
-              <div className="field">
-                <label>
-                  제품 {productNames.length > 1 && <span className="multi">{productNames.length}개 옵션 — 1개 지정</span>}
-                </label>
-                <select value={sel.product} onChange={(e) => setProductName(b.name, e.target.value)}>
-                  {productNames.map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
-              <ProductField label="가격" options={product.prices} selectedIdx={sel.priceIdx} onChange={(idx) => setProductField(b.name, 'priceIdx', idx)} />
-              <ProductField label="프로모션" options={product.promos} selectedIdx={sel.promoIdx} onChange={(idx) => setProductField(b.name, 'promoIdx', idx)} />
-              <ProductField label="Key Message" options={product.messages} selectedIdx={sel.msgIdx} onChange={(idx) => setProductField(b.name, 'msgIdx', idx)} />
+            <div className="bt">
+              <span className="dot" style={{ background: b.color }}>{b.name[0]}</span>
+              {b.name}
+              <button
+                type="button"
+                className="sync-btn"
+                onClick={() => sync(b.key)}
+                disabled={!!activeJob}
+              >
+                {isSyncing ? '동기화 중...' : '제품 동기화'}
+              </button>
+              {!isSyncing && syncedAtLabel && <span className="sync-meta">마지막 동기화: {syncedAtLabel}</span>}
             </div>
+
+            {isSyncing && <SyncProgress job={activeJob} />}
+
+            {productNames.length === 0 ? (
+              <p className="sub">동기화된 제품이 없습니다 — 위 버튼으로 동기화하세요.</p>
+            ) : (
+              <div className="info-grid">
+                <div className="field">
+                  <label>
+                    제품 {productNames.length > 1 && <span className="multi">{productNames.length}개 옵션 — 1개 지정</span>}
+                  </label>
+                  <select value={sel.product} onChange={(e) => setProductName(b.name, e.target.value)}>
+                    {productNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>가격 <span className="auto">● 자사몰 API</span></label>
+                  <div className="readonly-value">{product?.price || '-'}</div>
+                </div>
+                <div className="field">
+                  <label>프로모션 <span className="auto">● 자사몰 API</span></label>
+                  <div className="readonly-value">{product?.promotionInfo || '없음'}</div>
+                </div>
+                <div className="field">
+                  <label>광고 후킹 카피 <span className="auto">● 자사몰 API</span></label>
+                  <div className="readonly-value">{product?.adHookCopy || '없음'}</div>
+                </div>
+              </div>
+            )}
           </div>
         )
       })}

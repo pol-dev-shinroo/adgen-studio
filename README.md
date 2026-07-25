@@ -2,8 +2,10 @@
 
 React port of the `광고생성기_UI목업.html` mockup — competitor ad feed, generation
 studio wizard, result gallery, and settings/product-review screens — plus a
-Node/Express backend that collects competitor ads from the Meta Ads Library
-(via Apify) into a Google Sheet.
+Node/Express backend that (1) collects competitor ads from the Meta Ads
+Library (via Apify) into a Google Sheet, and (2) syncs our own Cafe24
+product catalogs through GPT analysis into Pinecone + a Google Sheet, for
+Studio Step 3 (내 브랜드·제품).
 
 ## Run the frontend locally
 
@@ -144,8 +146,87 @@ npm start        # or: npm run dev (auto-restart on change)
 
 ```bash
 cd backend
-npm test    # node built-in test runner; covers the ad → row mapper
+npm test    # node built-in test runner; covers the ad -> row and product -> row mappers
 ```
+
+## Product sync (Studio Step 3: Cafe24 -> AI analysis -> Pinecone)
+
+Mirrors an earlier n8n workflow, simplified/hardened in a few ways (see
+"Notes / deviations" below). One sync job per brand (헬시키키 /
+키키뷰티): paginated Cafe24 product fetch → GPT-4o-mini analysis into 7
+fixed Korean fields (with a Pinecone few-shot lookup for consistency
+across products, and an explicit "output 없음, don't invent" instruction
+for anything not actually present in the source data) → `text-embedding-3-small`
+embedding stored in Pinecone (namespace per brand) → upserted into a
+`제품` tab in the same Google Sheet as the ad archive.
+
+**Optional as a whole, all-or-nothing if configured at all**: unlike the
+Apify/Google vars above, every `CAFE24_*`/`OPENAI_API_KEY`/`PINECONE_API_KEY`
+var can be left blank — the server still boots fine and `/api/products/*`
+routes just return `503`. Set even one of them and the server requires
+*all* of them, failing fast at startup with a clear message naming what's
+missing, same fail-fast spirit as the rest of `config/index.js` just scoped
+to this optional group instead of the whole process.
+
+**Cafe24 tokens are rotating, not static**: access tokens expire in ~2
+hours and refresh tokens themselves rotate (and expire in ~2 weeks) on
+every use, unlike the Sheets/Drive refresh token pasted once into `.env`.
+The pair lives in a gitignored, mutable `backend/data/cafe24-tokens.json`
+instead, keyed by brand, and `cafe24.client.js`'s `getAccessToken()`
+refreshes-and-persists automatically when the cached token is close to
+expiry.
+
+**Pinecone diffing, not wiping**: `deleteStale()` lists each brand's
+namespace and removes only the vector IDs no longer present in the
+mall's current catalog, instead of the n8n workflow's `clearNamespace`
+full wipe-and-rebuild — same non-destructive philosophy as the rest of
+this backend (`reset-archive.js` being explicit/manual, `upsertAdRows`'s
+diff instead of blind overwrite). A product that merely failed analysis
+*this run* (a transient GPT/embedding error) keeps its existing vector
+from a previous successful run — only a product genuinely removed from
+the mall gets its vector deleted.
+
+**Per-product failures don't abort the job**: same resilience pattern as
+`discardAds` — one product's GPT/embedding/Pinecone failure is caught,
+recorded in `job.summary.failures[]`, and the job moves on to the next
+product rather than failing the whole sync.
+
+### Setup
+
+```bash
+cd backend
+npm install   # picks up @pinecone-database/pinecone + openai
+```
+
+Fill in `.env` (in addition to the vars above):
+
+| Variable | What it is |
+| --- | --- |
+| `CAFE24_HEALTHYKIKI_MALL_ID` / `_CLIENT_ID` / `_CLIENT_SECRET` | 헬시키키 mall's Cafe24 app credentials (console.cafe24.com → 앱 관리 → 앱 등록) |
+| `CAFE24_KIKIBEAUTY_MALL_ID` / `_CLIENT_ID` / `_CLIENT_SECRET` | 키키뷰티 mall's, same place |
+| `OPENAI_API_KEY` | For GPT-4o-mini analysis + `text-embedding-3-small` embeddings |
+| `PINECONE_API_KEY` | Pinecone project API key |
+| `PINECONE_INDEX` | Default `adgen-products` — must already exist as a Pinecone index (1536 dimensions, matching `text-embedding-3-small`) |
+
+Then, once per mall (after registering the app's redirect URI in the
+Cafe24 console as `http://localhost:3002/oauth2callback`):
+
+```bash
+node scripts/cafe24-auth.js healthykiki
+node scripts/cafe24-auth.js kikibeauty
+```
+
+Opens a consent URL, captures the OAuth callback, and seeds
+`backend/data/cafe24-tokens.json` — same one-time-local-server pattern as
+`scripts/google-auth.js`, just per-brand instead of once.
+
+### Endpoints
+
+| Method & path | Purpose |
+| --- | --- |
+| `POST /api/products/sync` `{ "brand": "healthykiki" }` | Starts a sync job for that brand, returns `202 { jobId }`; `503` if product sync isn't configured |
+| `GET /api/products/sync/:jobId` | Job status: `running` / `done` / `failed`, live `progress` (`{phase, totalProducts, productsProcessed, recentItems[]}` — `phase` is `'fetching'` → `'analyzing'` → `'saving'` → `'cleaning up'` → `'done'`), `summary` (`{totalProducts, synced, failed, staleDeleted, failures[]}`) |
+| `GET /api/products?brand=healthykiki` | Every synced product row (12-column layout); `brand` query param is optional |
 
 ## Structure
 
@@ -154,16 +235,19 @@ src/
   main.jsx              entry point
   App.jsx               top-level layout (sidebar + active screen + toast)
   api/                   backend HTTP client + raw-sheet-row -> UI-shape adapter
-    backendClient.js        getAds/startCollect/getJobStatus/updateAdField
+    backendClient.js        getAds/startCollect/getJobStatus/updateAdField/
+                             getProducts/startProductSync/getProductSyncStatus
     adaptAd.js               adapts a sheet row into the feed's ad shape (keeps ad.raw)
   context/               one React Context per feature area (state + actions)
     NavigationContext.jsx   current screen, toast
     AdsContext.jsx          competitor ad archive, search/collect, dedupe, rename
-    StudioContext.jsx       4-step generation wizard state
+    ProductsContext.jsx     Cafe24-synced products (grouped by brand), sync job polling
+    StudioContext.jsx       4-step generation wizard state (myBrands sourced from ProductsContext)
     GalleryContext.jsx      generated results, approve/retry
     SettingsContext.jsx     product-info review/override state
     AppProviders.jsx        composes all providers
-  data/                  mock data (stand-ins for Meta/Cafe24/n8n responses)
+  data/                  mock data (stand-ins for the still-mock Higgsfield generation step;
+                         initialBrands.js is unused now that Step 3 is real, kept as a shape reference)
   components/
     layout/              Sidebar, Toast
     common/               Badge, Chip, Thumb, Modal, ImageLightbox, RetryImage, MultiLineText
@@ -171,7 +255,9 @@ src/
                            shows the full 22-field record on click; CollectionProgress
                            renders the live search/archive/save progress while a
                            collection job is running)
-    studio/               generation wizard (steps/ holds the 4 step panels)
+    studio/               generation wizard (steps/ holds the 4 step panels; StepMyBrand.jsx
+                           shows read-only Cafe24-synced product fields + a per-brand
+                           "제품 동기화" button with SyncProgress.jsx live status)
     gallery/              result gallery screen
     settings/             brand sync + product review + n8n integration
   styles/                global.css (tokens/shared classes, incl. Modal) + one css
@@ -193,11 +279,29 @@ src/
   still local-only mock state.
 - **The Feed screen (경쟁사 광고 피드) is wired to the real backend** — it loads
   the archived Meta ad set via `GET /api/ads` and "실시간 수집" runs a real
-  Apify collection job. Studio/Gallery/Settings are still UI-only with mock
-  data, since their real data sources (Cafe24/Pinecone, image generation)
-  don't exist yet. Note: because `AdsContext` is shared app-wide, the Studio
-  wizard's "레퍼런스 브랜드" step (which reads the same ad archive) now shows
-  real collected ads too, even though Studio's own code wasn't touched.
+  Apify collection job. Note: because `AdsContext` is shared app-wide, the
+  Studio wizard's "레퍼런스 브랜드" step (which reads the same ad archive) now
+  shows real collected ads too, even though Studio's own code wasn't touched
+  at the time.
+- **Studio Step 3 (내 브랜드·제품) is now wired to the real backend too** —
+  `myBrands` comes from `ProductsContext` (`GET /api/products`), not the old
+  `initialMyBrands` mock. Price/프로모션/광고 후킹 카피 are now read-only
+  fields sourced straight from the Cafe24 → GPT → Pinecone sync pipeline
+  (see the Product sync backend section above) rather than the old
+  multi-option dropdowns — there's only ever one real value per product now,
+  not several to choose between. A "제품 동기화" button per brand kicks off
+  a real sync job with live progress (`SyncProgress.jsx`, mirroring the
+  Feed screen's `CollectionProgress`). Gallery and Settings, and Studio
+  Step 4's actual image generation, are still UI-only mock, since Higgsfield
+  Soul ID isn't wired in yet.
+- **Product sheet lives in a new tab (`제품`) inside the existing spreadsheet**,
+  not a separate spreadsheet — one client's data, one place to look, and it
+  reuses the same `SHEET_ID`/auth already configured for ads. The tab is
+  created (with header row) on first use if it doesn't exist yet, so no
+  manual setup step is needed beyond the `.env` vars. `toggleMyBrand` kept
+  its original index-based signature (`toggleMyBrand(i)` from the brand
+  card's `onClick`) since the brand list is now a fixed 2-entry array — same
+  external behavior as before, just backed by real data.
 - **Feed card is compact-by-design, click-through for detail**: with 22 real
   sheet columns, cramming everything onto the browsing grid stopped scaling.
   `AdCard` now shows a clean photo + brand + one truncated line + meta +

@@ -5,11 +5,14 @@ React + Vite front end for AdGen Studio, an ad-automation tool. It pulls competi
 ads from the Meta Ads Library, cross-references our own Cafe24 product data (synced
 via a Pinecone vector DB), and uses generative AI (Higgsfield Soul ID under
 evaluation) to create new ad creative inspired by competitor ad structure/layout
-without copying their actual pixels, for copyright-safety reasons. n8n is the
-intended backend job runner (see the webhook URL on the Settings screen).
+without copying their actual pixels, for copyright-safety reasons. A Node/Express
+backend (`backend/`) is the job runner — n8n was an earlier candidate for this role
+but isn't used anywhere in the current implementation.
 
-Right now this app is UI-only with mock data — no real Meta/Cafe24/Pinecone/n8n
-calls are wired in yet.
+Ad collection (Apify -> Google Sheets/Drive) and product sync (Cafe24 -> OpenAI ->
+Pinecone -> Google Sheets, Studio Step 3) are both wired up for real against the
+backend. Higgsfield Soul ID generation (Studio Step 4, "생성 시작") is still a mock
+— it queues gallery placeholder cards but doesn't call a real image-gen API yet.
 
 ## Architecture
 - One React Context per feature area under `src/context/` (Navigation, Ads, Studio,

@@ -43,3 +43,35 @@ export function discardAds(keyword, items) {
     body: JSON.stringify({ keyword, items }),
   })
 }
+
+// Every synced product row, keyed by the 12-column layout (Product ID,
+// Brand, Product Name, Price, Promotion Info, Ad Hook Copy, ...). Pass a
+// brand key to filter server-side.
+export function getProducts(brand) {
+  const query = brand ? `?brand=${encodeURIComponent(brand)}` : ''
+  return request(`/api/products${query}`)
+}
+
+export function startProductSync(brand) {
+  return request('/api/products/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ brand }),
+  })
+}
+
+export function getProductSyncStatus(jobId) {
+  return request(`/api/products/sync/${jobId}`)
+}
+
+// Per-brand Cafe24/Pinecone connection + sync status for the product
+// management screen. Always 200 — { brands: [], productSyncConfigured: false }
+// when nothing is set up, rather than an error to handle specially.
+export function getProductStatus() {
+  return request('/api/products/status')
+}
+
+// DESTRUCTIVE — wipes every vector in that brand's Pinecone namespace.
+export function resetPineconeNamespace(brand) {
+  return request(`/api/products/${encodeURIComponent(brand)}/pinecone`, { method: 'DELETE' })
+}

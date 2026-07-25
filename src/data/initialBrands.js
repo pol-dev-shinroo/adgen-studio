@@ -1,3 +1,5 @@
+// Dead/reference-only: StudioContext now sources myBrands from ProductsContext
+// (real Cafe24-synced data). Kept only as a shape reference; nothing imports this.
 export const initialMyBrands = [
   {
     name: '헬시키키',

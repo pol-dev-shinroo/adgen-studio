@@ -1,0 +1,29 @@
+/* Shares .set-sect, .row, .status-ok, .prod-review, .pr-field/.pr-head/.pr-body,
+   and .badge.rev-ok/.rev-no/.rev-chg with settings.css (imported alongside
+   this file in ProductsScreen.jsx) — only genuinely new classes live here. */
+
+.set-sect .dot{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;flex-shrink:0}
+
+.status-pill{font-size:12px;font-weight:700}
+.status-pill.ok{color:var(--green)}
+.status-pill.warn{color:var(--amber)}
+.status-pill.neutral{color:var(--sub)}
+
+.btn.danger{border:1px solid var(--red);background:#fff;color:var(--red)}
+.btn.danger:hover{background:#fdeaea}
+.btn.danger:disabled{opacity:.45;cursor:not-allowed}
+
+.advanced{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}
+.advanced summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--sub)}
+.advanced summary:hover{color:var(--ink)}
+.danger-zone{margin-top:10px;padding:12px;border:1px solid #f5c8c8;border-radius:9px;background:#fef6f6}
+.danger-row{display:flex;gap:8px;margin-top:8px}
+.danger-row input{flex:1;padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit}
+
+.browser-controls{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.browser-search{width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px;font-family:inherit}
+
+.pr-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--sub)}
+.pr-price{font-weight:700;color:var(--ink)}
+.pr-field.emphasized .fv{font-weight:600}
+.fv.small{font-size:12px;color:var(--sub)}
