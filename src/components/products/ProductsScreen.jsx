@@ -1,4 +1,9 @@
 import '../../styles/settings.css'
+// feed.css supplies the "ad-detail"/"dtl-*"/"lightbox-*" classes reused
+// as-is by ProductDetailModal.jsx (same structure as AdDetailModal.jsx,
+// same ImageLightbox component) — imported explicitly here rather than
+// relying on FeedScreen.jsx happening to load first.
+import '../../styles/feed.css'
 import '../../styles/products.css'
 import { useProducts } from '../../context/ProductsContext.jsx'
 import BrandConnectionCard from './BrandConnectionCard.jsx'

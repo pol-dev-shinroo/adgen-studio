@@ -27,9 +27,29 @@ function pick(obj, keys) {
   return undefined
 }
 
+const IMAGE_FIELD_PRIORITY = ['detail_image', 'list_image', 'small_image', 'tiny_image']
+const MAX_IMAGES = 20
+
+// Cafe24's product detail endpoint exposes 4 differently-sized renditions
+// of ONE product photo (detail/list/small/tiny image folders), not a real
+// photo gallery — confirmed against the live API: explicitly requesting
+// additional_image/sub_images/images via `fields` comes back empty, and
+// GET /admin/products/{no}/images 404s "No API found". So only the
+// best-quality rendition is kept here rather than all 4 (treating them as
+// 4 separate images would show the same photo repeatedly and make the
+// "이미지 N장" gallery count misleading). The array/newline-joined shape
+// (matching ad.mapper.js's Image Links) is kept anyway, so nothing here
+// needs to change if Cafe24 ever exposes genuine additional photos.
+function collectImages(rawProduct) {
+  const primary = IMAGE_FIELD_PRIORITY
+    .map((field) => rawProduct?.[field])
+    .find((url) => typeof url === 'string' && url.trim())
+  return primary ? [...new Set([primary])].slice(0, MAX_IMAGES) : []
+}
+
 export function mapProduct(brand, rawProduct, analysis, { syncedAt = new Date().toISOString() } = {}) {
   const productId = pick(rawProduct, ['product_no', 'productNo']) ?? ''
-  const imageUrl = pick(rawProduct, ['list_image', 'small_image', 'detail_image', 'tiny_image']) ?? ''
+  const images = collectImages(rawProduct)
 
   return {
     'Product ID': String(productId),
@@ -42,7 +62,7 @@ export function mapProduct(brand, rawProduct, analysis, { syncedAt = new Date().
     '효과효능': analysis?.['효과효능'] ?? '없음',
     '페인포인트': analysis?.['페인포인트'] ?? '없음',
     '권위신뢰': analysis?.['권위/신뢰/인증'] ?? '없음',
-    'Image URL': imageUrl,
+    'Image URL': images.join('\n'),
     'Last Synced': syncedAt,
   }
 }

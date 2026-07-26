@@ -33,21 +33,39 @@ test('maps a realistic Cafe24 product + analysis to all 12 columns', () => {
     '효과효능': '장 건강 개선',
     '페인포인트': '잦은 소화 불편',
     '권위신뢰': '없음',
-    'Image URL': 'https://healthykiki.cafe24img.com/products/4821_list.jpg',
+    'Image URL': 'https://healthykiki.cafe24img.com/products/4821_detail.jpg',
     'Last Synced': '2026-07-25T09:00:00.000Z',
   })
 })
 
-test('falls back to retail_price and detail_image when primary fields are absent', () => {
+test('falls back to retail_price, and to lower-priority image fields when detail/list_image are absent', () => {
   const mapped = mapProduct('헬시키키', {
     product_no: 99,
     product_name: '테스트 제품',
     retail_price: '10000.00',
-    detail_image: 'https://example.com/detail.jpg',
+    small_image: 'https://example.com/small.jpg',
+    tiny_image: 'https://example.com/tiny.jpg',
   }, {}, CTX)
 
   assert.equal(mapped['Price'], '10000.00')
+  assert.equal(mapped['Image URL'], 'https://example.com/small.jpg', 'small_image outranks tiny_image')
+})
+
+test('never lists the same photo twice, even when all 4 Cafe24 size variants are present', () => {
+  // detail/list/small/tiny_image are just differently-sized renditions of
+  // ONE product photo, not a real gallery (confirmed against the live
+  // Cafe24 API) - including all 4 would misrepresent a single-photo
+  // product as having multiple images.
+  const mapped = mapProduct('헬시키키', {
+    product_no: 5,
+    detail_image: 'https://example.com/detail.jpg',
+    list_image: 'https://example.com/list.jpg',
+    small_image: 'https://example.com/small.jpg',
+    tiny_image: 'https://example.com/tiny.jpg',
+  }, {}, CTX)
+
   assert.equal(mapped['Image URL'], 'https://example.com/detail.jpg')
+  assert.equal(mapped['Image URL'].split('\n').length, 1)
 })
 
 test('defaults every analysis field to 없음 when analysis is missing or empty', () => {

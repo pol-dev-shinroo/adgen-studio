@@ -4,6 +4,7 @@ import {
   getProducts, startProductSync, getProductSyncStatus,
   getProductStatus, resetPineconeNamespace,
 } from '../api/backendClient.js'
+import { adaptProduct } from '../api/adaptProduct.js'
 
 const ProductsContext = createContext(null)
 
@@ -22,25 +23,28 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Groups the flat product-row list into the per-brand shape the Studio
+// Groups the adapted product list into the per-brand shape the Studio
 // "내 브랜드" step needs: one entry per known brand (even with zero
-// products yet), each holding its products keyed by name.
+// products yet), each holding its products keyed by name. Sourcing from
+// adaptProduct's output (rather than raw sheet rows) means Step 3 gets the
+// same formatted price/image handling as the product-management screen,
+// for free.
 function groupByBrand(products) {
   return BRAND_DEFS.map((def) => {
-    const brandProducts = products.filter((p) => p['Brand'] === def.name)
+    const brandProducts = products.filter((p) => p.brand === def.name)
     const productsByName = {}
     let lastSynced = null
 
     brandProducts.forEach((p) => {
-      productsByName[p['Product Name']] = {
-        productId: p['Product ID'],
-        price: p['Price'],
-        promotionInfo: p['Promotion Info'],
-        adHookCopy: p['Ad Hook Copy'],
-        imageUrl: p['Image URL'],
+      productsByName[p.name] = {
+        productId: p.id,
+        price: p.priceFormatted,
+        promotionInfo: p.promotionInfo,
+        adHookCopy: p.adHookCopy,
+        imageUrl: p.primaryImage,
       }
-      if (p['Last Synced'] && (!lastSynced || p['Last Synced'] > lastSynced)) {
-        lastSynced = p['Last Synced']
+      if (p.lastSynced && (!lastSynced || p.lastSynced > lastSynced)) {
+        lastSynced = p.lastSynced
       }
     })
 
@@ -73,7 +77,7 @@ export function ProductsProvider({ children }) {
     let cancelled = false
     getProducts()
       .then(({ products: raw }) => {
-        if (!cancelled) setProducts(raw)
+        if (!cancelled) setProducts(raw.map(adaptProduct))
       })
       .catch((err) => {
         if (cancelled) return
@@ -112,7 +116,7 @@ export function ProductsProvider({ children }) {
       }
 
       const { products: refreshed } = await getProducts()
-      setProducts(refreshed)
+      setProducts(refreshed.map(adaptProduct))
       await loadStatus()
       showToast(
         `동기화 완료: ${job.summary.synced}건 성공` +

@@ -1,18 +1,25 @@
 import { useState, useMemo } from 'react'
 import { useProducts } from '../../context/ProductsContext.jsx'
 import Chip from '../common/Chip.jsx'
-import ProductRow from './ProductRow.jsx'
+import ProductCard from './ProductCard.jsx'
+import ProductDetailModal from './ProductDetailModal.jsx'
 
 export default function ProductBrowser() {
   const { products, brands } = useProducts()
   const [query, setQuery] = useState('')
   const [brandFilter, setBrandFilter] = useState('전체')
+  const [detailProduct, setDetailProduct] = useState(null)
+
+  const colorByBrand = useMemo(
+    () => Object.fromEntries(brands.map((b) => [b.name, b.color])),
+    [brands]
+  )
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return products.filter((p) => {
-      if (brandFilter !== '전체' && p['Brand'] !== brandFilter) return false
-      if (q && !(p['Product Name'] || '').toLowerCase().includes(q)) return false
+      if (brandFilter !== '전체' && p.brand !== brandFilter) return false
+      if (q && !p.name.toLowerCase().includes(q)) return false
       return true
     })
   }, [products, query, brandFilter])
@@ -45,7 +52,20 @@ export default function ProductBrowser() {
           {query ? `"${query}"에 해당하는 제품이 없습니다.` : `${brandFilter} 브랜드에 동기화된 제품이 없습니다.`}
         </p>
       ) : (
-        filtered.map((p) => <ProductRow key={p['Product ID']} product={p} />)
+        <div className="prod-grid">
+          {filtered.map((p) => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              color={colorByBrand[p.brand]}
+              onClick={() => setDetailProduct(p)}
+            />
+          ))}
+        </div>
+      )}
+
+      {detailProduct && (
+        <ProductDetailModal product={detailProduct} onClose={() => setDetailProduct(null)} />
       )}
     </div>
   )

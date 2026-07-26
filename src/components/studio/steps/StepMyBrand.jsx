@@ -76,6 +76,9 @@ export default function StepMyBrand() {
                 </div>
                 <div className="field">
                   <label>가격 <span className="auto">● 자사몰 API</span></label>
+                  {/* Already formatKRW-formatted ("49,800원") — ProductsContext's
+                      groupByBrand sources this from adaptProduct's priceFormatted,
+                      not the raw Cafe24 price string. */}
                   <div className="readonly-value">{product?.price || '-'}</div>
                 </div>
                 <div className="field">
