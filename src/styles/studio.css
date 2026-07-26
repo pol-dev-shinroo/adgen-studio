@@ -68,6 +68,18 @@
   0%,100%{opacity:1}
   50%{opacity:.5}
 }
+/* Reuses .prod-card/.prod-grid/.prod-card-body/etc. from products.css
+   (imported globally via ProductsScreen.jsx — this is one bundled SPA, not
+   code-split, so its CSS is already available here) for Step 3's product
+   picker and reference-image display, rather than inventing a parallel set
+   of card classes. Only the two modifiers actually new to this context —
+   a selection ring for the picker, and a non-interactive variant for the
+   read-only reference-image cards — live here. */
+.prod-card.selected{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-soft)}
+.prod-card.static{cursor:default}
+.prod-card.static:hover{border-color:var(--line);box-shadow:none}
+.prod-refs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+
 .optrow{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
 .footer{display:flex;justify-content:space-between;padding:16px 20px;border-top:1px solid var(--line)}
 .range{display:flex;align-items:center;gap:10px}

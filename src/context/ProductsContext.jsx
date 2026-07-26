@@ -37,6 +37,8 @@ function groupByBrand(products) {
         promotionInfo: p.promotionInfo,
         adHookCopy: p.adHookCopy,
         imageUrl: p.primaryImage,
+        extractedImage: p.extractedImage,
+        extractedAt: p.extractedAt,
       }
       if (p.lastSynced && (!lastSynced || p.lastSynced > lastSynced)) {
         lastSynced = p.lastSynced
