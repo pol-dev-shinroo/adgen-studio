@@ -8,7 +8,8 @@ import Badge from '../common/Badge.jsx'
 export default function ProductCard({ product, color, onClick }) {
   return (
     <div className="prod-card" onClick={onClick}>
-      <Thumb gradient="g5" image={product.primaryImage}>
+      <Thumb gradient="g5" image={product.primaryImage} fit="contain">
+        {product.extractedImage && <Badge variant="live">레퍼런스 준비됨</Badge>}
         {product.images.length > 1 && (
           <Badge variant="media">이미지 {product.images.length}장</Badge>
         )}

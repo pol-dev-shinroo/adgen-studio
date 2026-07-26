@@ -2,16 +2,25 @@ import Modal from '../common/Modal.jsx'
 import ImageLightbox from '../common/ImageLightbox.jsx'
 import RetryImage from '../common/RetryImage.jsx'
 import DetailField from '../common/DetailField.jsx'
+import Thumb from '../common/Thumb.jsx'
 import { formatDateTime } from '../../utils/date.js'
 import { useGalleryLightbox } from '../../hooks/useGalleryLightbox.js'
+import { useProducts } from '../../context/ProductsContext.jsx'
 
 // Structured like AdDetailModal.jsx (same "ad-detail"/"dtl-*" classes, from
 // feed.css — imported alongside products.css in ProductsScreen.jsx — and
 // the same ImageLightbox reused as-is, not duplicated): image gallery grid,
-// then 기본 정보 and AI 분석 sections.
+// then 참조 이미지, 기본 정보, and AI 분석 sections.
 export default function ProductDetailModal({ product, onClose }) {
   const { lightboxIndex, setLightboxIndex, closeModal } = useGalleryLightbox(onClose)
+  const { brands, extractImage, extractingIds } = useProducts()
   if (!product) return null
+
+  // product.brand is the Korean display name (from the sheet); the
+  // extraction endpoint needs the internal brand key.
+  const brandKey = brands.find((b) => b.name === product.brand)?.key
+  const isExtracting = extractingIds.has(product.id)
+  const handleExtract = () => brandKey && extractImage(brandKey, product.id)
 
   return (
     <Modal onClose={closeModal}>
@@ -31,6 +40,28 @@ export default function ProductDetailModal({ product, onClose }) {
             ))
           ) : (
             <div className="thumb g5" />
+          )}
+        </div>
+
+        <div className="dtl-section">
+          <div className="dtl-sect-title">우리 제품 참조 이미지</div>
+          {product.extractedImage ? (
+            <div className="ref-preview">
+              <Thumb gradient="g5" image={product.extractedImage} fit="contain" className="ref-thumb" />
+              <div className="ref-meta">
+                <span className="sub">추출일: {formatDateTime(product.extractedAt)}</span>
+                <button className="btn ghost sm" disabled={isExtracting} onClick={handleExtract}>
+                  {isExtracting ? '추출 중...' : '다시 추출'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="ref-empty">
+              <p className="sub">아직 추출된 참조 이미지가 없습니다 — 원본 사진에서 배경/모델을 제거한 제품 사진을 만듭니다.</p>
+              <button className="btn pri sm" disabled={isExtracting} onClick={handleExtract}>
+                {isExtracting ? '추출 중...' : '참조 이미지 추출'}
+              </button>
+            </div>
           )}
         </div>
 

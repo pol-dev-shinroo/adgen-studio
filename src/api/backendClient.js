@@ -75,3 +75,11 @@ export function getProductStatus() {
 export function resetPineconeNamespace(brand) {
   return request(`/api/products/${encodeURIComponent(brand)}/pinecone`, { method: 'DELETE' })
 }
+
+// Costs a real gpt-image-2 call server-side — only ever fired from an
+// explicit user click (extract/재추출 button), never automatically.
+export function extractProductImage(brand, productId) {
+  return request(`/api/products/${encodeURIComponent(brand)}/${encodeURIComponent(productId)}/extract-image`, {
+    method: 'POST',
+  })
+}

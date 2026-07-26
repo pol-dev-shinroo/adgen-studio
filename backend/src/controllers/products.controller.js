@@ -3,6 +3,7 @@ import { startSync, getJob } from '../services/productSync.service.js'
 import { getAllProducts } from '../services/productSheets.service.js'
 import { isAuthorized } from '../services/cafe24.client.js'
 import { getNamespaceStats, resetNamespace } from '../services/pinecone.service.js'
+import { extractProductImage } from '../services/productImageExtraction.service.js'
 
 function findBrand(brandKey) {
   return config.brands.find((b) => b.key === brandKey)
@@ -98,6 +99,25 @@ export async function getProductStatus(req, res, next) {
 
     res.json({ brands, productSyncConfigured: true })
   } catch (err) {
+    next(err)
+  }
+}
+
+// Synchronous — a single gpt-image-2 edit call, not a job/poll flow (see
+// productImageExtraction.service.js). Real money per call, so this is
+// deliberately not something a resync or batch operation ever triggers on
+// its own — only an explicit user action in 상품관리.
+export async function postExtractProductImage(req, res, next) {
+  if (!config.productSyncConfigured) {
+    return res.status(503).json({ error: 'Product sync is not configured on this server.' })
+  }
+
+  const { brand, productId } = req.params
+  try {
+    const result = await extractProductImage(brand, productId)
+    res.json(result)
+  } catch (err) {
+    if (err.notFound) return res.status(404).json({ error: err.message })
     next(err)
   }
 }

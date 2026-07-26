@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { mapProduct, toRow, PRODUCT_COLUMNS } from '../src/mappers/product.mapper.js'
+import { mapProduct, toRow, PRODUCT_COLUMNS, SYNC_COLUMNS, EXTRACTION_COLUMNS } from '../src/mappers/product.mapper.js'
 
 const fixture = JSON.parse(
   readFileSync(new URL('./fixtures/cafe24-product.json', import.meta.url), 'utf8')
@@ -88,14 +88,28 @@ test('handles a near-empty product without throwing', () => {
   assert.equal(mapped['Image URL'], '')
 })
 
-test('toRow keeps the 12 columns in sheet order', () => {
+test('toRow keeps all 14 columns (12 sync + 2 extraction) in sheet order', () => {
   const row = toRow(mapProduct('헬시키키', fixture, analysis, CTX))
 
-  assert.equal(row.length, 12)
+  assert.equal(row.length, 14)
   assert.equal(row[0], '4821')
   assert.equal(row[PRODUCT_COLUMNS.indexOf('Brand')], '헬시키키')
   assert.equal(PRODUCT_COLUMNS.indexOf('Ad Hook Copy'), 5, 'ad hook copy sits right before the 4 raw-analysis columns')
   assert.equal(PRODUCT_COLUMNS.indexOf('권위신뢰'), 9)
   assert.equal(PRODUCT_COLUMNS.indexOf('Image URL'), 10)
   assert.equal(PRODUCT_COLUMNS.indexOf('Last Synced'), 11)
+  assert.equal(PRODUCT_COLUMNS.indexOf('Extracted Image URL'), 12, 'appended, not inserted — existing 12 columns keep their positions')
+  assert.equal(PRODUCT_COLUMNS.indexOf('Extracted At'), 13)
+  assert.equal(row[12], '', 'extracted-image columns are blank until the separate extraction path fills them')
+  assert.equal(row[13], '')
+})
+
+test('SYNC_COLUMNS/EXTRACTION_COLUMNS split composes PRODUCT_COLUMNS exactly, and mapProduct never touches the extraction columns', () => {
+  assert.deepEqual(PRODUCT_COLUMNS, [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS])
+  assert.equal(SYNC_COLUMNS.length, 12)
+  assert.equal(EXTRACTION_COLUMNS.length, 2)
+
+  const mapped = mapProduct('헬시키키', fixture, analysis, CTX)
+  assert.equal('Extracted Image URL' in mapped, false, 'a resync must never overwrite extraction results — mapProduct simply never produces this key')
+  assert.equal('Extracted At' in mapped, false)
 })

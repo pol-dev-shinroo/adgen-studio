@@ -21,6 +21,8 @@ export function adaptProduct(product) {
     images,
     primaryImage: images[0] || '',
     lastSynced: product['Last Synced'] || '',
+    extractedImage: product['Extracted Image URL'] || '',
+    extractedAt: product['Extracted At'] || '',
     raw: product,
   }
 }

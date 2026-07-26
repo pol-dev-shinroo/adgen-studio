@@ -36,6 +36,12 @@ h1{font-size:20px;font-weight:800;letter-spacing:-.3px}
 .badge.dup{background:#f0f1f5;color:var(--sub);border:1px dashed #c3c7d4}
 .badge.new{background:#e9e9fb;color:var(--brand)}
 .badge.media{background:rgba(0,0,0,.45);color:#fff}
+
+/* Thumb's fit="contain" mode (see Thumb.jsx) — a neutral backdrop so
+   letterboxing around a product photo reads as intentional, not broken.
+   Not screen-scoped like the other .thumb rules since this is a plain
+   cross-cutting modifier, not part of any one screen's visual language. */
+.thumb.thumb-contain{background:#f3f4f7}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:16px}

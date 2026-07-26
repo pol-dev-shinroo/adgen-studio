@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import { useNavigation } from './NavigationContext.jsx'
 import {
   getProducts, startProductSync, getProductSyncStatus,
-  getProductStatus, resetPineconeNamespace,
+  getProductStatus, resetPineconeNamespace, extractProductImage,
 } from '../api/backendClient.js'
 import { adaptProduct } from '../api/adaptProduct.js'
 import { useJobPolling } from '../hooks/useJobPolling.js'
@@ -59,6 +59,9 @@ export function ProductsProvider({ children }) {
   const [products, setProducts] = useState([])
   const { activeJob, run } = useJobPolling({ pollIntervalMs: 1200 }) // job: { brandKey, status, progress, summary, ... } | null
   const [status, setStatus] = useState({ brands: [], productSyncConfigured: false })
+  // Product IDs currently mid-extraction — a Set rather than one boolean
+  // since 상품관리 and Step 3 could both show the same product's button.
+  const [extractingIds, setExtractingIds] = useState(() => new Set())
 
   const loadStatus = useCallback(() => {
     return getProductStatus()
@@ -133,10 +136,37 @@ export function ProductsProvider({ children }) {
     }
   }, [showToast, loadStatus])
 
+  // Costs a real gpt-image-2 call server-side — updates just the one
+  // product's row in local state on success rather than re-fetching the
+  // whole list, since this is fired from a single product's detail view.
+  const extractImage = useCallback(async (brandKey, productId) => {
+    setExtractingIds((prev) => new Set(prev).add(productId))
+    try {
+      const result = await extractProductImage(brandKey, productId)
+      setProducts((prev) => prev.map((p) => (
+        p.id === productId
+          ? { ...p, extractedImage: result.extractedImage, extractedAt: result.extractedAt }
+          : p
+      )))
+      showToast('참조 이미지 추출이 완료됐습니다')
+    } catch (err) {
+      console.error('Product image extraction failed:', err)
+      showToast(`이미지 추출 실패: ${err.message}`)
+    } finally {
+      setExtractingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(productId)
+        return next
+      })
+    }
+  }, [showToast])
+
   const brands = groupByBrand(products)
 
   return (
-    <ProductsContext.Provider value={{ products, brands, sync, activeJob, status, resetNamespace }}>
+    <ProductsContext.Provider
+      value={{ products, brands, sync, activeJob, status, resetNamespace, extractImage, extractingIds }}
+    >
       {children}
     </ProductsContext.Provider>
   )

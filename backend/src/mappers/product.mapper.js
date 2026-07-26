@@ -5,7 +5,9 @@
 
 import { pick } from './pickField.js'
 
-export const PRODUCT_COLUMNS = [
+// Columns the sync job (mapProduct/upsertProductRows) owns and rewrites on
+// every resync.
+export const SYNC_COLUMNS = [
   'Product ID',
   'Brand',
   'Product Name',
@@ -19,6 +21,18 @@ export const PRODUCT_COLUMNS = [
   'Image URL',
   'Last Synced',
 ]
+
+// Written only by the separate image-extraction path (productImageExtraction
+// .service.js's updateProductField), never by the sync job. Appended, not
+// inserted, so the live sheet's existing 12-column header/data stay in
+// place. Kept as their own export (not just tacked onto PRODUCT_COLUMNS)
+// so productSheets.service.js's upsert can restrict its resync writes to
+// SYNC_COLUMNS only — a resync's mapProduct() output never has these keys,
+// so a full-row overwrite would otherwise blank out extraction results
+// every time a product's sheet row is refreshed.
+export const EXTRACTION_COLUMNS = ['Extracted Image URL', 'Extracted At']
+
+export const PRODUCT_COLUMNS = [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS]
 
 const IMAGE_FIELD_PRIORITY = ['detail_image', 'list_image', 'small_image', 'tiny_image']
 const MAX_IMAGES = 20

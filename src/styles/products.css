@@ -29,7 +29,10 @@
 .prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
 .prod-card{cursor:pointer;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;transition:border-color .15s,box-shadow .15s}
 .prod-card:hover{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-soft)}
-.prod-card .thumb{height:140px}
+.prod-card .thumb{height:140px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.prod-card .thumb .thumb-img{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+.prod-card .thumb .badge.media{position:absolute;top:8px;right:8px;z-index:2}
+.prod-card .thumb .badge.live{position:absolute;top:8px;left:8px;z-index:2}
 .prod-card-body{padding:10px}
 .prod-card-name{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}
 .prod-card-name .dot{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px;flex-shrink:0}
@@ -38,3 +41,12 @@
 /* Emphasizes the two AI fields Studio Step 3 surfaces (프로모션/광고 후킹
    카피) inside ProductDetailModal's reused dtl-field layout. */
 .dtl-field.emphasized .dtl-value{font-weight:700;font-size:14px}
+
+/* Extracted product reference image, inside ProductDetailModal's dtl-section
+   — .ref-thumb is a standalone Thumb usage (not nested under .prod-card/.ad),
+   so it defines its own full sizing rather than relying on a scoping parent. */
+.ref-thumb.thumb{width:120px;height:120px;position:relative;overflow:hidden;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.ref-thumb.thumb .thumb-img{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+.ref-preview{display:flex;gap:14px;align-items:center}
+.ref-meta{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.ref-empty{display:flex;flex-direction:column;gap:10px;align-items:flex-start}

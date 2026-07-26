@@ -28,3 +28,9 @@ export function callSheets(fn) {
 export function makeTabRange(tabName) {
   return (cells) => `'${tabName}'!${cells}`
 }
+
+// 0 -> A, 1 -> B, ... 25 -> Z. Every column list in this app is well within
+// single-letter range.
+export function columnLetter(index) {
+  return String.fromCharCode(65 + index)
+}

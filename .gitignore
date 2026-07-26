@@ -2,3 +2,7 @@ node_modules
 dist
 .DS_Store
 .env
+
+# Stray debug artifacts (e.g. a mangled Windows temp path saved as a
+# literal filename when inspecting a downloaded image locally)
+backend/Users*

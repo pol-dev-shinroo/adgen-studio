@@ -1,6 +1,6 @@
 import { config } from '../config/index.js'
 import { AD_COLUMNS, toRow } from '../mappers/ad.mapper.js'
-import { getClient, callSheets, makeTabRange } from './sheetsBase.js'
+import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
 
 const LAST_COLUMN = 'V' // 22 columns, A..V
 
@@ -21,11 +21,6 @@ function getSheetGid() {
     })()
   }
   return sheetGidPromise
-}
-
-// 0 -> A, 1 -> B, ... 25 -> Z. AD_COLUMNS is 22 wide, well within single-letter range.
-function columnLetter(index) {
-  return String.fromCharCode(65 + index)
 }
 
 // Columns excluded from the changed/unchanged diff below. "Date Scraped"
