@@ -83,3 +83,34 @@ export function extractProductImage(brand, productId) {
     method: 'POST',
   })
 }
+
+// Starts a real ad-generation job — the most expensive request in the app
+// (chains vision/research/copywriting calls plus one image-generation-tool
+// render per format x quantity combination). input: { refBrand, refAdIds,
+// brand:{key,productId}, formats, quantity, styleIntensity, instructions }.
+export function startGeneration(input) {
+  return request('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export function getGenerationStatus(jobId) {
+  return request(`/api/generate/${jobId}`)
+}
+
+// Every generated-ad row from the sheet, keyed by the 9-column layout
+// (Generation ID, Brand, Reference Ad ID, Format, Style Intensity,
+// Instructions, Image URL, Status, Created At).
+export function getGeneratedResults() {
+  return request('/api/generate/results')
+}
+
+export function updateGeneratedStatus(generationId, status) {
+  return request(`/api/generate/results/${encodeURIComponent(generationId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+}

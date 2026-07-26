@@ -3,16 +3,31 @@
 ## What this is
 React + Vite front end for AdGen Studio, an ad-automation tool. It pulls competitor
 ads from the Meta Ads Library, cross-references our own Cafe24 product data (synced
-via a Pinecone vector DB), and uses generative AI (Higgsfield Soul ID under
-evaluation) to create new ad creative inspired by competitor ad structure/layout
-without copying their actual pixels, for copyright-safety reasons. A Node/Express
+via a Pinecone vector DB), and uses OpenAI's `gpt-5.5` + the Responses API's hosted
+`image_generation` tool (which renders through OpenAI's current flagship image model,
+`gpt-image-2`) to generate new ad creative that swaps a competitor ad's overlaid text
+and product photo for our own brand's, while preserving the original layout/structure
+— not literally copying their pixels, for copyright-safety reasons. A Node/Express
 backend (`backend/`) is the job runner — n8n was an earlier candidate for this role
-but isn't used anywhere in the current implementation.
+(two of its workflows were used as the source of the exact system prompts/instructions
+carried into the real pipeline below) but isn't used anywhere in the current
+implementation.
 
-Ad collection (Apify -> Google Sheets/Drive) and product sync (Cafe24 -> OpenAI ->
-Pinecone -> Google Sheets, Studio Step 3) are both wired up for real against the
-backend. Higgsfield Soul ID generation (Studio Step 4, "생성 시작") is still a mock
-— it queues gallery placeholder cards but doesn't call a real image-gen API yet.
+Every major pipeline is now wired up for real against the backend, end-to-end:
+- Ad collection (Apify -> Google Sheets/Drive)
+- Product sync (Cafe24 -> OpenAI -> Pinecone -> Google Sheets, Studio Step 3)
+- Product reference-image extraction (상품관리 — isolates a clean product cutout via
+  `gpt-5.5`'s `image_generation` tool, stored per-product in the sheet)
+- Ad generation (Studio Step 4 + Gallery, "생성 시작") — per selected reference ad:
+  vision analysis of overlaid text + product instances, brand counter-fact retrieval
+  from Pinecone, replacement copywriting, then one `image_generation`-tool render call
+  per format x quantity that swaps both the text and the product in a single pass.
+  Requires the selected product to already have an extracted reference image (상품관리)
+  — the UI surfaces a clear message if not, rather than falling back to the raw photo.
+
+Every one of these calls real, metered APIs (OpenAI, Apify, Pinecone) — be
+cost-conscious when testing changes to any of them: verify with dry runs / a single
+real call before looping over multiple items.
 
 ## Architecture
 - One React Context per feature area under `src/context/` (Navigation, Ads, Studio,

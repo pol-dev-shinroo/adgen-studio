@@ -4,6 +4,7 @@ import { config } from './config/index.js'
 import collectRoutes from './routes/collect.routes.js'
 import adsRoutes from './routes/ads.routes.js'
 import productsRoutes from './routes/products.routes.js'
+import generationRoutes from './routes/generation.routes.js'
 
 export function createApp() {
   const app = express()
@@ -15,6 +16,7 @@ export function createApp() {
   app.use('/api/collect', collectRoutes)
   app.use('/api/ads', adsRoutes)
   app.use('/api/products', productsRoutes)
+  app.use('/api/generate', generationRoutes)
 
   app.use((req, res) => res.status(404).json({ error: 'Not found' }))
 

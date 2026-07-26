@@ -15,7 +15,7 @@ function defaultSelectionFor(brand) {
 
 export function StudioProvider({ children }) {
   const { showToast, go } = useNavigation()
-  const { addResult } = useGallery()
+  const { startGeneration } = useGallery()
   const { brands: productBrands } = useProducts()
 
   const [step, setStepRaw] = useState(1)
@@ -100,22 +100,58 @@ export function StudioProvider({ children }) {
       setStepRaw(step + 1)
       return
     }
+
     const activeBrands = myBrands.filter((b) => b.active)
-    activeBrands.forEach((b) => {
-      const sel = selections[b.name]
-      formats.forEach((fmt) => {
-        addResult({
-          title: `${b.name} ${sel?.product ?? ''}`.trim(),
-          gradient: 'g5',
-          status: 'run',
-          progress: 0,
-          desc: `레퍼런스: ${refBrand} · ${fmt} · 생성 시작`,
-        })
-      })
+    if (activeBrands.length === 0) {
+      showToast('생성할 브랜드를 먼저 선택하세요')
+      return
+    }
+    if (formats.length === 0) {
+      showToast('포맷을 1개 이상 선택하세요')
+      return
+    }
+
+    // The backend's generation job is single-brand-per-request (like every
+    // other job in this app — sync/collect/extract are all one-job-at-a-
+    // time too), and the shared useJobPolling slot in GalleryContext can
+    // only track one active job's progress at once. Multi-brand-active is
+    // still a valid selection for Step 3 (it drives per-brand product
+    // config), but generation itself only ever runs for the first active
+    // brand — a real product decision for a later session if simultaneous
+    // multi-brand generation turns out to matter in practice.
+    const b = activeBrands[0]
+    if (activeBrands.length > 1) {
+      showToast(`${activeBrands.length}개 브랜드가 선택됐지만, 생성은 '${b.name}'에 대해서만 실행됩니다`)
+    }
+
+    const sel = selections[b.name]
+    const product = sel ? b.products[sel.product] : null
+    if (!product?.extractedImage) {
+      showToast(`'${b.name}'의 제품 참조 이미지가 없습니다 — 상품관리에서 먼저 추출해주세요`)
+      return
+    }
+
+    const qty = Number(String(quantity).replace(/\D/g, '')) || 1
+
+    startGeneration({
+      refBrand,
+      refAdIds,
+      brand: { key: b.key, productId: product.productId },
+      formats,
+      quantity: qty,
+      styleIntensity,
+      instructions,
     })
+
     showToast('생성 잡이 시작됐습니다 — 결과 갤러리에서 진행 상황을 확인하세요')
-    setTimeout(() => go('gallery'), 900)
-  }, [step, refAdIds, myBrands, formats, selections, refBrand, addResult, showToast, go])
+    // Switch tabs immediately, before the job's first poll even lands —
+    // same convention as prefillFromAd's synchronous go('studio') elsewhere
+    // in this file, rather than the old mock's artificial setTimeout delay.
+    go('gallery')
+  }, [
+    step, refAdIds, myBrands, formats, selections, refBrand, quantity, styleIntensity, instructions,
+    startGeneration, showToast, go,
+  ])
 
   return (
     <StudioContext.Provider

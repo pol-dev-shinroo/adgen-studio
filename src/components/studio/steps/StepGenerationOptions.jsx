@@ -28,7 +28,9 @@ export default function StepGenerationOptions() {
         ))}
       </div>
 
-      <div className="sect">스타일 반영 강도</div>
+      <div className="sect">
+        스타일 반영 강도 <span className="hint">— 약하게: 레퍼런스 원본 구도·배경 최대한 유지 / 강하게: 조명·색감·배경을 더 자유롭게 재해석</span>
+      </div>
       <div className="range" style={{ marginBottom: 16 }}>
         <span style={{ fontSize: 12, color: 'var(--sub)' }}>약하게</span>
         <input
