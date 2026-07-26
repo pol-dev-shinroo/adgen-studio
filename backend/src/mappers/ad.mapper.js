@@ -1,6 +1,8 @@
 // Maps one raw facebook-ads-scraper actor item to the 20-column sheet row.
 // Pure module: no config/env imports, so it stays unit-testable in isolation.
 
+import { pick } from './pickField.js'
+
 export const AD_COLUMNS = [
   'Ad Archive ID',
   'Brand',
@@ -25,17 +27,6 @@ export const AD_COLUMNS = [
   'Ad Library URL',
   'Page ID',
 ]
-
-// The actor has shipped both camelCase and snake_case field names over time,
-// so every lookup tries the known aliases in order.
-function pick(obj, keys) {
-  if (obj == null) return undefined
-  for (const key of keys) {
-    const value = obj[key]
-    if (value !== undefined && value !== null) return value
-  }
-  return undefined
-}
 
 function toDateString(value) {
   if (typeof value === 'number') return new Date(value * 1000).toISOString().slice(0, 10)

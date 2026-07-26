@@ -3,6 +3,8 @@
 // The caller supplies the brand's display name (not the internal brand key)
 // since this module has no access to config.brands.
 
+import { pick } from './pickField.js'
+
 export const PRODUCT_COLUMNS = [
   'Product ID',
   'Brand',
@@ -17,15 +19,6 @@ export const PRODUCT_COLUMNS = [
   'Image URL',
   'Last Synced',
 ]
-
-function pick(obj, keys) {
-  if (obj == null) return undefined
-  for (const key of keys) {
-    const value = obj[key]
-    if (value !== undefined && value !== null) return value
-  }
-  return undefined
-}
 
 const IMAGE_FIELD_PRIORITY = ['detail_image', 'list_image', 'small_image', 'tiny_image']
 const MAX_IMAGES = 20

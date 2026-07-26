@@ -5,10 +5,9 @@ import {
   getProductStatus, resetPineconeNamespace,
 } from '../api/backendClient.js'
 import { adaptProduct } from '../api/adaptProduct.js'
+import { useJobPolling } from '../hooks/useJobPolling.js'
 
 const ProductsContext = createContext(null)
-
-const POLL_INTERVAL_MS = 1200
 
 // The two Cafe24 malls this app syncs. Fixed in code rather than fetched
 // from the backend, same as backend/src/config/index.js's BRAND_DEFS — the
@@ -18,10 +17,6 @@ const BRAND_DEFS = [
   { key: 'healthykiki', name: '헬시키키', color: '#5b5bd6' },
   { key: 'kikibeauty', name: '키키뷰티', color: '#d6a15b' },
 ]
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 // Groups the adapted product list into the per-brand shape the Studio
 // "내 브랜드" step needs: one entry per known brand (even with zero
@@ -62,7 +57,7 @@ function groupByBrand(products) {
 export function ProductsProvider({ children }) {
   const { showToast } = useNavigation()
   const [products, setProducts] = useState([])
-  const [activeJob, setActiveJob] = useState(null) // { brandKey, status, progress, summary, ... } | null
+  const { activeJob, run } = useJobPolling({ pollIntervalMs: 1200 }) // job: { brandKey, status, progress, summary, ... } | null
   const [status, setStatus] = useState({ brands: [], productSyncConfigured: false })
 
   const loadStatus = useCallback(() => {
@@ -92,43 +87,37 @@ export function ProductsProvider({ children }) {
 
   // Runs a real product sync job against the backend: starts it, polls
   // until done/failed, then re-fetches the full product list. Mirrors
-  // AdsContext's collect() job-polling shape.
-  const sync = useCallback(async (brandKey) => {
-    setActiveJob({
-      brandKey,
-      status: 'running',
-      progress: { phase: 'fetching', totalProducts: 0, productsProcessed: 0, recentItems: [] },
-    })
-
-    try {
-      const { jobId } = await startProductSync(brandKey)
-
-      let job
-      do {
-        await sleep(POLL_INTERVAL_MS)
-        job = await getProductSyncStatus(jobId)
-        setActiveJob({ ...job, brandKey })
-      } while (job.status === 'running')
-
-      if (job.status === 'failed') {
+  // AdsContext's collect() job-polling shape (both now share useJobPolling).
+  const sync = useCallback((brandKey) => {
+    run({
+      initialJob: {
+        brandKey,
+        status: 'running',
+        progress: { phase: 'fetching', totalProducts: 0, productsProcessed: 0, recentItems: [] },
+      },
+      start: async () => (await startProductSync(brandKey)).jobId,
+      // brandKey isn't part of the job status response itself, so it's
+      // merged back in on every poll — StepMyBrand/BrandConnectionCard key
+      // off activeJob.brandKey to know which brand's sync is running.
+      getStatus: async (jobId) => ({ ...(await getProductSyncStatus(jobId)), brandKey }),
+      onFailed: (job) => {
         showToast(`동기화 실패: ${job.error || '알 수 없는 오류'}`)
-        return
-      }
-
-      const { products: refreshed } = await getProducts()
-      setProducts(refreshed.map(adaptProduct))
-      await loadStatus()
-      showToast(
-        `동기화 완료: ${job.summary.synced}건 성공` +
-        (job.summary.failed ? ` · 실패 ${job.summary.failed}건` : '')
-      )
-    } catch (err) {
-      console.error('Product sync failed:', err)
-      showToast(`동기화 중 오류가 발생했습니다: ${err.message}`)
-    } finally {
-      setActiveJob(null)
-    }
-  }, [showToast, loadStatus])
+      },
+      onDone: async (job) => {
+        const { products: refreshed } = await getProducts()
+        setProducts(refreshed.map(adaptProduct))
+        await loadStatus()
+        showToast(
+          `동기화 완료: ${job.summary.synced}건 성공` +
+          (job.summary.failed ? ` · 실패 ${job.summary.failed}건` : '')
+        )
+      },
+      onError: (err) => {
+        console.error('Product sync failed:', err)
+        showToast(`동기화 중 오류가 발생했습니다: ${err.message}`)
+      },
+    })
+  }, [showToast, loadStatus, run])
 
   // DESTRUCTIVE — wipes a brand's entire Pinecone namespace. The actual
   // confirmation friction (typing the brand name) lives in the UI; this is

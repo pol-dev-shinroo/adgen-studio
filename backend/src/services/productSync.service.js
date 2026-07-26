@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { config } from '../config/index.js'
 import { fetchAllProducts } from './cafe24.service.js'
 import { analyzeProduct, ANALYSIS_KEYS } from './analyzeProduct.service.js'
@@ -6,9 +5,9 @@ import { embedText } from './embeddings.service.js'
 import * as pineconeService from './pinecone.service.js'
 import { upsertProductRows } from './productSheets.service.js'
 import { mapProduct } from '../mappers/product.mapper.js'
+import { createJobStore } from '../utils/jobStore.js'
 
-// In-memory job store, same lost-on-restart tradeoff as collect.service.js.
-const jobs = new Map()
+const jobStore = createJobStore()
 
 const RECENT_ITEMS_LIMIT = 20
 
@@ -23,41 +22,39 @@ function requireBrand(brandKey) {
 export function startSync(brandKey) {
   const brand = requireBrand(brandKey)
 
-  const job = {
-    id: randomUUID(),
-    status: 'running',
-    brandKey,
-    brandName: brand.name,
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-    error: null,
-    progress: {
-      phase: 'fetching',
-      totalProducts: 0,
-      productsProcessed: 0,
-      recentItems: [],
+  return jobStore.startJob(
+    {
+      status: 'running',
+      brandKey,
+      brandName: brand.name,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      error: null,
+      progress: {
+        phase: 'fetching',
+        totalProducts: 0,
+        productsProcessed: 0,
+        recentItems: [],
+      },
+      summary: {
+        totalProducts: 0,
+        synced: 0,
+        failed: 0,
+        staleDeleted: 0,
+        failures: [],
+      },
     },
-    summary: {
-      totalProducts: 0,
-      synced: 0,
-      failed: 0,
-      staleDeleted: 0,
-      failures: [],
-    },
-  }
-  jobs.set(job.id, job)
-
-  runJob(job).catch((err) => {
-    job.status = 'failed'
-    job.error = err.message
-    job.finishedAt = new Date().toISOString()
-  })
-
-  return job.id
+    runJob,
+    (job, err) => {
+      job.status = 'failed'
+      job.error = err.message
+      job.finishedAt = new Date().toISOString()
+    }
+  )
 }
 
 export function getJob(jobId) {
-  return jobs.get(jobId) ?? null
+  return jobStore.getJob(jobId)
 }
 
 // Same text every 7-field analysis is stored under, so the vector represents

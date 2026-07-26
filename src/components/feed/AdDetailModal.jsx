@@ -1,32 +1,15 @@
-import { useState } from 'react'
 import Modal from '../common/Modal.jsx'
 import ImageLightbox from '../common/ImageLightbox.jsx'
 import RetryImage from '../common/RetryImage.jsx'
+import DetailField from '../common/DetailField.jsx'
 import { useStudio } from '../../context/StudioContext.jsx'
 import { toEmbeddableImageUrl } from '../../api/adaptAd.js'
-
-function formatDateTime(iso) {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso || '—' : d.toLocaleString('ko-KR')
-}
-
-function Field({ label, value, href }) {
-  if (!value) return null
-  return (
-    <div className="dtl-field">
-      <div className="dtl-label">{label}</div>
-      {href ? (
-        <a className="dtl-value link" href={href} target="_blank" rel="noopener noreferrer">{value}</a>
-      ) : (
-        <div className="dtl-value">{value}</div>
-      )}
-    </div>
-  )
-}
+import { formatDateTime } from '../../utils/date.js'
+import { useGalleryLightbox } from '../../hooks/useGalleryLightbox.js'
 
 export default function AdDetailModal({ ad, onClose }) {
   const { prefillFromAd } = useStudio()
-  const [lightboxIndex, setLightboxIndex] = useState(null)
+  const { lightboxIndex, setLightboxIndex, closeModal } = useGalleryLightbox(onClose)
   if (!ad) return null
 
   const raw = ad.raw ?? {}
@@ -37,21 +20,10 @@ export default function AdDetailModal({ ad, onClose }) {
     onClose()
   }
 
-  // If the lightbox is open, the first Escape/backdrop click closes just
-  // that (handled here since both Modals share one document keydown
-  // listener and this outer one fires first); a second closes the detail view.
-  const handleModalClose = () => {
-    if (lightboxIndex !== null) {
-      setLightboxIndex(null)
-    } else {
-      onClose()
-    }
-  }
-
   return (
-    <Modal onClose={handleModalClose}>
+    <Modal onClose={closeModal}>
       <div className="ad-detail">
-        <button className="modal-close" onClick={handleModalClose} aria-label="닫기">✕</button>
+        <button className="modal-close" onClick={closeModal} aria-label="닫기">✕</button>
 
         <div className="dtl-gallery">
           {galleryImages.length > 0 ? (
@@ -82,29 +54,29 @@ export default function AdDetailModal({ ad, onClose }) {
             )}
           </div>
           <div className="dtl-grid">
-            <Field label="Facebook 페이지명" value={ad.pageName} />
-            <Field label="Display Format" value={raw['Display Format']} />
-            <Field label="Platforms" value={raw['Platforms']} />
-            <Field label="Variant Count" value={raw['Variant Count']} />
+            <DetailField label="Facebook 페이지명" value={ad.pageName} />
+            <DetailField label="Display Format" value={raw['Display Format']} />
+            <DetailField label="Platforms" value={raw['Platforms']} />
+            <DetailField label="Variant Count" value={raw['Variant Count']} />
           </div>
         </div>
 
         <div className="dtl-section">
           <div className="dtl-sect-title">광고 카피</div>
-          <Field label="Title" value={raw['Title']} />
-          <Field label="Post Content" value={raw['Post Content']} />
-          <Field label="Bottom Content" value={raw['Bottom Content']} />
-          <Field label="CTA Text" value={raw['CTA Text']} />
-          <Field label="Landing URL" value={raw['Landing URL']} href={raw['Landing URL']} />
+          <DetailField label="Title" value={raw['Title']} />
+          <DetailField label="Post Content" value={raw['Post Content']} />
+          <DetailField label="Bottom Content" value={raw['Bottom Content']} />
+          <DetailField label="CTA Text" value={raw['CTA Text']} />
+          <DetailField label="Landing URL" value={raw['Landing URL']} href={raw['Landing URL']} />
         </div>
 
         <div className="dtl-section">
           <div className="dtl-sect-title">수집 정보</div>
           <div className="dtl-grid">
-            <Field label="Start Date" value={raw['Start Date']} />
-            <Field label="End Date" value={raw['End Date']} />
-            <Field label="Date Scraped" value={formatDateTime(raw['Date Scraped'])} />
-            <Field label="Search Keyword" value={raw['Search Keyword']} />
+            <DetailField label="Start Date" value={raw['Start Date']} />
+            <DetailField label="End Date" value={raw['End Date']} />
+            <DetailField label="Date Scraped" value={formatDateTime(raw['Date Scraped'])} />
+            <DetailField label="Search Keyword" value={raw['Search Keyword']} />
           </div>
         </div>
 

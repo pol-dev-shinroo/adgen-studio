@@ -1,18 +1,12 @@
 import { useState } from 'react'
 import { useProducts } from '../../context/ProductsContext.jsx'
+import { formatDateTime } from '../../utils/date.js'
 import SyncProgress from '../studio/steps/SyncProgress.jsx'
 
 // Same two brands/colors as ProductsContext.jsx's BRAND_DEFS and
 // initialBrands.js — kept local rather than threaded through the backend
 // status payload, since color is purely a frontend display concern.
 const BRAND_COLORS = { healthykiki: '#5b5bd6', kikibeauty: '#d6a15b' }
-
-function formatSyncedAt(iso) {
-  if (!iso) return '없음'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
-}
 
 export default function BrandConnectionCard({ brandStatus }) {
   const { sync, activeJob, resetNamespace } = useProducts()
@@ -55,7 +49,7 @@ export default function BrandConnectionCard({ brandStatus }) {
       </div>
 
       <div className="row">
-        <div className="d">제품 {productCount}개 · 마지막 동기화 {formatSyncedAt(lastSyncedAt)}</div>
+        <div className="d">제품 {productCount}개 · 마지막 동기화 {formatDateTime(lastSyncedAt, { fallback: '없음', dateStyle: 'medium', timeStyle: 'short' })}</div>
         <div className="d">Pinecone 벡터 {pinecone.vectorCount ?? '—'}개</div>
       </div>
 

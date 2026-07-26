@@ -1,8 +1,6 @@
-import { google } from 'googleapis'
 import { config } from '../config/index.js'
-import { getAuthClient } from './google.client.js'
 import { PRODUCT_COLUMNS, toRow } from '../mappers/product.mapper.js'
-import { withRetry, googleIsRetryable } from '../utils/retry.js'
+import { getClient, callSheets, makeTabRange } from './sheetsBase.js'
 
 // Same spreadsheet as the ad-collection sheet (config.sheetId), a separate
 // tab within it — tidier than a second spreadsheet ID/credential surface for
@@ -11,21 +9,7 @@ import { withRetry, googleIsRetryable } from '../utils/retry.js'
 const PRODUCT_TAB_NAME = '제품'
 const LAST_COLUMN = 'L' // 12 columns, A..L
 
-let sheetsClient = null
-function getClient() {
-  if (!sheetsClient) {
-    sheetsClient = google.sheets({ version: 'v4', auth: getAuthClient() })
-  }
-  return sheetsClient
-}
-
-function callSheets(fn) {
-  return withRetry(fn, { isRetryable: googleIsRetryable })
-}
-
-function tabRange(cells) {
-  return `'${PRODUCT_TAB_NAME}'!${cells}`
-}
+const tabRange = makeTabRange(PRODUCT_TAB_NAME)
 
 // Unlike the ad tab (created manually up front), the product tab is new
 // with this feature, so it's created on first use — same lazy-create,

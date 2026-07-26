@@ -1,13 +1,7 @@
 import { useStudio } from '../../../context/StudioContext.jsx'
 import { useProducts } from '../../../context/ProductsContext.jsx'
+import { formatDateTime } from '../../../utils/date.js'
 import SyncProgress from './SyncProgress.jsx'
-
-function formatSyncedAt(iso) {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
-}
 
 export default function StepMyBrand() {
   const { myBrands, toggleMyBrand, selections, setProductName } = useStudio()
@@ -42,7 +36,7 @@ export default function StepMyBrand() {
         const productNames = Object.keys(b.products)
         const product = sel ? b.products[sel.product] : null
         const isSyncing = activeJob?.brandKey === b.key
-        const syncedAtLabel = formatSyncedAt(b.lastSynced)
+        const syncedAtLabel = formatDateTime(b.lastSynced, { fallback: null, dateStyle: 'medium', timeStyle: 'short' })
 
         return (
           <div key={b.name} className="prodcfg">

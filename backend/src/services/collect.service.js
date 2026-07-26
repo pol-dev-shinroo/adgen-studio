@@ -1,65 +1,61 @@
-import { randomUUID } from 'node:crypto'
 import { runFacebookAdsScraper } from './apify.service.js'
 import { upsertAdRows } from './sheets.service.js'
 import { uploadFromUrl } from './drive.service.js'
 import { mapAd } from '../mappers/ad.mapper.js'
 import { mapWithConcurrency } from '../utils/pool.js'
+import { createJobStore } from '../utils/jobStore.js'
 
-// In-memory job store. Jobs are lost on restart, which is fine for the
-// current single-user workflow — revisit if this ever runs multi-instance.
-const jobs = new Map()
+const jobStore = createJobStore()
 
 const MEDIA_CONCURRENCY = 3 // parallel downloads per ad
 const RECENT_ITEMS_LIMIT = 20
 
 export function startCollection(keywords, resultsLimit) {
-  const job = {
-    id: randomUUID(),
-    status: 'running',
-    keywords,
-    resultsLimit,
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-    error: null,
-    errorCode: null,
-    progress: {
-      phase: 'idle',
-      currentKeywordIndex: 0,
-      totalKeywords: keywords.length,
-      currentKeyword: '',
-      totalAdsFound: 0,
-      adsProcessed: 0,
-      recentItems: [],
+  return jobStore.startJob(
+    {
+      status: 'running',
+      keywords,
+      resultsLimit,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      error: null,
+      errorCode: null,
+      progress: {
+        phase: 'idle',
+        currentKeywordIndex: 0,
+        totalKeywords: keywords.length,
+        currentKeyword: '',
+        totalAdsFound: 0,
+        adsProcessed: 0,
+        recentItems: [],
+      },
+      summary: {
+        totalAds: 0,
+        appended: 0,
+        updated: 0,
+        unchanged: 0,
+        mediaUploaded: 0,
+        mediaReused: 0,
+        mediaFailed: 0,
+        perKeyword: [],
+        sampleRows: [],
+        statuses: [],
+      },
     },
-    summary: {
-      totalAds: 0,
-      appended: 0,
-      updated: 0,
-      unchanged: 0,
-      mediaUploaded: 0,
-      mediaReused: 0,
-      mediaFailed: 0,
-      perKeyword: [],
-      sampleRows: [],
-      statuses: [],
-    },
-  }
-  jobs.set(job.id, job)
-
-  runJob(job).catch((err) => {
-    job.status = 'failed'
-    job.error = err.code === 'RATE_LIMITED'
-      ? 'API 요청 한도를 초과했습니다 — 잠시 후 다시 시도해주세요'
-      : err.message
-    job.errorCode = err.code ?? null
-    job.finishedAt = new Date().toISOString()
-  })
-
-  return job.id
+    runJob,
+    (job, err) => {
+      job.status = 'failed'
+      job.error = err.code === 'RATE_LIMITED'
+        ? 'API 요청 한도를 초과했습니다 — 잠시 후 다시 시도해주세요'
+        : err.message
+      job.errorCode = err.code ?? null
+      job.finishedAt = new Date().toISOString()
+    }
+  )
 }
 
 export function getJob(jobId) {
-  return jobs.get(jobId) ?? null
+  return jobStore.getJob(jobId)
 }
 
 // Downloads one media URL into Drive; a failure logs and returns null so a

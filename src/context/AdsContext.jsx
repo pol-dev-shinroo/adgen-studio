@@ -3,14 +3,9 @@ import { initialAds } from '../data/initialAds.js'
 import { useNavigation } from './NavigationContext.jsx'
 import { getAds, startCollect, getJobStatus, updateAdField, discardAds as discardAdsApi } from '../api/backendClient.js'
 import { adaptAd } from '../api/adaptAd.js'
+import { useJobPolling } from '../hooks/useJobPolling.js'
 
 const AdsContext = createContext(null)
-
-const POLL_INTERVAL_MS = 900 // dropped from 1500ms so the live progress UI feels responsive
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 export function AdsProvider({ children }) {
   const { showToast } = useNavigation()
@@ -21,7 +16,8 @@ export function AdsProvider({ children }) {
   const [collected, setCollected] = useState([]) // new/updated only — unchanged ads aren't shown as review cards
   const [collectedUnchangedCount, setCollectedUnchangedCount] = useState(0)
   const [lastQuery, setLastQuery] = useState('')
-  const [activeJob, setActiveJob] = useState(null)
+  // Dropped from 1500ms so the live progress UI feels responsive.
+  const { activeJob, run } = useJobPolling({ pollIntervalMs: 900 })
 
   // Load the real archive from the backend on mount. If the backend is
   // unreachable, fall back to the mock fixture so the screen still renders.
@@ -47,7 +43,7 @@ export function AdsProvider({ children }) {
   // against what was already in the sheet — see sheets.service.js), so the
   // frontend just looks that up rather than re-guessing from what it
   // happened to have cached locally beforehand.
-  const collect = useCallback(async (query, resultsLimit) => {
+  const collect = useCallback((query, resultsLimit) => {
     const q = query.trim()
     if (!q) {
       showToast('브랜드명 또는 AD ID를 입력하세요')
@@ -55,76 +51,69 @@ export function AdsProvider({ children }) {
     }
 
     setLastQuery(q)
-    // Set before even awaiting startCollect's network response so the tab
-    // switch to "실시간 수집 결과" happens in the same render as the click,
-    // not after the first poll comes back.
-    setActiveJob({
-      status: 'running',
-      progress: {
-        phase: 'scraping',
-        currentKeywordIndex: 0,
-        totalKeywords: 1,
-        currentKeyword: q,
-        totalAdsFound: 0,
-        adsProcessed: 0,
-        recentItems: [],
-      },
-    })
     showToast(`"${q}" 실시간 수집 중... (이미지·동영상 다운로드)`)
 
-    try {
-      const { jobId } = await startCollect([q], { resultsLimit })
-
-      let job
-      do {
-        await sleep(POLL_INTERVAL_MS)
-        job = await getJobStatus(jobId)
-        setActiveJob(job)
-      } while (job.status === 'running')
-
-      if (job.status === 'failed') {
+    // Not awaited — fire-and-forget, same as before this was extracted into
+    // useJobPolling. The initial job shape is set synchronously inside
+    // run(), before startCollect's network response even comes back, so the
+    // tab switch to "실시간 수집 결과" happens in the same render as the click.
+    run({
+      initialJob: {
+        status: 'running',
+        progress: {
+          phase: 'scraping',
+          currentKeywordIndex: 0,
+          totalKeywords: 1,
+          currentKeyword: q,
+          totalAdsFound: 0,
+          adsProcessed: 0,
+          recentItems: [],
+        },
+      },
+      start: async () => (await startCollect([q], { resultsLimit })).jobId,
+      getStatus: getJobStatus,
+      onFailed: (job) => {
         if (job.errorCode === 'RATE_LIMITED') {
           showToast('API 요청 한도를 초과했습니다 — 잠시 후 다시 시도해주세요')
         } else {
           showToast(`수집 실패: ${job.error || '알 수 없는 오류'}`)
         }
-        return
-      }
+      },
+      onDone: async (job) => {
+        const refreshed = (await getAds()).map(adaptAd)
+        setAds(refreshed)
 
-      const refreshed = (await getAds()).map(adaptAd)
-      setAds(refreshed)
+        const statusById = new Map((job.summary.statuses ?? []).map((s) => [String(s.adArchiveId), s]))
+        const withStatus = refreshed
+          .filter((a) => a.searchKeyword === q)
+          .map((a) => {
+            const s = statusById.get(String(a.id))
+            return {
+              ...a,
+              status: s?.status ?? 'unchanged',
+              changedFields: s?.changedFields ?? [],
+              previousValues: s?.previousValues ?? null,
+            }
+          })
 
-      const statusById = new Map((job.summary.statuses ?? []).map((s) => [String(s.adArchiveId), s]))
-      const withStatus = refreshed
-        .filter((a) => a.searchKeyword === q)
-        .map((a) => {
-          const s = statusById.get(String(a.id))
-          return {
-            ...a,
-            status: s?.status ?? 'unchanged',
-            changedFields: s?.changedFields ?? [],
-            previousValues: s?.previousValues ?? null,
-          }
-        })
+        const newCount = withStatus.filter((a) => a.status === 'new').length
+        const updatedCount = withStatus.filter((a) => a.status === 'updated').length
+        const unchangedCount = withStatus.filter((a) => a.status === 'unchanged').length
 
-      const newCount = withStatus.filter((a) => a.status === 'new').length
-      const updatedCount = withStatus.filter((a) => a.status === 'updated').length
-      const unchangedCount = withStatus.filter((a) => a.status === 'unchanged').length
+        // Only new/updated ads are worth reviewing as cards; unchanged ones
+        // would just be noise. The count still needs to be shown somewhere,
+        // though, so it's kept separately rather than derived from `collected`.
+        setCollected(withStatus.filter((a) => a.status !== 'unchanged'))
+        setCollectedUnchangedCount(unchangedCount)
 
-      // Only new/updated ads are worth reviewing as cards; unchanged ones
-      // would just be noise. The count still needs to be shown somewhere,
-      // though, so it's kept separately rather than derived from `collected`.
-      setCollected(withStatus.filter((a) => a.status !== 'unchanged'))
-      setCollectedUnchangedCount(unchangedCount)
-
-      showToast(`수집 완료: 신규 ${newCount}건 · 업데이트 ${updatedCount}건 · 변경없음 ${unchangedCount}건`)
-    } catch (err) {
-      console.error('Collection failed:', err)
-      showToast(`수집 중 오류가 발생했습니다: ${err.message}`)
-    } finally {
-      setActiveJob(null)
-    }
-  }, [showToast])
+        showToast(`수집 완료: 신규 ${newCount}건 · 업데이트 ${updatedCount}건 · 변경없음 ${unchangedCount}건`)
+      },
+      onError: (err) => {
+        console.error('Collection failed:', err)
+        showToast(`수집 중 오류가 발생했습니다: ${err.message}`)
+      },
+    })
+  }, [showToast, run])
 
   // Renaming the card's brand label actually edits the "Search Keyword"
   // sheet column (that's what the label is sourced from — see adaptAd.js).

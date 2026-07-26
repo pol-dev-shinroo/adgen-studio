@@ -1,30 +1,10 @@
-import { google } from 'googleapis'
 import { config } from '../config/index.js'
-import { getAuthClient } from './google.client.js'
 import { AD_COLUMNS, toRow } from '../mappers/ad.mapper.js'
-import { withRetry, googleIsRetryable } from '../utils/retry.js'
-
-let sheetsClient = null
-
-function getClient() {
-  if (!sheetsClient) {
-    sheetsClient = google.sheets({ version: 'v4', auth: getAuthClient() })
-  }
-  return sheetsClient
-}
-
-// Every Sheets API call in this file goes through this so rate-limit/quota
-// errors (429, or 403 with a rateLimitExceeded reason) get retried with
-// backoff instead of failing the whole collection job outright.
-function callSheets(fn) {
-  return withRetry(fn, { isRetryable: googleIsRetryable })
-}
+import { getClient, callSheets, makeTabRange } from './sheetsBase.js'
 
 const LAST_COLUMN = 'V' // 22 columns, A..V
 
-function tabRange(cells) {
-  return `'${config.sheetTabName}'!${cells}`
-}
+const tabRange = makeTabRange(config.sheetTabName)
 
 // The tab's internal numeric sheetId (gid) — needed for deleteDimension
 // requests, which address sheets by gid, not by name. Fetched once and
