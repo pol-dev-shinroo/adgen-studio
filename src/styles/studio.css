@@ -37,8 +37,8 @@
 .prodcfg .bt .dot{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .field label{font-size:12px;font-weight:700;color:var(--sub);display:block;margin-bottom:5px}
+.field label .badge{margin-left:5px}
 .field select,.field input,.field textarea{width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px;font-family:inherit;background:#fff}
-.readonly-value{width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13px;background:var(--bg);color:var(--ink);min-height:18px;box-sizing:border-box}
 .auto{font-size:11px;color:var(--green);font-weight:700;margin-left:5px}
 .multi{font-size:11px;color:var(--amber);font-weight:700;margin-left:5px}
 .sync-btn{all:unset;cursor:pointer;margin-left:auto;font-size:11.5px;font-weight:700;color:#fff;background:var(--brand);padding:6px 12px;border-radius:99px}

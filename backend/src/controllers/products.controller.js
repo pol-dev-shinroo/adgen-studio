@@ -1,6 +1,6 @@
 import { config } from '../config/index.js'
 import { startSync, getJob } from '../services/productSync.service.js'
-import { getAllProducts } from '../services/productSheets.service.js'
+import { getAllProducts, updateProductFields } from '../services/productSheets.service.js'
 import { isAuthorized } from '../services/cafe24.client.js'
 import { getNamespaceStats, resetNamespace } from '../services/pinecone.service.js'
 import { extractProductImage } from '../services/productImageExtraction.service.js'
@@ -8,6 +8,11 @@ import { extractProductImage } from '../services/productImageExtraction.service.
 function findBrand(brandKey) {
   return config.brands.find((b) => b.key === brandKey)
 }
+
+// The only columns a user is allowed to write directly — see product
+// .mapper.js's OVERRIDE_COLUMNS for why these exist as separate columns
+// rather than editing Price/Promotion Info/Ad Hook Copy in place.
+const EDITABLE_OVERRIDE_FIELDS = new Set(['Price Override', 'Promotion Info Override', 'Ad Hook Copy Override'])
 
 export function postProductSync(req, res) {
   if (!config.productSyncConfigured) {
@@ -116,6 +121,51 @@ export async function postExtractProductImage(req, res, next) {
   try {
     const result = await extractProductImage(brand, productId)
     res.json(result)
+  } catch (err) {
+    if (err.notFound) return res.status(404).json({ error: err.message })
+    next(err)
+  }
+}
+
+// Saves user-entered overrides for Price/Promotion Info/Ad Hook Copy —
+// never touches the synced columns themselves. Body: only the fields the
+// user actually changed, e.g. {"Price Override": "45000"}.
+export async function patchProductFields(req, res, next) {
+  if (!config.productSyncConfigured) {
+    return res.status(503).json({ error: 'Product sync is not configured on this server.' })
+  }
+
+  const { brand, productId } = req.params
+  const brandDef = findBrand(brand)
+  if (!brandDef) {
+    return res.status(404).json({ error: `Unknown brand "${brand}"` })
+  }
+
+  const fields = req.body ?? {}
+  const entries = Object.entries(fields)
+  if (entries.length === 0) {
+    return res.status(400).json({ error: 'Provide at least one field to update' })
+  }
+  for (const [key, value] of entries) {
+    if (!EDITABLE_OVERRIDE_FIELDS.has(key)) {
+      return res.status(400).json({
+        error: `Field "${key}" is not editable — must be one of: ${[...EDITABLE_OVERRIDE_FIELDS].join(', ')}`,
+      })
+    }
+    if (typeof value !== 'string') {
+      return res.status(400).json({ error: `Field "${key}" must be a string` })
+    }
+  }
+
+  try {
+    const products = await getAllProducts()
+    const product = products.find((p) => p['Brand'] === brandDef.name && p['Product ID'] === String(productId))
+    if (!product) {
+      return res.status(404).json({ error: `No product "${productId}" found for brand "${brand}"` })
+    }
+
+    await updateProductFields(productId, fields)
+    res.json({ ok: true })
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })
     next(err)

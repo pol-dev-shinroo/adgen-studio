@@ -7,8 +7,8 @@ import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.
 // what's still just "one client's data", and this app already has a
 // tab-name-vs-spreadsheet-ID split (SHEET_TAB_NAME) for the ad tab.
 const PRODUCT_TAB_NAME = '제품'
-const LAST_COLUMN = 'N' // 14 columns (12 sync + 2 extraction), A..N
-const SYNC_LAST_COLUMN = columnLetter(SYNC_COLUMNS.length - 1) // 'L' — resync writes never touch the extraction columns past this
+const LAST_COLUMN = 'Q' // 17 columns (12 sync + 2 extraction + 3 override), A..Q
+const SYNC_LAST_COLUMN = columnLetter(SYNC_COLUMNS.length - 1) // 'L' — resync writes never touch the extraction/override columns past this
 
 const tabRange = makeTabRange(PRODUCT_TAB_NAME)
 
@@ -161,6 +161,46 @@ export async function updateProductField(productId, columnName, value) {
     range,
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
+  }))
+}
+
+// Same row-lookup as updateProductField, but for multiple columns in one
+// Sheets API call (values.batchUpdate) instead of one round-trip per field
+// — used to save all three *_Override fields at once. fieldsObj:
+// { [columnName]: value }; columns aren't assumed contiguous.
+export async function updateProductFields(productId, fieldsObj) {
+  await ensureProductTab()
+  const sheets = getClient()
+
+  const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheetId,
+    range: tabRange('A:A'),
+  }))
+  const columnA = idColumn.data.values || []
+  const rowNumber = columnA.findIndex((cells) => String(cells?.[0] ?? '').trim() === String(productId).trim())
+  if (rowNumber < 1) {
+    const err = new Error(`No row found for Product ID "${productId}"`)
+    err.notFound = true
+    throw err
+  }
+
+  const data = Object.entries(fieldsObj).map(([columnName, value]) => {
+    const columnIndex = PRODUCT_COLUMNS.indexOf(columnName)
+    if (columnIndex === -1) {
+      throw new Error(`Unknown column "${columnName}"`)
+    }
+    const letter = columnLetter(columnIndex)
+    return {
+      range: tabRange(`${letter}${rowNumber + 1}:${letter}${rowNumber + 1}`),
+      values: [[value]],
+    }
+  })
+
+  if (data.length === 0) return
+
+  await callSheets(() => sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: config.sheetId,
+    requestBody: { valueInputOption: 'RAW', data },
   }))
 }
 

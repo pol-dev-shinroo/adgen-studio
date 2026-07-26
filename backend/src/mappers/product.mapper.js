@@ -32,7 +32,17 @@ export const SYNC_COLUMNS = [
 // every time a product's sheet row is refreshed.
 export const EXTRACTION_COLUMNS = ['Extracted Image URL', 'Extracted At']
 
-export const PRODUCT_COLUMNS = [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS]
+// Same reasoning as EXTRACTION_COLUMNS, for the same reason: Price/
+// Promotion Info/Ad Hook Copy are all in SYNC_COLUMNS, so the resync job
+// rewrites them every time. A user's manual correction written directly
+// into one of those cells would get silently wiped on the next resync.
+// These three "*_Override" columns give the user their own space the sync
+// job never touches; adaptProduct.js is what actually decides whether to
+// show the override or fall back to the synced value — this mapper stays
+// unaware of that precedence, same as it's unaware of anything display-side.
+export const OVERRIDE_COLUMNS = ['Price Override', 'Promotion Info Override', 'Ad Hook Copy Override']
+
+export const PRODUCT_COLUMNS = [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS, ...OVERRIDE_COLUMNS]
 
 const IMAGE_FIELD_PRIORITY = ['detail_image', 'list_image', 'small_image', 'tiny_image']
 const MAX_IMAGES = 20

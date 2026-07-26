@@ -3,6 +3,7 @@ import { useNavigation } from './NavigationContext.jsx'
 import {
   getProducts, startProductSync, getProductSyncStatus,
   getProductStatus, resetPineconeNamespace, extractProductImage,
+  updateProductFields as updateProductFieldsApi,
 } from '../api/backendClient.js'
 import { adaptProduct } from '../api/adaptProduct.js'
 import { useJobPolling } from '../hooks/useJobPolling.js'
@@ -34,8 +35,16 @@ function groupByBrand(products) {
       productsByName[p.name] = {
         productId: p.id,
         price: p.priceFormatted,
+        // Raw (unformatted) values, for Step 3's editable fields — *Raw is
+        // the plain synced value, *OverrideRaw is blank unless the user has
+        // saved an override (see adaptProduct.js for the effective-value
+        // precedence this mirrors).
+        priceRaw: p.raw['Price'] || '',
+        priceOverrideRaw: p.priceOverrideRaw,
         promotionInfo: p.promotionInfo,
+        promotionInfoOverrideRaw: p.promotionInfoOverrideRaw,
         adHookCopy: p.adHookCopy,
+        adHookCopyOverrideRaw: p.adHookCopyOverrideRaw,
         imageUrl: p.primaryImage,
         extractedImage: p.extractedImage,
         extractedAt: p.extractedAt,
@@ -163,11 +172,32 @@ export function ProductsProvider({ children }) {
     }
   }, [showToast])
 
+  // Not optimistic beforehand (like extractImage, this updates local state
+  // only after the backend confirms the write) — re-runs adaptProduct on
+  // the merged raw row rather than hand-rolling the override-precedence
+  // logic a second time here.
+  const updateProductFields = useCallback(async (brandKey, productId, fields) => {
+    try {
+      await updateProductFieldsApi(brandKey, productId, fields)
+      setProducts((prev) => prev.map((p) => (
+        p.id === productId ? adaptProduct({ ...p.raw, ...fields }) : p
+      )))
+      showToast('제품 정보가 저장됐습니다')
+    } catch (err) {
+      console.error('Product field update failed:', err)
+      showToast(`저장 실패: ${err.message}`)
+      throw err
+    }
+  }, [showToast])
+
   const brands = groupByBrand(products)
 
   return (
     <ProductsContext.Provider
-      value={{ products, brands, sync, activeJob, status, resetNamespace, extractImage, extractingIds }}
+      value={{
+        products, brands, sync, activeJob, status, resetNamespace,
+        extractImage, extractingIds, updateProductFields,
+      }}
     >
       {children}
     </ProductsContext.Provider>

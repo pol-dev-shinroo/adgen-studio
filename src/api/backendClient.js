@@ -84,6 +84,16 @@ export function extractProductImage(brand, productId) {
   })
 }
 
+// fields: only whichever *_Override columns actually changed, e.g.
+// { "Price Override": "45000" }.
+export function updateProductFields(brand, productId, fields) {
+  return request(`/api/products/${encodeURIComponent(brand)}/${encodeURIComponent(productId)}/fields`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  })
+}
+
 // Starts a real ad-generation job — the most expensive request in the app
 // (chains vision/research/copywriting calls plus one image-generation-tool
 // render per format x quantity combination). input: { refBrand, refAdIds,

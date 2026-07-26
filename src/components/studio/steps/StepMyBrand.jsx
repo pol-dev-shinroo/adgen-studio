@@ -4,6 +4,7 @@ import { formatDateTime } from '../../../utils/date.js'
 import Thumb from '../../common/Thumb.jsx'
 import Badge from '../../common/Badge.jsx'
 import SyncProgress from './SyncProgress.jsx'
+import StepProductFields from './StepProductFields.jsx'
 
 // Falls back to a native <select> once a brand has enough products that a
 // card grid would be more scrolling than picking — the picker itself is
@@ -13,7 +14,7 @@ const CARD_PICKER_MAX = 8
 
 export default function StepMyBrand() {
   const { myBrands, toggleMyBrand, selections, setProductName } = useStudio()
-  const { sync, activeJob } = useProducts()
+  const { sync, activeJob, extractImage, extractingIds } = useProducts()
   const activeBrands = myBrands.filter((b) => b.active)
 
   return (
@@ -34,7 +35,7 @@ export default function StepMyBrand() {
 
       <div className="sect" style={{ marginTop: 20 }}>
         제품 정보 지정 <span className="auto">● 자사몰 API</span>{' '}
-        <span className="hint">— 가격·프로모션·광고 카피는 동기화된 데이터를 그대로 사용합니다</span>
+        <span className="hint">— 가격·프로모션·광고 카피는 동기화된 데이터가 기본값이며, 필요 시 직접 수정할 수 있습니다</span>
       </div>
 
       {activeBrands.length === 0 && <p className="sub">브랜드를 먼저 선택하세요.</p>}
@@ -123,32 +124,34 @@ export default function StepMyBrand() {
                       <div className="prod-card-body">
                         <div className="prod-card-name">우리 제품 참조 이미지</div>
                         {product.extractedImage ? (
-                          <div className="prod-card-price">추출일: {formatDateTime(product.extractedAt)}</div>
+                          <div className="ref-meta">
+                            <span className="sub">추출일: {formatDateTime(product.extractedAt)}</span>
+                            <button
+                              className="btn ghost sm"
+                              disabled={extractingIds.has(product.productId)}
+                              onClick={() => extractImage(b.key, product.productId)}
+                            >
+                              {extractingIds.has(product.productId) ? '추출 중...' : '다시 추출'}
+                            </button>
+                          </div>
                         ) : (
-                          <p className="sub" style={{ margin: 0 }}>상품관리에서 제품 참조 이미지를 추출하세요</p>
+                          <div className="ref-empty">
+                            <p className="sub" style={{ margin: 0 }}>아직 추출된 참조 이미지가 없습니다.</p>
+                            <button
+                              className="btn pri sm"
+                              disabled={extractingIds.has(product.productId)}
+                              onClick={() => extractImage(b.key, product.productId)}
+                            >
+                              {extractingIds.has(product.productId) ? '추출 중...' : '참조 이미지 추출'}
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
                   </div>
                 )}
 
-                <div className="info-grid">
-                  <div className="field">
-                    <label>가격 <span className="auto">● 자사몰 API</span></label>
-                    {/* Already formatKRW-formatted ("49,800원") — ProductsContext's
-                        groupByBrand sources this from adaptProduct's priceFormatted,
-                        not the raw Cafe24 price string. */}
-                    <div className="readonly-value">{product?.price || '-'}</div>
-                  </div>
-                  <div className="field">
-                    <label>프로모션 <span className="auto">● 자사몰 API</span></label>
-                    <div className="readonly-value">{product?.promotionInfo || '없음'}</div>
-                  </div>
-                  <div className="field">
-                    <label>광고 후킹 카피 <span className="auto">● 자사몰 API</span></label>
-                    <div className="readonly-value">{product?.adHookCopy || '없음'}</div>
-                  </div>
-                </div>
+                {product && <StepProductFields brandKey={b.key} product={product} />}
               </>
             )}
           </div>
