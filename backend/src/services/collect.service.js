@@ -103,7 +103,19 @@ async function runJob(job) {
 
     const items = await runFacebookAdsScraper(keyword, { resultsLimit })
     const scrapedAt = new Date().toISOString()
-    const mapped = items.map((item) => mapAd(item, { keyword, scrapedAt }))
+    const mappedAll = items.map((item) => mapAd(item, { keyword, scrapedAt }))
+
+    // A malformed/incomplete Apify result occasionally comes back with no
+    // Ad Archive ID at all. Such an item can never be discarded through the
+    // UI afterward — the discard flow (and upsert's own dedupe) matches
+    // rows by that column, and a genuinely empty ID can never match — so
+    // it's dropped here rather than ever reaching the sheet as a stuck,
+    // unremovable row.
+    const mapped = mappedAll.filter((ad) => ad['Ad Archive ID'])
+    const skippedCount = mappedAll.length - mapped.length
+    if (skippedCount > 0) {
+      console.warn(`skipped ${skippedCount} scraped item(s) with no Ad Archive ID for keyword "${keyword}"`)
+    }
 
     progress.totalAdsFound = items.length
     progress.phase = 'archiving'

@@ -3,9 +3,13 @@ import Modal from './Modal.jsx'
 import RetryImage from './RetryImage.jsx'
 import { toEmbeddableImageUrl } from '../../api/adaptAd.js'
 
-// images: array of the ORIGINAL Drive webViewLinks (not the embeddable
-// thumbnail URLs) — this component builds both the larger preview src and
-// the "open original" link from them, so callers only need to pass one array.
+// images: array of ORIGINAL image URLs (not embeddable thumbnail URLs) —
+// this component builds both the larger preview src and the "open
+// original" link from them, so callers only need to pass one array.
+// toEmbeddableImageUrl is Drive-specific (converts a Drive webViewLink to
+// Drive's thumbnail endpoint) but no-ops for anything else, so this also
+// works as-is for ProductDetailModal.jsx's plain Cafe24 CDN URLs — they
+// pass straight through unchanged.
 export default function ImageLightbox({ images, index, onIndexChange, onClose }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -29,7 +33,7 @@ export default function ImageLightbox({ images, index, onIndexChange, onClose })
           fallback={<div className="lightbox-fallback">이미지를 불러올 수 없습니다</div>}
         />
         <a className="lightbox-original-link" href={originalLink} target="_blank" rel="noopener noreferrer">
-          원본 파일 열기 (Drive) ↗
+          원본 이미지 열기 ↗
         </a>
         {images.length > 1 && (
           <div className="lightbox-nav">
