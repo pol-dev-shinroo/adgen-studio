@@ -3,6 +3,7 @@ import { useProducts } from '../../../context/ProductsContext.jsx'
 import { formatDateTime } from '../../../utils/date.js'
 import Thumb from '../../common/Thumb.jsx'
 import Badge from '../../common/Badge.jsx'
+import Spinner from '../../common/Spinner.jsx'
 import SyncProgress from './SyncProgress.jsx'
 import StepProductFields from './StepProductFields.jsx'
 
@@ -58,7 +59,7 @@ export default function StepMyBrand() {
                 onClick={() => sync(b.key)}
                 disabled={!!activeJob}
               >
-                {isSyncing ? '동기화 중...' : '제품 동기화'}
+                {isSyncing && <Spinner size="sm" />} {isSyncing ? '동기화 중...' : '제품 동기화'}
               </button>
               {!isSyncing && syncedAtLabel && <span className="sync-meta">마지막 동기화: {syncedAtLabel}</span>}
             </div>
@@ -153,6 +154,7 @@ export default function StepMyBrand() {
                                   disabled={extractingIds.has(product.productId)}
                                   onClick={() => extractImage(b.key, product.productId)}
                                 >
+                                  {extractingIds.has(product.productId) && <Spinner size="sm" />}{' '}
                                   {extractingIds.has(product.productId) ? '추출 중...' : '다시 추출'}
                                 </button>
                               </div>
@@ -164,6 +166,7 @@ export default function StepMyBrand() {
                                   disabled={extractingIds.has(product.productId)}
                                   onClick={() => extractImage(b.key, product.productId)}
                                 >
+                                  {extractingIds.has(product.productId) && <Spinner size="sm" />}{' '}
                                   {extractingIds.has(product.productId) ? '추출 중...' : '참조 이미지 추출'}
                                 </button>
                               </div>

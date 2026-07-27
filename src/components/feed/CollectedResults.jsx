@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAds } from '../../context/AdsContext.jsx'
 import { useNavigation } from '../../context/NavigationContext.jsx'
+import Spinner from '../common/Spinner.jsx'
 import AdCard from './AdCard.jsx'
 
 // Friendly Korean labels for the AD_COLUMNS names most likely to show up in
@@ -47,6 +48,7 @@ export default function CollectedResults({ onOpenDetail }) {
   const { showToast } = useNavigation()
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
+  const [isSaving, setIsSaving] = useState(false)
 
   if (!collected.length && collectedUnchangedCount === 0) {
     return (
@@ -94,8 +96,13 @@ export default function CollectedResults({ onOpenDetail }) {
       exitSelectMode()
       return
     }
-    await discardAds(uncheckedAds)
-    exitSelectMode()
+    setIsSaving(true)
+    try {
+      await discardAds(uncheckedAds)
+      exitSelectMode()
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -124,13 +131,14 @@ export default function CollectedResults({ onOpenDetail }) {
                     type="checkbox"
                     checked={selectedIds.size === collected.length}
                     onChange={toggleSelectAll}
+                    disabled={isSaving}
                   />
                   전체 선택
                 </label>
                 <div className="select-actions">
-                  <button className="btn ghost sm" onClick={exitSelectMode}>취소</button>
-                  <button className="btn pri sm" onClick={handleKeep}>
-                    {selectedIds.size}개 선택됨 · 보관하기
+                  <button className="btn ghost sm" onClick={exitSelectMode} disabled={isSaving}>취소</button>
+                  <button className="btn pri sm" onClick={handleKeep} disabled={isSaving}>
+                    {isSaving && <Spinner size="sm" />} {isSaving ? '저장 중...' : `${selectedIds.size}개 선택됨 · 보관하기`}
                   </button>
                 </div>
               </>
@@ -141,7 +149,7 @@ export default function CollectedResults({ onOpenDetail }) {
             )}
           </div>
 
-          <div className="grid">
+          <div className="grid" style={isSaving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
             {collected.map((ad, i) => (
               <AdCard
                 key={`${ad.id}-${i}`}

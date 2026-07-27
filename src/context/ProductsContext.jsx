@@ -73,6 +73,9 @@ export function ProductsProvider({ children }) {
   // Product IDs currently mid-extraction — a Set rather than one boolean
   // since 상품관리 and Step 3 could both show the same product's button.
   const [extractingIds, setExtractingIds] = useState(() => new Set())
+  // Scoped strictly to the mount-time fetch below, not later re-fetches
+  // after a sync job finishes — those are already covered by SyncProgress.
+  const [productsLoading, setProductsLoading] = useState(true)
 
   const loadStatus = useCallback(() => {
     return getProductStatus()
@@ -91,6 +94,9 @@ export function ProductsProvider({ children }) {
       .catch((err) => {
         if (cancelled) return
         console.error('Failed to load products from backend:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setProductsLoading(false)
       })
     return () => { cancelled = true }
   }, [])
@@ -196,7 +202,7 @@ export function ProductsProvider({ children }) {
     <ProductsContext.Provider
       value={{
         products, brands, sync, activeJob, status, resetNamespace,
-        extractImage, extractingIds, updateProductFields,
+        extractImage, extractingIds, updateProductFields, productsLoading,
       }}
     >
       {children}

@@ -3,10 +3,11 @@ import '../../styles/gallery.css'
 import GalleryFilters from './GalleryFilters.jsx'
 import ResultCard from './ResultCard.jsx'
 import GenerationProgress from './GenerationProgress.jsx'
+import PageLoader from '../common/PageLoader.jsx'
 import { useGallery } from '../../context/GalleryContext.jsx'
 
 export default function GalleryScreen() {
-  const { results, activeJob, lastSummary, retryResult } = useGallery()
+  const { results, activeJob, lastSummary, retryResult, resultsLoading } = useGallery()
   const [filter, setFilter] = useState('전체')
 
   const brands = [...new Set(results.map((r) => r.brand).filter(Boolean))]
@@ -49,7 +50,9 @@ export default function GalleryScreen() {
 
       <GalleryFilters filter={filter} setFilter={setFilter} brands={brands} />
 
-      {results.length === 0 ? (
+      {resultsLoading && results.length === 0 ? (
+        <PageLoader />
+      ) : results.length === 0 ? (
         <p className="sub">아직 생성된 결과가 없습니다 — 생성 스튜디오에서 광고를 생성해보세요.</p>
       ) : (
         <div className="grid">

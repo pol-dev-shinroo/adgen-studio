@@ -4,6 +4,8 @@ import { useProducts } from '../../context/ProductsContext.jsx'
 import { formatDateTime } from '../../utils/date.js'
 import Thumb from '../common/Thumb.jsx'
 import Badge from '../common/Badge.jsx'
+import PageLoader from '../common/PageLoader.jsx'
+import Spinner from '../common/Spinner.jsx'
 
 // One place to see every product's extraction status across every brand, so
 // nobody re-triggers a gpt-5.5 extraction that's already done just because
@@ -13,7 +15,8 @@ import Badge from '../common/Badge.jsx'
 // 원본/추출 .prod-refs card pair StepMyBrand.jsx renders for its currently
 // selected product, just looped over every product instead of one.
 export default function ReferenceImagesScreen() {
-  const { brands, extractImage, extractingIds } = useProducts()
+  const { brands, extractImage, extractingIds, productsLoading } = useProducts()
+  const totalProducts = brands.reduce((sum, b) => sum + Object.keys(b.products).length, 0)
 
   return (
     <section>
@@ -24,7 +27,7 @@ export default function ReferenceImagesScreen() {
         </div>
       </div>
 
-      {brands.map((b) => {
+      {productsLoading && totalProducts === 0 ? <PageLoader /> : brands.map((b) => {
         const productNames = Object.keys(b.products)
         return (
           <div key={b.key} className="card set-sect">
@@ -64,7 +67,7 @@ export default function ReferenceImagesScreen() {
                                   disabled={isExtracting}
                                   onClick={() => extractImage(b.key, p.productId)}
                                 >
-                                  {isExtracting ? '추출 중...' : '다시 추출'}
+                                  {isExtracting && <Spinner size="sm" />} {isExtracting ? '추출 중...' : '다시 추출'}
                                 </button>
                               </div>
                             ) : (
@@ -75,7 +78,7 @@ export default function ReferenceImagesScreen() {
                                   disabled={isExtracting}
                                   onClick={() => extractImage(b.key, p.productId)}
                                 >
-                                  {isExtracting ? '추출 중...' : '참조 이미지 추출'}
+                                  {isExtracting && <Spinner size="sm" />} {isExtracting ? '추출 중...' : '참조 이미지 추출'}
                                 </button>
                               </div>
                             )}

@@ -54,6 +54,12 @@ h1{font-size:20px;font-weight:800;letter-spacing:-.3px}
 .modal-overlay{position:fixed;inset:0;background:rgba(20,22,40,.55);display:flex;align-items:center;justify-content:center;z-index:100;padding:24px}
 .modal-dialog{background:var(--card);border-radius:var(--r);box-shadow:0 12px 48px rgba(20,22,40,.3);max-width:640px;width:100%;max-height:88vh;overflow-y:auto;position:relative}
 
+/* Spinner/PageLoader — cross-cutting loading UI, same file .badge/.chip/
+   .btn already live in rather than a per-screen stylesheet. */
+.spinner{display:inline-block;border-radius:50%;border:2px solid var(--line);border-top-color:var(--brand);animation:spin .7s linear infinite;flex-shrink:0;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.page-loader{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 0}
+
 .g1{background:linear-gradient(135deg,#667eea,#764ba2)}
 .g2{background:linear-gradient(135deg,#f0930f,#e6683c)}
 .g3{background:linear-gradient(135deg,#11998e,#38ef7d)}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useProducts } from '../../../context/ProductsContext.jsx'
 import Badge from '../../common/Badge.jsx'
+import Spinner from '../../common/Spinner.jsx'
 
 // Editable Price/Promotion Info/Ad Hook Copy for the currently selected
 // product in a StepMyBrand.jsx brand panel. Pulled into its own component
@@ -94,7 +95,7 @@ export default function StepProductFields({ brandKey, product }) {
         disabled={!isDirty || saving}
         onClick={handleSave}
       >
-        {saving ? '저장 중...' : '저장'}
+        {saving && <Spinner size="sm" />} {saving ? '저장 중...' : '저장'}
       </button>
     </div>
   )

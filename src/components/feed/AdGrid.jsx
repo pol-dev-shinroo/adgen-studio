@@ -1,10 +1,11 @@
 import { useAds } from '../../context/AdsContext.jsx'
+import PageLoader from '../common/PageLoader.jsx'
 import AdCard from './AdCard.jsx'
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 export default function AdGrid({ onOpenDetail }) {
-  const { ads, brandFilter, mediaFilter, recentOnly } = useAds()
+  const { ads, brandFilter, mediaFilter, recentOnly, adsLoading } = useAds()
 
   const cutoff = Date.now() - SEVEN_DAYS_MS
   const list = ads.filter((ad) => {
@@ -16,6 +17,8 @@ export default function AdGrid({ onOpenDetail }) {
     }
     return true
   })
+
+  if (adsLoading && list.length === 0) return <PageLoader />
 
   return (
     <div className="grid">

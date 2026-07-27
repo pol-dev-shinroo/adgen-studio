@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useProducts } from '../../context/ProductsContext.jsx'
 import Chip from '../common/Chip.jsx'
+import PageLoader from '../common/PageLoader.jsx'
 import ProductCard from './ProductCard.jsx'
 import ProductDetailModal from './ProductDetailModal.jsx'
 
 export default function ProductBrowser() {
-  const { products, brands } = useProducts()
+  const { products, brands, productsLoading } = useProducts()
   const [query, setQuery] = useState('')
   const [brandFilter, setBrandFilter] = useState('전체')
   const [detailProduct, setDetailProduct] = useState(null)
@@ -45,7 +46,9 @@ export default function ProductBrowser() {
         </div>
       </div>
 
-      {products.length === 0 ? (
+      {productsLoading && products.length === 0 ? (
+        <PageLoader />
+      ) : products.length === 0 ? (
         <p className="sub">아직 동기화된 제품이 없습니다 — 위에서 브랜드를 동기화하세요.</p>
       ) : filtered.length === 0 ? (
         <p className="sub">

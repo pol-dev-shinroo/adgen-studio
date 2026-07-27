@@ -22,6 +22,10 @@ export function GalleryProvider({ children }) {
   // through — see retryResult below for why this can't just resume the
   // original job.
   const [lastParams, setLastParams] = useState(null)
+  // Scoped strictly to the mount-time fetch below, not later re-fetches
+  // after a generation job finishes — those are already covered by
+  // GenerationProgress.
+  const [resultsLoading, setResultsLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -32,6 +36,9 @@ export function GalleryProvider({ children }) {
       .catch((err) => {
         if (cancelled) return
         console.error('Failed to load generated results from backend:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setResultsLoading(false)
       })
     return () => { cancelled = true }
   }, [])
@@ -119,7 +126,7 @@ export function GalleryProvider({ children }) {
 
   return (
     <GalleryContext.Provider
-      value={{ results, activeJob, lastSummary, startGeneration, approveResult, retryResult }}
+      value={{ results, activeJob, lastSummary, startGeneration, approveResult, retryResult, resultsLoading }}
     >
       {children}
     </GalleryContext.Provider>

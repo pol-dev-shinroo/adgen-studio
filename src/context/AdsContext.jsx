@@ -16,6 +16,10 @@ export function AdsProvider({ children }) {
   const [collected, setCollected] = useState([]) // new/updated only — unchanged ads aren't shown as review cards
   const [collectedUnchangedCount, setCollectedUnchangedCount] = useState(0)
   const [lastQuery, setLastQuery] = useState('')
+  // Scoped strictly to the mount-time fetch below, not later re-fetches
+  // after a collection job finishes — those are already covered by
+  // CollectionProgress.
+  const [adsLoading, setAdsLoading] = useState(true)
   // Dropped from 1500ms so the live progress UI feels responsive.
   const { activeJob, run } = useJobPolling({ pollIntervalMs: 900 })
 
@@ -33,6 +37,9 @@ export function AdsProvider({ children }) {
         console.error('Failed to load ads from backend, falling back to mock data:', err)
         setAds(initialAds)
         showToast('백엔드 연결 실패 — 임시로 샘플 데이터를 표시합니다')
+      })
+      .finally(() => {
+        if (!cancelled) setAdsLoading(false)
       })
     return () => { cancelled = true }
   }, [showToast])
@@ -187,6 +194,7 @@ export function AdsProvider({ children }) {
       mediaFilter, toggleMediaFilter,
       recentOnly, toggleRecentOnly,
       collected, collectedUnchangedCount, lastQuery, collect, renameBrand, activeJob, discardAds,
+      adsLoading,
     }}>
       {children}
     </AdsContext.Provider>

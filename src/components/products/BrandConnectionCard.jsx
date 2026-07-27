@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useProducts } from '../../context/ProductsContext.jsx'
 import { formatDateTime } from '../../utils/date.js'
 import SyncProgress from '../studio/steps/SyncProgress.jsx'
+import Spinner from '../common/Spinner.jsx'
 
 // Same two brands/colors as ProductsContext.jsx's BRAND_DEFS and
 // initialBrands.js — kept local rather than threaded through the backend
@@ -11,15 +12,21 @@ const BRAND_COLORS = { healthykiki: '#5b5bd6', kikibeauty: '#d6a15b' }
 export default function BrandConnectionCard({ brandStatus }) {
   const { sync, activeJob, resetNamespace } = useProducts()
   const [confirmText, setConfirmText] = useState('')
+  const [isResetting, setIsResetting] = useState(false)
   const { key, name, configured, authorized, productCount, lastSyncedAt, pinecone } = brandStatus
 
   const isSyncing = activeJob?.brandKey === key
   const canReset = confirmText.trim() === name
 
-  const handleReset = () => {
-    if (!canReset) return
-    resetNamespace(key)
-    setConfirmText('')
+  const handleReset = async () => {
+    if (!canReset || isResetting) return
+    setIsResetting(true)
+    try {
+      await resetNamespace(key)
+      setConfirmText('')
+    } finally {
+      setIsResetting(false)
+    }
   }
 
   return (
@@ -44,7 +51,7 @@ export default function BrandConnectionCard({ brandStatus }) {
           </div>
         </div>
         <button type="button" className="btn pri sm" onClick={() => sync(key)} disabled={!!activeJob}>
-          {isSyncing ? '동기화 중...' : '지금 동기화'}
+          {isSyncing && <Spinner size="sm" />} {isSyncing ? '동기화 중...' : '지금 동기화'}
         </button>
       </div>
 
@@ -67,9 +74,10 @@ export default function BrandConnectionCard({ brandStatus }) {
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder={name}
+              disabled={isResetting}
             />
-            <button type="button" className="btn danger sm" onClick={handleReset} disabled={!canReset}>
-              Pinecone 네임스페이스 초기화
+            <button type="button" className="btn danger sm" onClick={handleReset} disabled={!canReset || isResetting}>
+              {isResetting && <Spinner size="sm" />} {isResetting ? '초기화 중...' : 'Pinecone 네임스페이스 초기화'}
             </button>
           </div>
         </div>
