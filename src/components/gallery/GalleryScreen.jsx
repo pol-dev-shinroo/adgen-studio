@@ -36,7 +36,7 @@ export default function GalleryScreen() {
             {lastSummary.failures.map((f, i) => (
               <div key={`${f.adId}-${i}`} className="sync-item">
                 <div className="sync-item-name">
-                  AD {f.adId}{f.format ? ` · ${f.format}` : ''} — {f.error}
+                  AD {f.adId}{f.format ? ` · ${f.format}` : ''}{f.productId ? ` · 제품 ${f.productId}` : ''} — {f.error}
                 </div>
                 {f.format && (
                   <button className="btn ghost sm" onClick={() => retryResult(f)}>↻ 재시도</button>

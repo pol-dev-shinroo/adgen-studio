@@ -22,12 +22,29 @@ function findBrandDef(brandKey) {
   return config.brands.find((b) => b.key === brandKey)
 }
 
+// Pure — no reason this needs the real job/products/ads plumbing to verify,
+// so it's split out and exported on its own.
+export function computeTotalRenders(products, refAds, formats, quantity) {
+  return products.length * refAds.length * formats.length * quantity
+}
+
 // Synchronous (well, awaited-but-fast) validation before any job/money is
-// committed: unknown brand, unknown/unextracted product, or no matching
+// committed: unknown brand, unknown/unextracted product(s), or no matching
 // reference ads all fail here with `.badRequest = true` rather than only
 // surfacing after a job has already started (and, worse, after the
-// expensive per-ad stages have already run).
-async function prepareInputs({ refAdIds, brand }) {
+// expensive per-ad stages have already run). Enforced independently of the
+// frontend's own pre-check (Studio Step 3/StudioContext.jsx's goNext also
+// blocks on missing extraction) — the frontend can't be trusted as the only
+// gate on a real-money endpoint.
+//
+// getAllProductsFn/getAllAdsFn are injected (defaulting to the real
+// services) purely so this can be unit-tested without hitting Google
+// Sheets — same pattern as analyzeProduct.service.js's pineconeService
+// injection.
+export async function prepareInputs(
+  { refAdIds, brand },
+  { getAllProductsFn = getAllProducts, getAllAdsFn = getAllAds } = {}
+) {
   const brandDef = findBrandDef(brand?.key)
   if (!brandDef) {
     const err = new Error(`Unknown brand "${brand?.key}"`)
@@ -35,26 +52,50 @@ async function prepareInputs({ refAdIds, brand }) {
     throw err
   }
 
-  const products = await getAllProducts()
-  const product = products.find((p) => (
-    p['Brand'] === brandDef.name && p['Product ID'] === String(brand.productId)
-  ))
-  if (!product) {
-    const err = new Error(`No product "${brand.productId}" found for brand "${brand.key}"`)
+  const productIds = brand?.productIds || []
+  if (productIds.length === 0) {
+    const err = new Error('선택된 제품이 없습니다.')
     err.badRequest = true
     throw err
   }
 
-  const extractedImageUrl = product['Extracted Image URL']
-  if (!extractedImageUrl) {
+  const allProducts = await getAllProductsFn()
+  const brandProducts = allProducts.filter((p) => p['Brand'] === brandDef.name)
+
+  const missingIds = []
+  const resolved = []
+  for (const productId of productIds) {
+    const product = brandProducts.find((p) => p['Product ID'] === String(productId))
+    if (!product) {
+      missingIds.push(String(productId))
+    } else {
+      resolved.push({ productId: String(productId), product })
+    }
+  }
+  if (missingIds.length > 0) {
     const err = new Error(
-      '이 제품은 아직 참조 이미지가 추출되지 않았습니다 — 상품관리에서 먼저 추출해주세요.'
+      `제품을 찾을 수 없습니다 (브랜드 "${brand.key}"): ${missingIds.join(', ')}`
     )
     err.badRequest = true
     throw err
   }
 
-  const allAds = await getAllAds()
+  const unextracted = resolved.filter(({ product }) => !product['Extracted Image URL'])
+  if (unextracted.length > 0) {
+    const names = unextracted.map(({ productId, product }) => product['Product Name'] || productId)
+    const err = new Error(
+      `다음 제품은 아직 참조 이미지가 추출되지 않았습니다 — 상품관리에서 먼저 추출해주세요: ${names.join(', ')}`
+    )
+    err.badRequest = true
+    throw err
+  }
+
+  const products = resolved.map(({ productId, product }) => ({
+    productId,
+    extractedImageUrl: product['Extracted Image URL'],
+  }))
+
+  const allAds = await getAllAdsFn()
   const adsById = new Map(allAds.map((a) => [String(a['Ad Archive ID']), a]))
   const refAds = (refAdIds || []).map((id) => adsById.get(String(id))).filter(Boolean)
   if (refAds.length === 0) {
@@ -63,25 +104,27 @@ async function prepareInputs({ refAdIds, brand }) {
     throw err
   }
 
-  return { brandDef, extractedImageUrl, refAds }
+  return { brandDef, products, refAds }
 }
 
-// Input: { refBrand, refAdIds, brand:{key,productId}, formats, quantity,
+// Input: { refBrand, refAdIds, brand:{key,productIds}, formats, quantity,
 // styleIntensity, instructions }. formats: array of format strings (see
 // renderImage.service.js's FORMAT_SIZE keys). quantity: plain integer
 // (frontend converts its '2장'-style chip value before calling this).
+// productIds: array — Step 3 allows selecting more than one of a brand's
+// own products, each producing its own full render pass.
 //
 // Runs the expensive per-reference-ad stages (vision analysis, counter-fact
 // research, copywriting) exactly once per selected reference ad and caches
-// the result, then loops the render call once per (ad x format x quantity)
-// combination — this is the single biggest cost lever in the whole
-// pipeline, since those three LLM calls are identical for every render of
-// the same ad regardless of format/quantity.
+// the result — that cache is keyed on the reference ad, not the product, so
+// every selected product reuses it rather than re-paying for those three
+// calls per product. Only the render step itself (and the one-time-per-
+// product reference-image download) repeats per product.
 export async function startGeneration(input) {
   const { refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions } = input
-  const { brandDef, extractedImageUrl, refAds } = await prepareInputs({ refAdIds, brand })
+  const { brandDef, products, refAds } = await prepareInputs({ refAdIds, brand })
 
-  const totalRenders = refAds.length * formats.length * quantity
+  const totalRenders = computeTotalRenders(products, refAds, formats, quantity)
 
   return jobStore.startJob(
     {
@@ -106,7 +149,7 @@ export async function startGeneration(input) {
         resultIds: [],
       },
     },
-    (job) => runJob(job, { refAds, extractedImageUrl, brandDef, formats, quantity, styleIntensity, instructions }),
+    (job) => runJob(job, { refAds, products, brandDef, formats, quantity, styleIntensity, instructions }),
     (job, err) => {
       job.status = 'failed'
       job.error = err.message
@@ -119,22 +162,20 @@ export function getJob(jobId) {
   return jobStore.getJob(jobId)
 }
 
-async function runJob(job, { refAds, extractedImageUrl, brandDef, formats, quantity, styleIntensity, instructions }) {
+async function runJob(job, { refAds, products, brandDef, formats, quantity, styleIntensity, instructions }) {
   const progress = job.progress
   const summary = job.summary
 
-  // Downloaded once, reused as productImageBase64 for every render in this
-  // whole batch — it's the same product reference image regardless of
-  // which reference ad or format is being rendered.
-  const { base64: productImageBase64 } = await downloadImageAsBase64(extractedImageUrl)
-
+  // Built exactly once regardless of how many products are selected —
+  // vision/counter-fact/copywriting analysis is keyed on the reference ad,
+  // not the product.
   const perAdContext = []
   for (const ad of refAds) {
     const adId = ad['Ad Archive ID']
     const imageLink = firstLink(ad['Archived Image Links']) || ad['Archived Thumbnail'] || firstLink(ad['Image Links'])
 
     if (!imageLink) {
-      summary.failed += formats.length * quantity
+      summary.failed += products.length * formats.length * quantity
       summary.failures.push({ adId, error: 'No image available for this reference ad' })
       continue
     }
@@ -154,59 +195,86 @@ async function runJob(job, { refAds, extractedImageUrl, brandDef, formats, quant
         adId, referenceImageBase64, productInstances: analysis.product_instances, replacements,
       })
     } catch (err) {
-      summary.failed += formats.length * quantity
+      summary.failed += products.length * formats.length * quantity
       summary.failures.push({ adId, error: err.message })
       console.warn(`Reference-ad analysis failed (ad ${adId}): ${err.message}`)
     }
   }
 
   let renderIndex = 0
-  for (const ctx of perAdContext) {
-    for (const format of formats) {
-      for (let i = 0; i < quantity; i++) {
-        renderIndex += 1
-        progress.phase = `rendering (${renderIndex}/${progress.totalRenders})`
+  for (const productEntry of products) {
+    // Downloaded once per product, reused across every (ad x format x
+    // quantity) render for that product — not once per render.
+    let productImageBase64
+    try {
+      const downloaded = await downloadImageAsBase64(productEntry.extractedImageUrl)
+      productImageBase64 = downloaded.base64
+    } catch (err) {
+      summary.failed += perAdContext.length * formats.length * quantity
+      summary.failures.push({
+        productId: productEntry.productId,
+        error: `Failed to download product reference image: ${err.message}`,
+      })
+      console.warn(`Product image download failed (product ${productEntry.productId}): ${err.message}`)
+      continue
+    }
 
-        try {
-          const resultBase64 = await renderFinalImage({
-            referenceImageBase64: ctx.referenceImageBase64,
-            productImageBase64,
-            productInstances: ctx.productInstances,
-            replacements: ctx.replacements,
-            format,
-            styleIntensity,
-            instructions,
-          })
+    for (const ctx of perAdContext) {
+      for (const format of formats) {
+        for (let i = 0; i < quantity; i++) {
+          renderIndex += 1
+          progress.phase = `rendering (${renderIndex}/${progress.totalRenders})`
 
-          progress.phase = 'saving'
-          const generationId = randomUUID()
-          const imageUrl = await uploadGeneratedImage(resultBase64, {
-            brandKey: brandDef.key,
-            fileName: `${generationId}.png`,
-          })
+          try {
+            const resultBase64 = await renderFinalImage({
+              referenceImageBase64: ctx.referenceImageBase64,
+              productImageBase64,
+              productInstances: ctx.productInstances,
+              replacements: ctx.replacements,
+              format,
+              styleIntensity,
+              instructions,
+            })
 
-          await appendGeneratedRow(mapGeneratedAd({
-            generationId,
-            brand: brandDef.name,
-            referenceAdId: ctx.adId,
-            format,
-            styleIntensity,
-            instructions,
-            imageUrl,
-          }))
+            progress.phase = 'saving'
+            const generationId = randomUUID()
+            const imageUrl = await uploadGeneratedImage(resultBase64, {
+              brandKey: brandDef.key,
+              fileName: `${generationId}.png`,
+            })
 
-          summary.succeeded += 1
-          summary.resultIds.push(generationId)
-          progress.recentItems.unshift({ adId: ctx.adId, format, status: 'done', generationId })
-        } catch (err) {
-          summary.failed += 1
-          summary.failures.push({ adId: ctx.adId, format, error: err.message })
-          progress.recentItems.unshift({ adId: ctx.adId, format, status: 'failed' })
-          console.warn(`Render failed (ad ${ctx.adId}, format ${format}): ${err.message}`)
+            await appendGeneratedRow(mapGeneratedAd({
+              generationId,
+              brand: brandDef.name,
+              referenceAdId: ctx.adId,
+              format,
+              styleIntensity,
+              instructions,
+              imageUrl,
+              productId: productEntry.productId,
+            }))
+
+            summary.succeeded += 1
+            summary.resultIds.push(generationId)
+            progress.recentItems.unshift({
+              adId: ctx.adId, format, productId: productEntry.productId, status: 'done', generationId,
+            })
+          } catch (err) {
+            summary.failed += 1
+            summary.failures.push({
+              adId: ctx.adId, format, productId: productEntry.productId, error: err.message,
+            })
+            progress.recentItems.unshift({
+              adId: ctx.adId, format, productId: productEntry.productId, status: 'failed',
+            })
+            console.warn(
+              `Render failed (ad ${ctx.adId}, format ${format}, product ${productEntry.productId}): ${err.message}`
+            )
+          }
+
+          progress.rendersDone = renderIndex
+          progress.recentItems = progress.recentItems.slice(0, RECENT_ITEMS_LIMIT)
         }
-
-        progress.rendersDone = renderIndex
-        progress.recentItems = progress.recentItems.slice(0, RECENT_ITEMS_LIMIT)
       }
     }
   }

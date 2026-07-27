@@ -14,8 +14,8 @@ export async function postGenerate(req, res, next) {
   if (!Array.isArray(refAdIds) || refAdIds.length === 0) {
     return res.status(400).json({ error: '"refAdIds" must be a non-empty array' })
   }
-  if (!brand || typeof brand.key !== 'string' || !brand.productId) {
-    return res.status(400).json({ error: '"brand" must include "key" and "productId"' })
+  if (!brand || typeof brand.key !== 'string' || !Array.isArray(brand.productIds) || brand.productIds.length === 0) {
+    return res.status(400).json({ error: '"brand" must include "key" and a non-empty "productIds" array' })
   }
   if (!Array.isArray(formats) || formats.length === 0) {
     return res.status(400).json({ error: '"formats" must be a non-empty array' })

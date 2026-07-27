@@ -10,7 +10,7 @@ const DEFAULT_ACTIVE_BRAND_KEY = 'healthykiki' // mirrors the old mock's single-
 
 function defaultSelectionFor(brand) {
   const firstProduct = Object.keys(brand.products)[0]
-  return { product: firstProduct }
+  return { products: firstProduct ? [firstProduct] : [] }
 }
 
 export function StudioProvider({ children }) {
@@ -22,11 +22,13 @@ export function StudioProvider({ children }) {
   const [refBrand, setRefBrandState] = useState(null)
   const [refAdIds, setRefAdIds] = useState([])
   const [activeBrandKeys, setActiveBrandKeys] = useState(() => new Set([DEFAULT_ACTIVE_BRAND_KEY]))
-  // Only holds a brand's selection once the user explicitly picks a product;
-  // otherwise it falls back to defaultSelectionFor below. This also means a
-  // stale pick (a product that's since dropped out of a resync) quietly
-  // self-heals back to the first available product instead of pointing at
-  // nothing.
+  // Only holds a brand's selection once the user explicitly toggles a
+  // product; otherwise it falls back to defaultSelectionFor below. Holds an
+  // array now (multiple products can be selected per brand) rather than a
+  // single name. This also means a stale pick (a product that's since
+  // dropped out of a resync) quietly self-heals — any names no longer in
+  // b.products are dropped, and if that empties the array entirely it falls
+  // back to the first available product instead of pointing at nothing.
   const [productOverrides, setProductOverrides] = useState({})
   const [formats, setFormats] = useState(DEFAULT_FORMATS)
   const [quantity, setQuantity] = useState('2장')
@@ -38,7 +40,8 @@ export function StudioProvider({ children }) {
   const selections = {}
   myBrands.filter((b) => b.active).forEach((b) => {
     const override = productOverrides[b.name]
-    selections[b.name] = override && b.products[override.product] ? override : defaultSelectionFor(b)
+    const validNames = (override?.products || []).filter((n) => b.products[n])
+    selections[b.name] = validNames.length > 0 ? { products: validNames } : defaultSelectionFor(b)
   })
 
   const pickRefBrand = useCallback((brand) => {
@@ -61,9 +64,32 @@ export function StudioProvider({ children }) {
     })
   }, [productBrands])
 
-  const setProductName = useCallback((brandName, productName) => {
-    setProductOverrides((prev) => ({ ...prev, [brandName]: { product: productName } }))
-  }, [])
+  // Toggles one product in/out of a brand's selection, never letting it go
+  // empty — a brand must always have at least one product chosen once it's
+  // active. Computes the "before" state the same self-healing way the
+  // `selections` calc above does (falling back to the default single
+  // product when no override exists yet), so toggling a second product on
+  // before ever touching the picker adds to the default pick instead of
+  // silently replacing it.
+  const toggleProductSelection = useCallback((brandName, productName) => {
+    const brand = productBrands.find((b) => b.name === brandName)
+    if (!brand) return
+
+    setProductOverrides((prev) => {
+      const override = prev[brandName]
+      const validExisting = (override?.products || []).filter((n) => brand.products[n])
+      const current = validExisting.length > 0 ? validExisting : defaultSelectionFor(brand).products
+
+      let next
+      if (current.includes(productName)) {
+        if (current.length === 1) return prev // never let the selection go empty
+        next = current.filter((n) => n !== productName)
+      } else {
+        next = [...current, productName]
+      }
+      return { ...prev, [brandName]: { products: next } }
+    })
+  }, [productBrands])
 
   const toggleFormat = useCallback((fmt) => {
     setFormats((prev) => (prev.includes(fmt) ? prev.filter((f) => f !== fmt) : [...prev, fmt]))
@@ -125,9 +151,23 @@ export function StudioProvider({ children }) {
     }
 
     const sel = selections[b.name]
-    const product = sel ? b.products[sel.product] : null
-    if (!product?.extractedImage) {
-      showToast(`'${b.name}'의 제품 참조 이미지가 없습니다 — 상품관리에서 먼저 추출해주세요`)
+    // Same self-heal as the `selections` computation: only names still
+    // present in b.products count.
+    const selectedProducts = (sel?.products || [])
+      .filter((n) => b.products[n])
+      .map((n) => ({ name: n, product: b.products[n] }))
+
+    if (selectedProducts.length === 0) {
+      showToast(`'${b.name}'의 제품을 먼저 선택하세요`)
+      return
+    }
+
+    const missingExtraction = selectedProducts.filter(({ product }) => !product.extractedImage)
+    if (missingExtraction.length > 0) {
+      showToast(
+        `참조 이미지가 없는 제품이 있습니다 — 상품관리에서 먼저 추출해주세요: ` +
+        missingExtraction.map(({ name }) => name).join(', ')
+      )
       return
     }
 
@@ -136,7 +176,7 @@ export function StudioProvider({ children }) {
     startGeneration({
       refBrand,
       refAdIds,
-      brand: { key: b.key, productId: product.productId },
+      brand: { key: b.key, productIds: selectedProducts.map(({ product }) => product.productId) },
       formats,
       quantity: qty,
       styleIntensity,
@@ -160,7 +200,7 @@ export function StudioProvider({ children }) {
         refBrand, pickRefBrand,
         refAdIds, toggleRefAd,
         myBrands, toggleMyBrand,
-        selections, setProductName,
+        selections, toggleProductSelection,
         formats, toggleFormat,
         quantity, setQuantity,
         styleIntensity, setStyleIntensity,

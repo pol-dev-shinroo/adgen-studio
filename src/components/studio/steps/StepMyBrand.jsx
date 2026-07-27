@@ -13,7 +13,7 @@ import StepProductFields from './StepProductFields.jsx'
 const CARD_PICKER_MAX = 8
 
 export default function StepMyBrand() {
-  const { myBrands, toggleMyBrand, selections, setProductName } = useStudio()
+  const { myBrands, toggleMyBrand, selections, toggleProductSelection } = useStudio()
   const { sync, activeJob, extractImage, extractingIds } = useProducts()
   const activeBrands = myBrands.filter((b) => b.active)
 
@@ -43,7 +43,7 @@ export default function StepMyBrand() {
       {activeBrands.map((b) => {
         const sel = selections[b.name]
         const productNames = Object.keys(b.products)
-        const product = sel ? b.products[sel.product] : null
+        const selectedProducts = (sel?.products || []).filter((n) => b.products[n])
         const isSyncing = activeJob?.brandKey === b.key
         const syncedAtLabel = formatDateTime(b.lastSynced, { fallback: null, dateStyle: 'medium', timeStyle: 'short' })
 
@@ -71,26 +71,39 @@ export default function StepMyBrand() {
               <>
                 <div className="field" style={{ marginBottom: 14 }}>
                   <label>
-                    제품 {productNames.length > 1 && <span className="multi">{productNames.length}개 옵션 — 1개 지정</span>}
+                    제품 {productNames.length > 1 && <span className="multi">{productNames.length}개 옵션 — 여러 개 선택 가능</span>}
                   </label>
                   {productNames.length > CARD_PICKER_MAX ? (
-                    <select value={sel.product} onChange={(e) => setProductName(b.name, e.target.value)}>
+                    <select
+                      multiple
+                      value={selectedProducts}
+                      onChange={(e) => {
+                        const newSelected = Array.from(e.target.selectedOptions).map((o) => o.value)
+                        const changed = [
+                          ...newSelected.filter((n) => !selectedProducts.includes(n)),
+                          ...selectedProducts.filter((n) => !newSelected.includes(n)),
+                        ]
+                        changed.forEach((n) => toggleProductSelection(b.name, n))
+                      }}
+                    >
                       {productNames.map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                   ) : (
                     // Same card language as ProductCard.jsx in 상품관리 (own
                     // markup, not the shared component — this dict shape is
                     // keyed by name for Step 3's selection model, not the
-                    // full adapted-product shape ProductCard expects), plus
-                    // a .selected ring for whichever one setProductName picked.
+                    // full adapted-product shape ProductCard expects).
+                    // .selected is now checkbox-like (toggleProductSelection),
+                    // not radio-like — multiple cards can be highlighted.
                     <div className="prod-grid">
                       {productNames.map((n) => {
                         const p = b.products[n]
+                        const isSelected = selectedProducts.includes(n)
                         return (
                           <div
                             key={n}
-                            className={`prod-card${sel.product === n ? ' selected' : ''}`}
-                            onClick={() => setProductName(b.name, n)}
+                            className={`prod-card${isSelected ? ' selected' : ''}`}
+                            onClick={() => toggleProductSelection(b.name, n)}
                           >
                             <Thumb gradient="g5" image={p.imageUrl} fit="contain">
                               {p.extractedImage && <Badge variant="live">레퍼런스 준비됨</Badge>}
@@ -109,49 +122,60 @@ export default function StepMyBrand() {
                   )}
                 </div>
 
-                {product && (
-                  <div className="prod-refs">
-                    <div className="prod-card static">
-                      <Thumb gradient="g5" image={product.imageUrl} fit="contain" />
-                      <div className="prod-card-body">
-                        <div className="prod-card-name">원본 마케팅 사진</div>
-                      </div>
-                    </div>
-                    <div className="prod-card static">
-                      <Thumb gradient="g5" image={product.extractedImage} fit="contain">
-                        {product.extractedImage && <Badge variant="live">레퍼런스 준비됨</Badge>}
-                      </Thumb>
-                      <div className="prod-card-body">
-                        <div className="prod-card-name">우리 제품 참조 이미지</div>
-                        {product.extractedImage ? (
-                          <div className="ref-meta">
-                            <span className="sub">추출일: {formatDateTime(product.extractedAt)}</span>
-                            <button
-                              className="btn ghost sm"
-                              disabled={extractingIds.has(product.productId)}
-                              onClick={() => extractImage(b.key, product.productId)}
-                            >
-                              {extractingIds.has(product.productId) ? '추출 중...' : '다시 추출'}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="ref-empty">
-                            <p className="sub" style={{ margin: 0 }}>아직 추출된 참조 이미지가 없습니다.</p>
-                            <button
-                              className="btn pri sm"
-                              disabled={extractingIds.has(product.productId)}
-                              onClick={() => extractImage(b.key, product.productId)}
-                            >
-                              {extractingIds.has(product.productId) ? '추출 중...' : '참조 이미지 추출'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                {selectedProducts.length > 1 && (
+                  <p className="sub" style={{ marginTop: -6, marginBottom: 14 }}>
+                    {selectedProducts.length}개 제품 × 선택한 포맷/수량에 따라 렌더링 수가 늘어납니다
+                  </p>
                 )}
 
-                {product && <StepProductFields brandKey={b.key} product={product} />}
+                {selectedProducts.map((n) => {
+                  const product = b.products[n]
+                  return (
+                    <div key={n} className="prod-select-block">
+                      <div className="prod-refs">
+                        <div className="prod-card static">
+                          <Thumb gradient="g5" image={product.imageUrl} fit="contain" />
+                          <div className="prod-card-body">
+                            <div className="prod-card-name">원본 마케팅 사진</div>
+                          </div>
+                        </div>
+                        <div className="prod-card static">
+                          <Thumb gradient="g5" image={product.extractedImage} fit="contain">
+                            {product.extractedImage && <Badge variant="live">레퍼런스 준비됨</Badge>}
+                          </Thumb>
+                          <div className="prod-card-body">
+                            <div className="prod-card-name">우리 제품 참조 이미지</div>
+                            {product.extractedImage ? (
+                              <div className="ref-meta">
+                                <span className="sub">추출일: {formatDateTime(product.extractedAt)}</span>
+                                <button
+                                  className="btn ghost sm"
+                                  disabled={extractingIds.has(product.productId)}
+                                  onClick={() => extractImage(b.key, product.productId)}
+                                >
+                                  {extractingIds.has(product.productId) ? '추출 중...' : '다시 추출'}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="ref-empty">
+                                <p className="sub" style={{ margin: 0 }}>아직 추출된 참조 이미지가 없습니다.</p>
+                                <button
+                                  className="btn pri sm"
+                                  disabled={extractingIds.has(product.productId)}
+                                  onClick={() => extractImage(b.key, product.productId)}
+                                >
+                                  {extractingIds.has(product.productId) ? '추출 중...' : '참조 이미지 추출'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <StepProductFields brandKey={b.key} product={product} />
+                    </div>
+                  )
+                })}
               </>
             )}
           </div>

@@ -1,0 +1,8 @@
+/* Reuses .prod-refs/.prod-card/.ref-meta/.ref-empty from products.css (this
+   is one bundled SPA — its CSS is already global regardless of which
+   screen's JS imports the file) — only the outer per-product wrapper here
+   is genuinely new, since StepMyBrand.jsx only ever showed one product's
+   pair at a time, never a grid of many. */
+.ref-screen-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px}
+.ref-screen-item{border:1px solid var(--line);border-radius:10px;padding:14px}
+.ref-screen-item-name{font-size:13px;font-weight:700;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

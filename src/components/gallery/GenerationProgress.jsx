@@ -40,7 +40,7 @@ export default function GenerationProgress({ job, onRetry }) {
         <div className="sync-list">
           {recentItems.map((item, i) => (
             <div key={`${item.adId}-${item.format}-${i}`} className="sync-item">
-              <div className="sync-item-name">AD {item.adId} · {item.format}</div>
+              <div className="sync-item-name">AD {item.adId} · {item.format}{item.productId ? ` · 제품 ${item.productId}` : ''}</div>
               {item.status === 'failed' ? (
                 <button className="btn ghost sm" onClick={() => onRetry(item)}>↻ 재시도</button>
               ) : (

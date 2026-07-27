@@ -12,10 +12,15 @@ export const GENERATED_AD_COLUMNS = [
   'Image URL',
   'Status',
   'Created At',
+  // Appended, not inserted — same convention as EXTRACTION_COLUMNS/
+  // OVERRIDE_COLUMNS in product.mapper.js, so existing rows/columns never
+  // shift. Added when Step 3 gained multi-product selection: one render can
+  // now be attributed to a specific product within a multi-product batch.
+  'Product ID',
 ]
 
 export function mapGeneratedAd({
-  generationId, brand, referenceAdId, format, styleIntensity, instructions, imageUrl,
+  generationId, brand, referenceAdId, format, styleIntensity, instructions, imageUrl, productId,
   createdAt = new Date().toISOString(),
 }) {
   return {
@@ -30,6 +35,7 @@ export function mapGeneratedAd({
     // separate, explicit user action in the Gallery.
     'Status': '미승인',
     'Created At': createdAt,
+    'Product ID': String(productId ?? ''),
   }
 }
 

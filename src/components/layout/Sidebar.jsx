@@ -3,6 +3,7 @@ import { useNavigation } from '../../context/NavigationContext.jsx'
 const NAV_ITEMS = [
   { key: 'feed', icon: '📡', label: '경쟁사 광고 피드' },
   { key: 'products', icon: '🗂️', label: '상품 관리' },
+  { key: 'references', icon: '🖼️', label: '추출 참조 이미지' },
   { key: 'studio', icon: '✨', label: '생성 스튜디오' },
   { key: 'gallery', icon: '🖼️', label: '결과 갤러리' },
   { key: 'settings', icon: '⚙️', label: '설정' },
