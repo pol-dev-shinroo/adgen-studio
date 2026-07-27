@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import {
   postProductSync, getProductSyncStatus, getProducts, getProductStatus, deleteNamespace,
-  postExtractProductImage, patchProductFields,
+  postExtractProductImage, patchProductFields, postCafe24Exchange,
 } from '../controllers/products.controller.js'
 
 const router = Router()
@@ -12,6 +12,7 @@ router.get('/status', getProductStatus)
 router.delete('/:brand/pinecone', deleteNamespace)
 router.post('/:brand/:productId/extract-image', postExtractProductImage)
 router.patch('/:brand/:productId/fields', patchProductFields)
+router.post('/:brand/cafe24/exchange', postCafe24Exchange)
 router.get('/', getProducts)
 
 export default router

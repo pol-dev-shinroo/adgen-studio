@@ -1,7 +1,7 @@
 import { config } from '../config/index.js'
 import { startSync, getJob } from '../services/productSync.service.js'
 import { getAllProducts, updateProductFields } from '../services/productSheets.service.js'
-import { isAuthorized } from '../services/cafe24.client.js'
+import { isAuthorized, exchangeCodeForTokens } from '../services/cafe24.client.js'
 import { getNamespaceStats, resetNamespace } from '../services/pinecone.service.js'
 import { extractProductImage } from '../services/productImageExtraction.service.js'
 
@@ -124,6 +124,35 @@ export async function postExtractProductImage(req, res, next) {
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })
     next(err)
+  }
+}
+
+// Finishes the Cafe24 OAuth flow against THIS deployed backend, rather than
+// a local script writing to a machine the backend never reads from —
+// whoever completes the browser consent (possibly a different machine than
+// the one running the backend) lands on Cafe24CallbackPage.jsx, which POSTs
+// the code straight here. Failures are all effectively "this code didn't
+// work" (expired, already used, wrong brand's secret) — 400, not 500.
+export async function postCafe24Exchange(req, res) {
+  if (!config.productSyncConfigured) {
+    return res.status(503).json({ error: 'Product sync is not configured on this server.' })
+  }
+
+  const brand = findBrand(req.params.brand)
+  if (!brand) {
+    return res.status(404).json({ error: `Unknown brand "${req.params.brand}"` })
+  }
+
+  const { code } = req.body ?? {}
+  if (typeof code !== 'string' || !code.trim()) {
+    return res.status(400).json({ error: '"code" must be a non-empty string' })
+  }
+
+  try {
+    await exchangeCodeForTokens(brand.key, code.trim(), config.cafe24RedirectUri)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
   }
 }
 

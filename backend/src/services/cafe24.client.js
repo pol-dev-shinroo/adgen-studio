@@ -1,16 +1,15 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { config } from '../config/index.js'
+import { getTokenEntry, saveTokenEntry } from './cafe24TokenStore.service.js'
 
 // Unlike google.client.js's static long-lived refresh token, Cafe24 access
 // tokens expire in ~2 hours AND the refresh token itself rotates (and
 // expires in ~2 weeks) on every single use — so the token pair genuinely
 // changes over time and has to live in mutable, persisted storage, not just
-// process memory. One JSON file, keyed by brand key:
-// { [brandKey]: { accessToken, refreshToken, expiresAt, refreshExpiresAt } }
-const dataDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data')
-const tokenFilePath = path.join(dataDir, 'cafe24-tokens.json')
+// process memory. Stored in the same Google Sheet the rest of the app
+// already uses (see cafe24TokenStore.service.js) rather than a local file —
+// the backend runs on Railway now, whose container filesystem is wiped on
+// every redeploy, and a local file also can't be written to by whoever
+// completes the OAuth consent in their own browser, a different machine.
 
 const SAFETY_MARGIN_MS = 5 * 60 * 1000 // refresh a bit before actual expiry, not right at it
 const TOKEN_ENDPOINT_PATH = '/api/v2/oauth/token'
@@ -25,24 +24,8 @@ function requireBrand(brandKey) {
   return brand
 }
 
-async function readTokenStore() {
-  try {
-    const raw = await fs.readFile(tokenFilePath, 'utf8')
-    return JSON.parse(raw)
-  } catch (err) {
-    if (err.code === 'ENOENT') return {}
-    throw err
-  }
-}
-
-async function writeTokenStore(store) {
-  await fs.mkdir(dataDir, { recursive: true })
-  await fs.writeFile(tokenFilePath, JSON.stringify(store, null, 2), 'utf8')
-}
-
 async function saveTokens(brandKey, tokenResponse) {
-  const store = await readTokenStore()
-  store[brandKey] = {
+  const entry = {
     accessToken: tokenResponse.access_token,
     refreshToken: tokenResponse.refresh_token,
     expiresAt: new Date(tokenResponse.expires_at).getTime(),
@@ -50,8 +33,8 @@ async function saveTokens(brandKey, tokenResponse) {
       ? new Date(tokenResponse.refresh_token_expires_at).getTime()
       : null,
   }
-  await writeTokenStore(store)
-  return store[brandKey]
+  await saveTokenEntry(brandKey, entry)
+  return entry
 }
 
 async function requestToken(brand, bodyParams) {
@@ -75,8 +58,7 @@ async function requestToken(brand, bodyParams) {
 // the rotated pair) if the cached one is missing or close to expiry.
 export async function getAccessToken(brandKey) {
   const brand = requireBrand(brandKey)
-  const store = await readTokenStore()
-  const entry = store[brandKey]
+  const entry = await getTokenEntry(brandKey)
 
   if (!entry) {
     throw new Error(
@@ -102,8 +84,8 @@ export async function getAccessToken(brandKey) {
 // getAccessToken, which is meant to be called right before an actual API
 // request).
 export async function isAuthorized(brandKey) {
-  const store = await readTokenStore()
-  return Boolean(store[brandKey])
+  const entry = await getTokenEntry(brandKey)
+  return Boolean(entry)
 }
 
 // --- One-time setup path, used by scripts/cafe24-auth.js ---
