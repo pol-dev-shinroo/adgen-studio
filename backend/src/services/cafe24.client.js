@@ -39,19 +39,42 @@ async function saveTokens(brandKey, tokenResponse) {
 
 async function requestToken(brand, bodyParams) {
   const basicAuth = Buffer.from(`${brand.clientId}:${brand.clientSecret}`).toString('base64')
-  const res = await fetch(`https://${brand.mallId}.cafe24api.com${TOKEN_ENDPOINT_PATH}`, {
+  const url = `https://${brand.mallId}.cafe24api.com${TOKEN_ENDPOINT_PATH}`
+  const body = new URLSearchParams(bodyParams).toString()
+
+  // TEMPORARY diagnostic logging — investigating a persistent
+  // invalid_grant/"Requested mall_id is invalid" error from Cafe24 on every
+  // real exchange attempt against the deployed backend. Never logs the
+  // client secret itself, only its length (confirms it's present/non-empty
+  // without leaking it).
+  console.log('[cafe24 diag] token request', JSON.stringify({
+    url,
+    body,
+    mallId: brand.mallId,
+    clientId: brand.clientId,
+    clientSecretLength: brand.clientSecret ? brand.clientSecret.length : 0,
+  }))
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Basic ${basicAuth}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams(bodyParams).toString(),
+    body,
   })
+
+  // Read the body as text exactly once (a Response body can only be
+  // consumed once — the old code called res.text() only on the failure
+  // path and res.json() only on success, which is why this couldn't just
+  // add a second read without restructuring).
+  const rawBody = await res.text()
+  console.log('[cafe24 diag] token response', JSON.stringify({ status: res.status, body: rawBody }))
+
   if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`Cafe24 token request failed for "${brand.key}" (HTTP ${res.status}): ${detail.slice(0, 300)}`)
+    throw new Error(`Cafe24 token request failed for "${brand.key}" (HTTP ${res.status}): ${rawBody.slice(0, 300)}`)
   }
-  return res.json()
+  return JSON.parse(rawBody)
 }
 
 // Returns a valid access token for the brand, refreshing (and persisting
@@ -104,6 +127,10 @@ export function getAuthorizeUrl(brandKey, redirectUri) {
 
 export async function exchangeCodeForTokens(brandKey, code, redirectUri) {
   const brand = requireBrand(brandKey)
+  // TEMPORARY diagnostic — JSON.stringify surfaces any invisible whitespace
+  // difference against the redirect_uri printed by scripts/cafe24-auth.js
+  // at the authorize step, byte for byte.
+  console.log('[cafe24 diag] exchange redirect_uri', JSON.stringify(redirectUri))
   const tokenResponse = await requestToken(brand, {
     grant_type: 'authorization_code',
     code,
