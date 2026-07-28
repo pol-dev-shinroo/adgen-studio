@@ -6,6 +6,10 @@
   "ui": "ui.html",
   "editorType": ["figma"],
   "networkAccess": {
-    "allowedDomains": ["https://backend-production-5a23.up.railway.app"]
+    "allowedDomains": [
+      "https://backend-production-5a23.up.railway.app",
+      "https://drive.google.com",
+      "https://*.googleusercontent.com"
+    ]
   }
 }

@@ -2,6 +2,7 @@ import { config } from '../config/index.js'
 import { startGeneration, getJob } from '../services/generation.service.js'
 import { getAllGeneratedResults, updateGeneratedStatus } from '../services/generatedSheets.service.js'
 import { sizeForFormat } from '../utils/formatSize.js'
+import { toEmbeddableImageUrl } from '../utils/driveUrl.js'
 
 const VALID_STATUSES = new Set(['미승인', '승인'])
 
@@ -82,6 +83,12 @@ export async function getGeneratedResults(req, res, next) {
 // can size its Figma frame to match exactly. `replacements` defaults to []
 // for rows written before the 'Replacements JSON' column existed — an
 // older result is still a valid (if copy-panel-less) export, not an error.
+// `imageUrl` is converted through toEmbeddableImageUrl before being sent —
+// the raw sheet value is Drive's webViewLink (an HTML viewer page), which
+// the plugin can't actually fetch bytes from (confirmed by a real failed
+// import, Part K); 'w1600' matches ImageLightbox.jsx's own full-resolution
+// size, appropriate here since the Figma frame displays the image at its
+// real generated resolution, not a card-sized thumbnail.
 export async function getGeneratedResultFigmaExport(req, res, next) {
   const { id } = req.params
 
@@ -105,7 +112,7 @@ export async function getGeneratedResultFigmaExport(req, res, next) {
       brand: result['Brand'],
       format: result['Format'],
       size: sizeForFormat(result['Format']),
-      imageUrl: result['Image URL'],
+      imageUrl: toEmbeddableImageUrl(result['Image URL'], 'w1600'),
       replacements,
     })
   } catch (err) {
