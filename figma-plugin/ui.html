@@ -1,0 +1,172 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+    margin: 0; padding: 12px; font-size: 12px; color: #1a1d29;
+  }
+  h1 { font-size: 13px; margin: 0 0 10px; }
+  input[type=text] {
+    width: 100%; padding: 6px 8px; border: 1px solid #e6e8f0; border-radius: 6px;
+    margin-bottom: 10px; font-size: 12px;
+  }
+  #list { max-height: 400px; overflow-y: auto; }
+  .row {
+    display: flex; align-items: center; gap: 8px; padding: 8px;
+    border: 1px solid #e6e8f0; border-radius: 8px; margin-bottom: 6px;
+  }
+  .row img {
+    width: 40px; height: 40px; object-fit: cover; border-radius: 4px;
+    background: #f3f4f7; flex-shrink: 0;
+  }
+  .row .meta { flex: 1; min-width: 0; }
+  .row .brand { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .sub { color: #6b7080; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button {
+    all: unset; cursor: pointer; background: #5b5bd6; color: #fff; font-weight: 700;
+    font-size: 11px; padding: 6px 10px; border-radius: 99px; flex-shrink: 0;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin-top: 10px; font-size: 11px; color: #6b7080; min-height: 16px; }
+  #status.error { color: #d64545; }
+  .empty { color: #6b7080; padding: 12px 4px; }
+</style>
+</head>
+<body>
+  <h1>최근 생성 결과 가져오기</h1>
+  <input type="text" id="filter" placeholder="브랜드/포맷으로 검색" />
+  <div id="list" class="empty">불러오는 중...</div>
+  <div id="status"></div>
+
+  <script>
+    // Same Railway backend URL as code.js's BASE_URL — kept as a literal
+    // duplicate rather than a shared import, since ui.html and code.js are
+    // two separate script contexts with no module system connecting them.
+    const BASE_URL = 'https://backend-production-5a23.up.railway.app'
+
+    let allResults = []
+
+    // Mirrors src/api/adaptAd.js's toEmbeddableImageUrl — the sheet stores
+    // Drive's webViewLink (an HTML viewer page, not raw image bytes), which
+    // can't be used directly as an <img src>. Duplicated here for the same
+    // reason BASE_URL is: this plugin has no access to the main app's JS.
+    function toEmbeddableImageUrl(driveViewLink, size) {
+      if (!driveViewLink) return ''
+      const match = driveViewLink.match(/\/file\/d\/([^/]+)/)
+      return match ? `https://drive.google.com/thumbnail?id=${match[1]}&sz=${size || 'w200'}` : driveViewLink
+    }
+
+    function render(results) {
+      const list = document.getElementById('list')
+      if (results.length === 0) {
+        list.className = 'empty'
+        list.textContent = '결과가 없습니다.'
+        return
+      }
+      list.className = ''
+      list.innerHTML = ''
+      results.forEach((r) => {
+        const row = document.createElement('div')
+        row.className = 'row'
+
+        const img = document.createElement('img')
+        img.src = toEmbeddableImageUrl(r['Image URL'], 'w200')
+        img.onerror = () => { img.style.visibility = 'hidden' }
+        img.alt = ''
+
+        const meta = document.createElement('div')
+        meta.className = 'meta'
+        const brandEl = document.createElement('div')
+        brandEl.className = 'brand'
+        brandEl.textContent = r['Brand'] || '(브랜드 미상)'
+        const subEl = document.createElement('div')
+        subEl.className = 'sub'
+        subEl.textContent = `${r['Format'] || ''} · ${r['Created At'] || ''}`
+        meta.appendChild(brandEl)
+        meta.appendChild(subEl)
+
+        const btn = document.createElement('button')
+        btn.textContent = '가져오기'
+        btn.dataset.generationId = r['Generation ID']
+        btn.onclick = () => {
+          document.querySelectorAll('button').forEach((b) => { b.disabled = true })
+          btn.textContent = '가져오는 중...'
+          document.getElementById('status').className = ''
+          document.getElementById('status').textContent = ''
+          parent.postMessage({ pluginMessage: { type: 'import', generationId: r['Generation ID'] } }, '*')
+        }
+
+        row.appendChild(img)
+        row.appendChild(meta)
+        row.appendChild(btn)
+        list.appendChild(row)
+      })
+    }
+
+    document.getElementById('filter').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase()
+      const filtered = !q ? allResults : allResults.filter((r) => (
+        (r['Brand'] || '').toLowerCase().includes(q) || (r['Format'] || '').toLowerCase().includes(q)
+      ))
+      render(filtered)
+    })
+
+    async function loadResults() {
+      try {
+        const res = await fetch(`${BASE_URL}/api/generate/results`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        allResults = data.results || []
+        render(allResults)
+      } catch (err) {
+        document.getElementById('list').className = 'empty'
+        document.getElementById('list').textContent = `결과를 불러오지 못했습니다: ${(err && err.message) || err}`
+      }
+    }
+
+    window.onmessage = async (event) => {
+      const msg = event.data && event.data.pluginMessage
+      if (!msg) return
+
+      if (msg.type === 'import-status') {
+        const status = document.getElementById('status')
+        status.className = msg.status === 'error' ? 'error' : ''
+        if (msg.status === 'importing') status.textContent = '가져오는 중...'
+        else if (msg.status === 'done') status.textContent = '가져오기 완료 — Figma 캔버스를 확인하세요.'
+        else if (msg.status === 'no-copy') status.textContent = msg.message
+        else if (msg.status === 'error') status.textContent = `오류: ${msg.message}`
+
+        if (msg.status !== 'importing') {
+          document.querySelectorAll('button').forEach((b) => { b.disabled = false; b.textContent = '가져오기' })
+        }
+      } else if (msg.type === 'request-export-fetch') {
+        // Fallback path: code.js's own sandboxed fetch failed for this one
+        // export (a real CORS/network error, not assumed), so it's asking
+        // this real browser iframe to try instead and relay the result.
+        try {
+          const res = await fetch(`${BASE_URL}/api/generate/results/${msg.generationId}/figma-export`)
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const data = await res.json()
+          parent.postMessage({ pluginMessage: { type: 'export-data', generationId: msg.generationId, data } }, '*')
+        } catch (err) {
+          parent.postMessage({
+            pluginMessage: {
+              type: 'export-data-error', generationId: msg.generationId,
+              error: String((err && err.message) || err),
+            },
+          }, '*')
+        }
+      }
+    }
+
+    // This iframe is a real browser context — GET /api/generate/results is
+    // one of the two endpoints backend/src/app.js opens up cross-origin for
+    // this plugin (the other is the single-result figma-export route,
+    // fetched from code.js), so this can just fetch directly.
+    loadResults()
+  </script>
+</body>
+</html>

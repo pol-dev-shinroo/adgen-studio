@@ -1,6 +1,7 @@
 import { config } from '../config/index.js'
 import { startGeneration, getJob } from '../services/generation.service.js'
 import { getAllGeneratedResults, updateGeneratedStatus } from '../services/generatedSheets.service.js'
+import { sizeForFormat } from '../utils/formatSize.js'
 
 const VALID_STATUSES = new Set(['미승인', '승인'])
 
@@ -68,6 +69,45 @@ export async function getGeneratedResults(req, res, next) {
   try {
     const results = await getAllGeneratedResults()
     res.json({ results })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// Read-only export for the Figma plugin (Part J) — looks up one row by
+// Generation ID, same find-by-ID approach updateGeneratedStatus uses, but
+// returns the row's data instead of writing to it. `size` is derived from
+// `format` via the same FORMAT_SIZE mapping renderImage.service.js actually
+// rendered with (shared via formatSize.js, not duplicated) so the plugin
+// can size its Figma frame to match exactly. `replacements` defaults to []
+// for rows written before the 'Replacements JSON' column existed — an
+// older result is still a valid (if copy-panel-less) export, not an error.
+export async function getGeneratedResultFigmaExport(req, res, next) {
+  const { id } = req.params
+
+  try {
+    const results = await getAllGeneratedResults()
+    const result = results.find((r) => String(r['Generation ID'] ?? '').trim() === String(id).trim())
+    if (!result) {
+      return res.status(404).json({ error: `No result found for Generation ID "${id}"` })
+    }
+
+    let replacements = []
+    try {
+      const parsed = JSON.parse(result['Replacements JSON'] || '[]')
+      if (Array.isArray(parsed)) replacements = parsed
+    } catch {
+      // malformed/missing on older rows — [] is the correct fallback, not an error
+    }
+
+    res.json({
+      generationId: result['Generation ID'],
+      brand: result['Brand'],
+      format: result['Format'],
+      size: sizeForFormat(result['Format']),
+      imageUrl: result['Image URL'],
+      replacements,
+    })
   } catch (err) {
     next(err)
   }

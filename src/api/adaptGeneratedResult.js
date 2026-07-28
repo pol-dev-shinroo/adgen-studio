@@ -11,6 +11,19 @@ import { toEmbeddableImageUrl } from './adaptAd.js'
 // no "in-progress" or "failed" status to adapt from the sheet itself. The
 // Gallery's in-progress cards come from the active job's own progress data
 // instead (see GalleryContext.jsx), not from this adapter.
+// Rows created before the 'Replacements JSON' column existed have neither
+// the column nor any value in it — falls back to [] rather than throwing,
+// same as every other "old row missing a newer column" case in this app.
+function parseReplacements(raw) {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 export function adaptGeneratedResult(row) {
   const imageLink = row['Image URL'] || ''
 
@@ -26,6 +39,7 @@ export function adaptGeneratedResult(row) {
     status: 'done',
     approved: row['Status'] === '승인',
     createdAt: row['Created At'] || '',
+    replacements: parseReplacements(row['Replacements JSON']),
     raw: row,
   }
 }

@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { config } from '../config/index.js'
 import { extractGeneratedImageBase64 } from '../utils/gptImage.js'
+import { sizeForFormat } from '../utils/formatSize.js'
 
 let client = null
 function getClient() {
@@ -17,17 +18,6 @@ function getClient() {
 // successful call in Part B) to actually be eligible to drive that tool on
 // this account. gpt-4o-mini and gpt-4.1 both hit an identical 403.
 const MODEL = 'gpt-5.5'
-
-// gpt-image-2 accepts any size meeting its own constraints (max edge
-// <=3840px, both edges multiples of 16px, aspect ratio <=3:1, 655,360-
-// 8,294,400 total pixels) rather than a fixed enum — these three are exact
-// matches for the app's three format options.
-const FORMAT_SIZE = {
-  '1:1 피드': '1024x1024',
-  '4:5 피드': '1024x1280',
-  '9:16 스토리': '864x1536',
-}
-const DEFAULT_SIZE = '1024x1024'
 
 // Qualitative bucketing of the 0-100 styleIntensity slider — exact wording/
 // thresholds are this service's own judgment call, since neither n8n
@@ -88,7 +78,7 @@ export async function renderFinalImage({
 
   const response = await getClient().responses.create({
     model: MODEL,
-    tools: [{ type: 'image_generation', action: 'edit', size: FORMAT_SIZE[format] || DEFAULT_SIZE }],
+    tools: [{ type: 'image_generation', action: 'edit', size: sizeForFormat(format) }],
     input: [
       {
         role: 'user',

@@ -252,6 +252,7 @@ async function runJob(job, { refAds, products, brandDef, formats, quantity, styl
               instructions,
               imageUrl,
               productId: productEntry.productId,
+              replacements: ctx.replacements,
             }))
 
             summary.succeeded += 1

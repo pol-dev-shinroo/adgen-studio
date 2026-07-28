@@ -2,6 +2,17 @@
 // module, same convention as ad.mapper.js/product.mapper.js: no config/env
 // imports, unit-testable in isolation.
 
+// One entry per swapped text element — same shape copywriting.service.js's
+// writeReplacementCopy resolves per reference ad. location is a free-text
+// description ("top-center within red-bordered box"), not coordinates —
+// there is no bounding-box data anywhere in this pipeline yet, so this can
+// only ever be a labeled copy list, not a pixel-positioned overlay.
+export interface Replacement {
+  location: string
+  original_text: string
+  new_text: string
+}
+
 export interface GeneratedAdRow {
   'Generation ID': string
   'Brand': string
@@ -13,6 +24,7 @@ export interface GeneratedAdRow {
   'Status': string
   'Created At': string
   'Product ID': string
+  'Replacements JSON': string
 }
 
 export const GENERATED_AD_COLUMNS: (keyof GeneratedAdRow)[] = [
@@ -30,6 +42,10 @@ export const GENERATED_AD_COLUMNS: (keyof GeneratedAdRow)[] = [
   // shift. Added when Step 3 gained multi-product selection: one render can
   // now be attributed to a specific product within a multi-product batch.
   'Product ID',
+  // Appended when the Figma export feature needed the replacement-copy data
+  // that runJob previously computed and threw away — see figma-export
+  // endpoint (generation.controller.js) for the consumer.
+  'Replacements JSON',
 ]
 
 export interface MapGeneratedAdInput {
@@ -41,11 +57,12 @@ export interface MapGeneratedAdInput {
   instructions?: string
   imageUrl?: string
   productId?: string
+  replacements?: Replacement[]
   createdAt?: string
 }
 
 export function mapGeneratedAd({
-  generationId, brand, referenceAdId, format, styleIntensity, instructions, imageUrl, productId,
+  generationId, brand, referenceAdId, format, styleIntensity, instructions, imageUrl, productId, replacements,
   createdAt = new Date().toISOString(),
 }: MapGeneratedAdInput): GeneratedAdRow {
   return {
@@ -61,6 +78,7 @@ export function mapGeneratedAd({
     'Status': '미승인',
     'Created At': createdAt,
     'Product ID': String(productId ?? ''),
+    'Replacements JSON': JSON.stringify(replacements ?? []),
   }
 }
 

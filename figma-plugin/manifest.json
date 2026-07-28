@@ -1,0 +1,11 @@
+{
+  "name": "AdGen Studio Import",
+  "id": "adgen-studio-import-local",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["https://backend-production-5a23.up.railway.app"]
+  }
+}
