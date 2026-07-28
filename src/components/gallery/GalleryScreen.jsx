@@ -29,14 +29,14 @@ export default function GalleryScreen() {
       {activeJob && <GenerationProgress job={activeJob} onRetry={retryResult} />}
 
       {!activeJob && lastSummary?.failed > 0 && (
-        <div className="sync-progress">
-          <div className="sync-label">
+        <div className="job-progress">
+          <div className="job-progress-label">
             지난 생성 결과: 성공 {lastSummary.succeeded}건 · 실패 {lastSummary.failed}건
           </div>
-          <div className="sync-list">
+          <div className="job-progress-list">
             {lastSummary.failures.map((f, i) => (
-              <div key={`${f.adId}-${i}`} className="sync-item">
-                <div className="sync-item-name">
+              <div key={`${f.adId}-${i}`} className="job-progress-item">
+                <div className="job-progress-item-name">
                   AD {f.adId}{f.format ? ` · ${f.format}` : ''}{f.productId ? ` · 제품 ${f.productId}` : ''} — {f.error}
                 </div>
                 {f.format && (

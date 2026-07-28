@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import '../../styles/products.css'
 import '../../styles/references.css'
 import { useProducts } from '../../context/ProductsContext.jsx'
@@ -6,6 +7,7 @@ import Thumb from '../common/Thumb.jsx'
 import Badge from '../common/Badge.jsx'
 import PageLoader from '../common/PageLoader.jsx'
 import Spinner from '../common/Spinner.jsx'
+import ImageLightbox from '../common/ImageLightbox.jsx'
 
 // One place to see every product's extraction status across every brand, so
 // nobody re-triggers a gpt-5.5 extraction that's already done just because
@@ -17,6 +19,11 @@ import Spinner from '../common/Spinner.jsx'
 export default function ReferenceImagesScreen() {
   const { brands, extractImage, extractingIds, productsLoading } = useProducts()
   const totalProducts = brands.reduce((sum, b) => sum + Object.keys(b.products).length, 0)
+  // One lightbox at a time across the whole screen — reuses the same
+  // ImageLightbox/RetryImage combo AdDetailModal.jsx/ProductDetailModal.jsx
+  // already use, just without useGalleryLightbox's two-stage-close wiring
+  // since there's no enclosing detail Modal here to close first.
+  const [lightbox, setLightbox] = useState(null) // { images: string[], index: number } | null
 
   return (
     <section>
@@ -43,18 +50,27 @@ export default function ReferenceImagesScreen() {
                 {productNames.map((n) => {
                   const p = b.products[n]
                   const isExtracting = extractingIds.has(p.productId)
+                  // Same array both thumbs open into, so ← → inside the
+                  // lightbox can move between them — index depends on
+                  // whichever is actually present (a product can have an
+                  // original photo with no extraction yet).
+                  const refImages = [p.imageUrl, p.extractedImage].filter(Boolean)
+                  const openLightbox = (image) => {
+                    if (!image) return // nothing to show yet — skip gracefully
+                    setLightbox({ images: refImages, index: refImages.indexOf(image) })
+                  }
                   return (
                     <div key={n} className="ref-screen-item">
                       <div className="ref-screen-item-name">{n}</div>
                       <div className="prod-refs">
                         <div className="prod-card static">
-                          <Thumb gradient="g5" image={p.imageUrl} fit="contain" />
+                          <Thumb gradient="g5" image={p.imageUrl} fit="contain" onClick={() => openLightbox(p.imageUrl)} />
                           <div className="prod-card-body">
                             <div className="prod-card-name">원본 마케팅 사진</div>
                           </div>
                         </div>
                         <div className="prod-card static">
-                          <Thumb gradient="g5" image={p.extractedImage} fit="contain">
+                          <Thumb gradient="g5" image={p.extractedImage} fit="contain" onClick={() => openLightbox(p.extractedImage)}>
                             {p.extractedImage && <Badge variant="live">레퍼런스 준비됨</Badge>}
                           </Thumb>
                           <div className="prod-card-body">
@@ -93,6 +109,15 @@ export default function ReferenceImagesScreen() {
           </div>
         )
       })}
+
+      {lightbox && (
+        <ImageLightbox
+          images={lightbox.images}
+          index={lightbox.index}
+          onIndexChange={(index) => setLightbox((prev) => ({ ...prev, index }))}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </section>
   )
 }

@@ -13,7 +13,7 @@ export default function AdDetailModal({ ad, onClose }) {
   if (!ad) return null
 
   const raw = ad.raw ?? {}
-  const galleryImages = ad.images.length > 0 ? ad.images.map((link) => toEmbeddableImageUrl(link)) : []
+  const galleryImages = ad.images.length > 0 ? ad.images.map((link) => toEmbeddableImageUrl(link, 'w600')) : []
 
   const handleGenerate = () => {
     prefillFromAd(ad.brand, ad.id)

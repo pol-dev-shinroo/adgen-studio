@@ -7,7 +7,7 @@ import RetryImage from './RetryImage.jsx'
 // cropped — better to show the whole product against a neutral backdrop).
 // Applied as an inline style rather than a CSS class so it wins regardless
 // of which screen's scoped .thumb-img rule this renders under.
-export default function Thumb({ gradient, image, fit = 'cover', className, children }) {
+export default function Thumb({ gradient, image, fit = 'cover', className, children, onClick }) {
   const [imageFailed, setImageFailed] = useState(false)
 
   // Reset if a re-collection swaps in a different (or newly-working) image
@@ -18,10 +18,12 @@ export default function Thumb({ gradient, image, fit = 'cover', className, child
   }, [image])
 
   const showImage = Boolean(image) && !imageFailed
-  const cls = ['thumb', showImage ? 'has-image' : gradient, fit === 'contain' && 'thumb-contain', className]
-    .filter(Boolean).join(' ')
+  const cls = [
+    'thumb', showImage ? 'has-image' : gradient, fit === 'contain' && 'thumb-contain',
+    onClick && showImage && 'thumb-clickable', className,
+  ].filter(Boolean).join(' ')
   return (
-    <div className={cls}>
+    <div className={cls} onClick={onClick}>
       {showImage && (
         <RetryImage
           src={image}

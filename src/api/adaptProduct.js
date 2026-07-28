@@ -42,7 +42,7 @@ export function adaptProduct(product) {
     // media, so the stored value is a webViewLink (HTML viewer page, not
     // raw image bytes) — needs the same thumbnail-endpoint conversion
     // adaptAd.js applies before it's usable as an <img src>.
-    extractedImage: extractedImageLink ? toEmbeddableImageUrl(extractedImageLink) : '',
+    extractedImage: extractedImageLink ? toEmbeddableImageUrl(extractedImageLink, 'w800') : '',
     extractedAt: product['Extracted At'] || '',
     // Raw override-only values (blank if not overridden) — lets an edit
     // form tell "this field is currently overridden" apart from "this is

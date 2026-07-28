@@ -43,6 +43,9 @@ h1{font-size:20px;font-weight:800;letter-spacing:-.3px}
    Not screen-scoped like the other .thumb rules since this is a plain
    cross-cutting modifier, not part of any one screen's visual language. */
 .thumb.thumb-contain{background:#f3f4f7}
+/* Only applied when Thumb receives both an onClick and has a real image to
+   show — an empty gradient placeholder should never look clickable. */
+.thumb.thumb-clickable{cursor:pointer}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:16px}
@@ -59,6 +62,70 @@ h1{font-size:20px;font-weight:800;letter-spacing:-.3px}
 .spinner{display:inline-block;border-radius:50%;border:2px solid var(--line);border-top-color:var(--brand);animation:spin .7s linear infinite;flex-shrink:0;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
 .page-loader{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 0}
+
+/* Shared job-progress shell — CollectionProgress.jsx/SyncProgress.jsx/
+   GenerationProgress.jsx all render through common/JobProgress.jsx now.
+   Base values match Sync/GenerationProgress's original studio.css .sync-*
+   look (those two already matched exactly); .collect overrides restore
+   CollectionProgress's original feed.css .cp-* spacing/sizing, since that
+   one didn't already match the other two — consolidation must not visibly
+   change either look. */
+.job-progress{margin:10px 0 14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.job-progress.collect{margin:0;padding:4px 0;border:none;background:none}
+.job-progress-label{font-weight:700;font-size:12.5px;margin-bottom:8px}
+.job-progress.collect .job-progress-label{font-size:13.5px;margin-bottom:10px}
+.job-progress-bar{height:6px;border-radius:99px;background:#eceef4;overflow:hidden;position:relative;margin-bottom:10px}
+.job-progress.collect .job-progress-bar{height:8px;margin-bottom:18px}
+.job-progress-bar-fill{height:100%;background:var(--brand);border-radius:99px;transition:width .3s ease}
+.job-progress-bar.indeterminate::before{content:'';position:absolute;top:0;bottom:0;width:35%;background:var(--brand);border-radius:99px;animation:job-progress-indeterminate 1.3s ease-in-out infinite}
+@keyframes job-progress-indeterminate{
+  0%{left:-35%}
+  100%{left:100%}
+}
+.job-progress-list{display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto}
+.job-progress.collect .job-progress-list{gap:8px;max-height:none;overflow:visible}
+.job-progress-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.job-progress.collect .job-progress-item{gap:12px;padding:8px 10px;border-radius:10px}
+.job-progress-item-name{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* CollectionProgress-only item shape (thumbnail + brand/snippet body) —
+   Sync/GenerationProgress's items are just a name + chip. */
+.job-progress-item-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--bg)}
+.job-progress-item-placeholder{background:linear-gradient(135deg,#667eea,#764ba2)}
+.job-progress-item-body{flex:1;min-width:0}
+.job-progress-item-brand{font-weight:700;font-size:12.5px}
+.job-progress-item-snippet{color:var(--sub);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job-progress-chip{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;flex-shrink:0}
+.job-progress.collect .job-progress-chip{font-size:11px;padding:3px 9px}
+.job-progress-chip.synced{background:#e9e9fb;color:var(--brand)}
+.job-progress-chip.failed{background:#fdeceb;color:var(--red)}
+.job-progress-chip.new{background:#e9e9fb;color:var(--brand)}
+.job-progress-chip.updated{background:#fdf1e3;color:var(--amber)}
+.job-progress-chip.unchanged{background:#f0f1f5;color:var(--sub)}
+.job-progress-chip.processing{background:#f0f1f5;color:var(--sub);animation:job-progress-pulse 1.2s ease-in-out infinite}
+@keyframes job-progress-pulse{
+  0%,100%{opacity:1}
+  50%{opacity:.5}
+}
+
+/* Responsive layout — aside/main have zero breakpoints otherwise, so below
+   ~900px real content starts clipping/overlapping the fixed sidebar. */
+.menu-toggle{display:none}
+@media (max-width:960px){
+  main{padding:20px 16px}
+}
+@media (max-width:720px){
+  /* Sidebar stops permanently occupying screen space and becomes a
+     hamburger-toggled off-canvas drawer instead. */
+  .menu-toggle{
+    display:flex;align-items:center;justify-content:center;position:fixed;top:16px;left:16px;z-index:120;
+    width:40px;height:40px;background:#fff;border:1px solid var(--line);border-radius:10px;
+    box-shadow:var(--shadow);cursor:pointer;font-size:18px;
+  }
+  .sidebar-backdrop{position:fixed;inset:0;background:rgba(20,22,40,.4);z-index:105}
+  aside{transform:translateX(-100%);transition:transform .25s ease;z-index:110;box-shadow:0 0 24px rgba(20,22,40,.18)}
+  aside.open{transform:translateX(0)}
+  main{margin-left:0;padding:72px 16px 20px}
+}
 
 .g1{background:linear-gradient(135deg,#667eea,#764ba2)}
 .g2{background:linear-gradient(135deg,#f0930f,#e6683c)}

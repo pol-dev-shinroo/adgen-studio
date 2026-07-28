@@ -72,28 +72,6 @@
 .lightbox-nav button:disabled{opacity:.35;cursor:default;color:var(--sub)}
 .lightbox-fallback{padding:60px 20px;color:var(--sub);font-size:13px}
 
-.collect-progress{padding:4px 0}
-.cp-label{font-weight:700;font-size:13.5px;margin-bottom:10px}
-.cp-bar{height:8px;border-radius:99px;background:#eceef4;overflow:hidden;position:relative;margin-bottom:18px}
-.cp-bar-fill{height:100%;background:var(--brand);border-radius:99px;transition:width .3s ease}
-.cp-bar.indeterminate::before{content:'';position:absolute;top:0;bottom:0;width:35%;background:var(--brand);border-radius:99px;animation:cp-indeterminate 1.3s ease-in-out infinite}
-@keyframes cp-indeterminate{
-  0%{left:-35%}
-  100%{left:100%}
-}
-.cp-list{display:flex;flex-direction:column;gap:8px}
-.cp-item{display:flex;align-items:center;gap:12px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
-.cp-item-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--bg)}
-.cp-item-placeholder{background:linear-gradient(135deg,#667eea,#764ba2)}
-.cp-item-body{flex:1;min-width:0}
-.cp-item-brand{font-weight:700;font-size:12.5px}
-.cp-item-snippet{color:var(--sub);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.progress-chip{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;flex-shrink:0}
-.progress-chip.new{background:#e9e9fb;color:var(--brand)}
-.progress-chip.updated{background:#fdf1e3;color:var(--amber)}
-.progress-chip.unchanged{background:#f0f1f5;color:var(--sub)}
-.progress-chip.processing{background:#f0f1f5;color:var(--sub);animation:cp-pulse 1.2s ease-in-out infinite}
-@keyframes cp-pulse{
-  0%,100%{opacity:1}
-  50%{opacity:.5}
-}
+/* Collection-progress panel — moved to global.css's shared .job-progress*
+   family (common/JobProgress.jsx) plus its .collect variant, since it's now
+   structurally shared with SyncProgress/GenerationProgress. */

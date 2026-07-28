@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node --test"
+    "start": "tsx src/server.js",
+    "dev": "tsx watch src/server.js",
+    "test": "node --import tsx --test test/*.test.js test/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pinecone-database/pinecone": "^3.0.3",
@@ -15,5 +16,12 @@
     "express": "^4.21.2",
     "googleapis": "^144.0.0",
     "openai": "^4.68.0"
+  },
+  "devDependencies": {
+    "@types/cors": "2.8.19",
+    "@types/express": "5.0.6",
+    "@types/node": "26.1.2",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2"
   }
 }

@@ -3,7 +3,48 @@
 
 import { pick } from './pickField.js'
 
-export const AD_COLUMNS = [
+// The raw scraper actor item's shape is Apify-controlled, externally
+// versioned JSON (already handled defensively at runtime via pick()'s
+// alias-list lookups for exactly this reason) — not a contract this project
+// owns the way the sheet row below is, so it's left as `any` rather than
+// modeled field-by-field for this phase, matching how loosely this data was
+// always actually handled at runtime.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RawAdItem = Record<string, any>
+
+export interface AdRow {
+  'Ad Archive ID': string
+  'Brand': string
+  'Status': string
+  'Start Date': string
+  'End Date': string
+  'Date Scraped': string
+  'Search Keyword': string
+  'Display Format': string
+  'Post Content': string
+  'Title': string
+  'Bottom Content': string
+  'CTA Text': string
+  'Landing URL': string
+  'Archived Image Links': string
+  'Image Links': string
+  'Video Link': string
+  'Archived Thumbnail': string
+  'Video Thumbnail': string
+  // Surfaced by the test suite (not by this pass's own logic changes,
+  // which is why it's flagged rather than "fixed"): unlike every other
+  // column here, mapAd never wraps this one in String() — a numeric
+  // collationCount (including 0) passes straight through. Typed as the
+  // union it actually is rather than forced to `string`, so a future
+  // consumer that assumes `.trim()`/`.split()` works on it is a compile
+  // error, not a runtime surprise.
+  'Variant Count': string | number
+  'Platforms': string
+  'Ad Library URL': string
+  'Page ID': string
+}
+
+export const AD_COLUMNS: (keyof AdRow)[] = [
   'Ad Archive ID',
   'Brand',
   'Status',
@@ -28,16 +69,21 @@ export const AD_COLUMNS = [
   'Page ID',
 ]
 
-function toDateString(value) {
+function toDateString(value: unknown): string {
   if (typeof value === 'number') return new Date(value * 1000).toISOString().slice(0, 10)
-  return value || ''
+  return (value as string) || ''
 }
 
 const IMAGE_URL_KEYS = ['originalImageUrl', 'original_image_url', 'resizedImageUrl', 'resized_image_url']
 const VIDEO_URL_KEYS = ['videoHdUrl', 'video_hd_url', 'videoSdUrl', 'video_sd_url']
 const VIDEO_PREVIEW_KEYS = ['videoPreviewImageUrl', 'video_preview_image_url']
 
-export function mapAd(item, { keyword = '', scrapedAt = new Date().toISOString() } = {}) {
+export interface MapAdOptions {
+  keyword?: string
+  scrapedAt?: string
+}
+
+export function mapAd(item: RawAdItem, { keyword = '', scrapedAt = new Date().toISOString() }: MapAdOptions = {}): AdRow {
   const snapshot = item.snapshot || {}
   const images = pick(snapshot, ['images']) || []
   const cards = pick(snapshot, ['cards']) || []
@@ -50,16 +96,16 @@ export function mapAd(item, { keyword = '', scrapedAt = new Date().toISOString()
   const postContent = typeof body === 'string' ? body : body.text ?? ''
 
   const imageLinks = [...new Set(
-    [...images, ...cards].map((entry) => pick(entry, IMAGE_URL_KEYS)).filter(Boolean)
+    [...images, ...cards].map((entry: RawAdItem) => pick(entry, IMAGE_URL_KEYS)).filter(Boolean)
   )].join('\n')
 
-  const cardVideoUrls = [...new Set(cards.map((c) => pick(c, VIDEO_URL_KEYS)).filter(Boolean))]
+  const cardVideoUrls = [...new Set(cards.map((c: RawAdItem) => pick(c, VIDEO_URL_KEYS)).filter(Boolean))]
   const videoLink = cardVideoUrls.length > 0
     ? cardVideoUrls.join('\n')
     : pick(videos[0], VIDEO_URL_KEYS) ?? ''
 
   const videoThumbnail = pick(videos[0], VIDEO_PREVIEW_KEYS)
-    ?? cards.map((c) => pick(c, VIDEO_PREVIEW_KEYS)).find(Boolean)
+    ?? cards.map((c: RawAdItem) => pick(c, VIDEO_PREVIEW_KEYS)).find(Boolean)
     ?? ''
 
   const platformsRaw = pick(item, ['publisherPlatform', 'publisher_platform'])
@@ -94,6 +140,6 @@ export function mapAd(item, { keyword = '', scrapedAt = new Date().toISOString()
   }
 }
 
-export function toRow(mappedAd) {
+export function toRow(mappedAd: AdRow): (string | number)[] {
   return AD_COLUMNS.map((column) => mappedAd[column] ?? '')
 }

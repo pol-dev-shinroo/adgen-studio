@@ -21,7 +21,7 @@ export function adaptGeneratedResult(row) {
     format: row['Format'] || '',
     styleIntensity: row['Style Intensity'] || '',
     instructions: row['Instructions'] || '',
-    image: imageLink ? toEmbeddableImageUrl(imageLink) : '',
+    image: imageLink ? toEmbeddableImageUrl(imageLink, 'w600') : '',
     originalImage: imageLink,
     status: 'done',
     approved: row['Status'] === '승인',

@@ -60,7 +60,7 @@ export function adaptAd(ad) {
     media: ad['Video Link'] ? 'video' : 'image',
     desc: [dateStr && `${dateStr} 수집`, format].filter(Boolean).join(' · '),
     live: ad['Status'] === '게재중',
-    image: imageLink ? toEmbeddableImageUrl(imageLink) : '',
+    image: imageLink ? toEmbeddableImageUrl(imageLink, 'w600') : '',
     images: (ad['Archived Image Links'] || '').split('\n').filter(Boolean),
     searchKeyword: ad['Search Keyword'] || '',
     raw: ad,

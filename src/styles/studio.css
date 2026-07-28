@@ -45,29 +45,9 @@
 .sync-btn:disabled{opacity:.5;cursor:not-allowed}
 .sync-meta{font-size:11px;color:var(--sub);font-weight:500}
 
-/* Product-sync progress panel — scoped variant of feed.css's .cp-*
-   classes (own copy rather than a cross-import, same pattern as .refrow
-   mirroring .grid elsewhere in this file). */
-.sync-progress{margin:10px 0 14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
-.sync-label{font-weight:700;font-size:12.5px;margin-bottom:8px}
-.sync-bar{height:6px;border-radius:99px;background:#eceef4;overflow:hidden;position:relative;margin-bottom:10px}
-.sync-bar-fill{height:100%;background:var(--brand);border-radius:99px;transition:width .3s ease}
-.sync-bar.indeterminate::before{content:'';position:absolute;top:0;bottom:0;width:35%;background:var(--brand);border-radius:99px;animation:sync-indeterminate 1.3s ease-in-out infinite}
-@keyframes sync-indeterminate{
-  0%{left:-35%}
-  100%{left:100%}
-}
-.sync-list{display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto}
-.sync-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
-.sync-item-name{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sync-chip{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;flex-shrink:0}
-.sync-chip.synced{background:#e9e9fb;color:var(--brand)}
-.sync-chip.failed{background:#fdeceb;color:var(--red)}
-.sync-chip.processing{background:#f0f1f5;color:var(--sub);animation:sync-pulse 1.2s ease-in-out infinite}
-@keyframes sync-pulse{
-  0%,100%{opacity:1}
-  50%{opacity:.5}
-}
+/* Sync/GenerationProgress's job-progress panel moved to global.css's
+   shared .job-progress* family (common/JobProgress.jsx) — this file used to
+   have its own copy of the same shape. */
 /* Reuses .prod-card/.prod-grid/.prod-card-body/etc. from products.css
    (imported globally via ProductsScreen.jsx — this is one bundled SPA, not
    code-split, so its CSS is already available here) for Step 3's product
