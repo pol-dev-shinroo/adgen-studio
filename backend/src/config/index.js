@@ -95,4 +95,12 @@ export const config = {
   // instead of a local callback server. Defaults to the project's live
   // Vercel deployment; overridable if that domain ever changes.
   cafe24RedirectUri: (process.env.CAFE24_REDIRECT_URI || 'https://adgen-studio-red.vercel.app/cafe24-callback').trim(),
+  // This server's own public URL — needed once (Part L) to hand back a
+  // self-referencing absolute URL (the Figma-export image proxy route) in
+  // an API response. Same hardcoded-default-with-env-override convention as
+  // cafe24RedirectUri above, rather than deriving it from req.protocol/
+  // req.get('host') — Railway sits behind a proxy, so trusting those
+  // per-request would need its own "trust proxy" correctness story for no
+  // real benefit over just knowing our own deployed URL.
+  backendPublicUrl: (process.env.BACKEND_PUBLIC_URL || 'https://backend-production-5a23.up.railway.app').trim(),
 }

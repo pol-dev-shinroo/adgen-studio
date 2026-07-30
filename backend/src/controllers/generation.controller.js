@@ -1,8 +1,8 @@
 import { config } from '../config/index.js'
 import { startGeneration, getJob } from '../services/generation.service.js'
 import { getAllGeneratedResults, updateGeneratedStatus } from '../services/generatedSheets.service.js'
+import { downloadImageAsBase64 } from '../services/imageIO.service.js'
 import { sizeForFormat } from '../utils/formatSize.js'
-import { toEmbeddableImageUrl } from '../utils/driveUrl.js'
 
 const VALID_STATUSES = new Set(['미승인', '승인'])
 
@@ -75,29 +75,38 @@ export async function getGeneratedResults(req, res, next) {
   }
 }
 
-// Read-only export for the Figma plugin (Part J) — looks up one row by
-// Generation ID, same find-by-ID approach updateGeneratedStatus uses, but
-// returns the row's data instead of writing to it. `size` is derived from
+// Shared by both figma-export endpoints below — same find-by-ID approach
+// updateGeneratedStatus uses. Throws a plain Error carrying `.notFoundId`
+// rather than writing the 404 response itself, so both callers can each
+// decide their own response shape (JSON error vs. an image request that
+// still wants a JSON 404 body).
+async function findGeneratedResultById(id) {
+  const results = await getAllGeneratedResults()
+  const result = results.find((r) => String(r['Generation ID'] ?? '').trim() === String(id).trim())
+  if (!result) {
+    const err = new Error(`No result found for Generation ID "${id}"`)
+    err.notFound = true
+    throw err
+  }
+  return result
+}
+
+// Read-only export for the Figma plugin (Part J) — returns metadata plus an
+// `imageUrl` pointing at this server's own image-proxy route below (Part L),
+// not a Drive URL directly. Drive's public thumbnail endpoint doesn't send
+// an Access-Control-Allow-Origin header a null-origin Figma-plugin fetch
+// satisfies — confirmed by a real failed import (Part L) — so the plugin
+// now fetches image bytes from us instead, and we fetch Drive server-side
+// (imageIO.service.js's downloadImageAsBase64, an authenticated Drive API
+// call, never subject to browser CORS at all). `size` is derived from
 // `format` via the same FORMAT_SIZE mapping renderImage.service.js actually
 // rendered with (shared via formatSize.js, not duplicated) so the plugin
 // can size its Figma frame to match exactly. `replacements` defaults to []
 // for rows written before the 'Replacements JSON' column existed — an
 // older result is still a valid (if copy-panel-less) export, not an error.
-// `imageUrl` is converted through toEmbeddableImageUrl before being sent —
-// the raw sheet value is Drive's webViewLink (an HTML viewer page), which
-// the plugin can't actually fetch bytes from (confirmed by a real failed
-// import, Part K); 'w1600' matches ImageLightbox.jsx's own full-resolution
-// size, appropriate here since the Figma frame displays the image at its
-// real generated resolution, not a card-sized thumbnail.
 export async function getGeneratedResultFigmaExport(req, res, next) {
-  const { id } = req.params
-
   try {
-    const results = await getAllGeneratedResults()
-    const result = results.find((r) => String(r['Generation ID'] ?? '').trim() === String(id).trim())
-    if (!result) {
-      return res.status(404).json({ error: `No result found for Generation ID "${id}"` })
-    }
+    const result = await findGeneratedResultById(req.params.id)
 
     let replacements = []
     try {
@@ -112,10 +121,30 @@ export async function getGeneratedResultFigmaExport(req, res, next) {
       brand: result['Brand'],
       format: result['Format'],
       size: sizeForFormat(result['Format']),
-      imageUrl: toEmbeddableImageUrl(result['Image URL'], 'w1600'),
+      imageUrl: `${config.backendPublicUrl}/api/generate/results/${result['Generation ID']}/figma-export/image`,
       replacements,
     })
   } catch (err) {
+    if (err.notFound) return res.status(404).json({ error: err.message })
+    next(err)
+  }
+}
+
+// The actual image bytes for the export above — a real server-to-Google
+// call (imageIO.service.js's downloadImageAsBase64, the same authenticated
+// Drive download every other part of this app already uses), so it's never
+// subject to the CORS problem a plugin-side fetch of Drive's own public URL
+// hit. Downloads the original full-resolution file (not a resized render)
+// since that's what downloadFromDrive fetches — fine for this one-off
+// per-import path, no need to add resizing here.
+export async function getGeneratedResultFigmaExportImage(req, res, next) {
+  try {
+    const result = await findGeneratedResultById(req.params.id)
+    const { base64, mimeType } = await downloadImageAsBase64(result['Image URL'])
+    res.set('Content-Type', mimeType)
+    res.send(Buffer.from(base64, 'base64'))
+  } catch (err) {
+    if (err.notFound) return res.status(404).json({ error: err.message })
     next(err)
   }
 }
