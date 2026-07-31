@@ -8,11 +8,20 @@ import { prepareInputs, computeTotalRenders } from '../src/services/generation.s
 const BRAND_KEY = 'healthykiki'
 const BRAND_NAME = '헬시키키'
 
+function refsJson(imageUrl) {
+  return JSON.stringify([{ type: 'product', label: '제품', imageUrl, extractedAt: '2026-07-25T09:00:00.000Z' }])
+}
+
 const PRODUCTS = [
-  { 'Product ID': '1', 'Brand': BRAND_NAME, 'Product Name': '제품 A', 'Extracted Image URL': 'https://example.com/a.png' },
-  { 'Product ID': '2', 'Brand': BRAND_NAME, 'Product Name': '제품 B', 'Extracted Image URL': 'https://example.com/b.png' },
-  { 'Product ID': '3', 'Brand': BRAND_NAME, 'Product Name': '제품 C 미추출', 'Extracted Image URL': '' },
-  { 'Product ID': '99', 'Brand': '다른브랜드', 'Product Name': '다른 브랜드 제품', 'Extracted Image URL': 'https://example.com/x.png' },
+  { 'Product ID': '1', 'Brand': BRAND_NAME, 'Product Name': '제품 A', 'Extracted References JSON': refsJson('https://example.com/a.png') },
+  { 'Product ID': '2', 'Brand': BRAND_NAME, 'Product Name': '제품 B', 'Extracted References JSON': refsJson('https://example.com/b.png') },
+  { 'Product ID': '3', 'Brand': BRAND_NAME, 'Product Name': '제품 C 미추출', 'Extracted References JSON': '[]' },
+  { 'Product ID': '99', 'Brand': '다른브랜드', 'Product Name': '다른 브랜드 제품', 'Extracted References JSON': refsJson('https://example.com/x.png') },
+  {
+    'Product ID': '4', 'Brand': BRAND_NAME, 'Product Name': '제품 D 모델만',
+    'Extracted References JSON': JSON.stringify([{ type: 'model', label: '모델', imageUrl: 'https://example.com/model.png' }]),
+  },
+  { 'Product ID': '5', 'Brand': BRAND_NAME, 'Product Name': '제품 E 손상된JSON', 'Extracted References JSON': 'not valid json' },
 ]
 
 const ADS = [
@@ -74,7 +83,7 @@ test('prepareInputs throws, naming the missing productId, when a productId belon
   )
 })
 
-test('prepareInputs throws, naming the unextracted product, when a selected product has no Extracted Image URL', async () => {
+test('prepareInputs throws, naming the unextracted product, when a selected product has no product-type extracted reference', async () => {
   await assert.rejects(
     () => prepareInputs(
       { refAdIds: ['ad-1'], brand: { key: BRAND_KEY, productIds: ['1', '3'] } },
@@ -83,6 +92,34 @@ test('prepareInputs throws, naming the unextracted product, when a selected prod
     (err) => {
       assert.equal(err.badRequest, true)
       assert.match(err.message, /제품 C 미추출/)
+      return true
+    }
+  )
+})
+
+test('prepareInputs treats a model-only references array (no product-type entry) as unextracted', async () => {
+  await assert.rejects(
+    () => prepareInputs(
+      { refAdIds: ['ad-1'], brand: { key: BRAND_KEY, productIds: ['4'] } },
+      deps
+    ),
+    (err) => {
+      assert.equal(err.badRequest, true)
+      assert.match(err.message, /제품 D 모델만/)
+      return true
+    }
+  )
+})
+
+test('prepareInputs treats malformed Extracted References JSON as unextracted rather than throwing a parse error', async () => {
+  await assert.rejects(
+    () => prepareInputs(
+      { refAdIds: ['ad-1'], brand: { key: BRAND_KEY, productIds: ['5'] } },
+      deps
+    ),
+    (err) => {
+      assert.equal(err.badRequest, true)
+      assert.match(err.message, /제품 E 손상된JSON/)
       return true
     }
   )

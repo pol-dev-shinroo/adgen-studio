@@ -3,6 +3,7 @@ import ImageLightbox from '../common/ImageLightbox.jsx'
 import RetryImage from '../common/RetryImage.jsx'
 import DetailField from '../common/DetailField.jsx'
 import Thumb from '../common/Thumb.jsx'
+import Badge from '../common/Badge.jsx'
 import { formatDateTime } from '../../utils/date.js'
 import { useGalleryLightbox } from '../../hooks/useGalleryLightbox.js'
 import { useProducts } from '../../context/ProductsContext.jsx'
@@ -45,16 +46,24 @@ export default function ProductDetailModal({ product, onClose }) {
 
         <div className="dtl-section">
           <div className="dtl-sect-title">우리 제품 참조 이미지</div>
-          {product.extractedImage ? (
-            <div className="ref-preview">
-              <Thumb gradient="g5" image={product.extractedImage} fit="contain" className="ref-thumb" />
-              <div className="ref-meta">
-                <span className="sub">추출일: {formatDateTime(product.extractedAt)}</span>
-                <button className="btn ghost sm" disabled={isExtracting} onClick={handleExtract}>
-                  {isExtracting ? '추출 중...' : '다시 추출'}
-                </button>
-              </div>
-            </div>
+          {product.extractedReferences.length > 0 ? (
+            <>
+              {product.extractedReferences.map((ref, i) => (
+                <div key={i} className="ref-preview" style={{ marginBottom: 10 }}>
+                  <Thumb gradient="g5" image={ref.imageUrl} fit="contain" className="ref-thumb">
+                    <Badge variant={ref.type === 'model' ? 'model' : 'live'}>
+                      {ref.type === 'model' ? '모델' : (ref.label || '제품')}
+                    </Badge>
+                  </Thumb>
+                  <div className="ref-meta">
+                    <span className="sub">{ref.type === 'model' ? '모델' : (ref.label || '제품')} · 추출일: {formatDateTime(ref.extractedAt)}</span>
+                  </div>
+                </div>
+              ))}
+              <button className="btn ghost sm" disabled={isExtracting} onClick={handleExtract}>
+                {isExtracting ? '추출 중...' : '다시 추출'}
+              </button>
+            </>
           ) : (
             <div className="ref-empty">
               <p className="sub">아직 추출된 참조 이미지가 없습니다 — 원본 사진에서 배경/모델을 제거한 제품 사진을 만듭니다.</p>

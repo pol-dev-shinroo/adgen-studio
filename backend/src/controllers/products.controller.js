@@ -108,10 +108,11 @@ export async function getProductStatus(req, res, next) {
   }
 }
 
-// Synchronous — a single gpt-image-2 edit call, not a job/poll flow (see
-// productImageExtraction.service.js). Real money per call, so this is
-// deliberately not something a resync or batch operation ever triggers on
-// its own — only an explicit user action in 상품관리.
+// Synchronous — 1 detection call + 1 isolation call per detected entity
+// (Part M), not a job/poll flow (see productImageExtraction.service.js).
+// Real money per call, so this is deliberately not something a resync or
+// batch operation ever triggers on its own — only an explicit user action
+// in 상품관리.
 export async function postExtractProductImage(req, res, next) {
   if (!config.productSyncConfigured) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })

@@ -162,7 +162,9 @@ export function StudioProvider({ children }) {
       return
     }
 
-    const missingExtraction = selectedProducts.filter(({ product }) => !product.extractedImage)
+    const missingExtraction = selectedProducts.filter(
+      ({ product }) => !product.extractedReferences.some((r) => r.type === 'product')
+    )
     if (missingExtraction.length > 0) {
       showToast(
         `참조 이미지가 없는 제품이 있습니다 — 상품관리에서 먼저 추출해주세요: ` +

@@ -22,6 +22,26 @@ function findBrandDef(brandKey) {
   return config.brands.find((b) => b.key === brandKey)
 }
 
+// Part M: 'Extracted Image URL' (single value) is replaced by 'Extracted
+// References JSON' (an array of { type: 'product'|'model', imageUrl, ... }
+// entries, since a photo can now yield more than one distinct product plus
+// a human model). Choosing which reference to render with when several
+// product entries exist is Part O's job (cross-product mixing/selection) —
+// this just needs generation to keep working via a sane default: the first
+// product-type entry. Malformed/missing JSON (older rows, or rows that
+// were never extracted) safely yields null, same "not extracted yet"
+// outcome prepareInputs already handled for the old single-field case.
+function firstProductReferenceImageUrl(product) {
+  let references
+  try {
+    references = JSON.parse(product['Extracted References JSON'] || '[]')
+  } catch {
+    return null
+  }
+  if (!Array.isArray(references)) return null
+  return references.find((r) => r?.type === 'product')?.imageUrl || null
+}
+
 // Pure — no reason this needs the real job/products/ads plumbing to verify,
 // so it's split out and exported on its own.
 export function computeTotalRenders(products, refAds, formats, quantity) {
@@ -80,7 +100,11 @@ export async function prepareInputs(
     throw err
   }
 
-  const unextracted = resolved.filter(({ product }) => !product['Extracted Image URL'])
+  const withFirstProductRef = resolved.map(({ productId, product }) => (
+    { productId, product, extractedImageUrl: firstProductReferenceImageUrl(product) }
+  ))
+
+  const unextracted = withFirstProductRef.filter(({ extractedImageUrl }) => !extractedImageUrl)
   if (unextracted.length > 0) {
     const names = unextracted.map(({ productId, product }) => product['Product Name'] || productId)
     const err = new Error(
@@ -90,10 +114,7 @@ export async function prepareInputs(
     throw err
   }
 
-  const products = resolved.map(({ productId, product }) => ({
-    productId,
-    extractedImageUrl: product['Extracted Image URL'],
-  }))
+  const products = withFirstProductRef.map(({ productId, extractedImageUrl }) => ({ productId, extractedImageUrl }))
 
   const allAds = await getAllAdsFn()
   const adsById = new Map(allAds.map((a) => [String(a['Ad Archive ID']), a]))

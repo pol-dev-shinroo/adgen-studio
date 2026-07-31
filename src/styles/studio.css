@@ -58,7 +58,11 @@
 .prod-card.selected{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-soft)}
 .prod-card.static{cursor:default}
 .prod-card.static:hover{border-color:var(--line);box-shadow:none}
-.prod-refs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+/* Part M: a photo can now yield more than the old fixed 원본+추출 pair (one
+   block per detected product plus an optional human model), so this is
+   auto-fill instead of a hardcoded 2-column split — still renders exactly
+   like the old 2-up layout when there's only ever one reference. */
+.prod-refs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:14px}
 /* Wraps one product's ref-image pair + StepProductFields when multiple
    products are selected — just spacing between the repeated blocks. */
 .prod-select-block{margin-bottom:20px}

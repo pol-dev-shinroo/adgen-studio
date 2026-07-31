@@ -70,14 +70,31 @@ export const OVERRIDE_COLUMNS: (keyof ProductOverrideFields)[] = [
   'Price Override', 'Promotion Info Override', 'Ad Hook Copy Override',
 ]
 
-// The full sheet row shape — mapProduct() only ever produces
-// ProductSyncFields (see its return type below); the extraction/override
-// columns only ever get filled in by their own separate write paths, never
-// by a resync. toRow() accepts a Partial<ProductRow> for exactly that
-// reason — a bare mapProduct() output is a valid (if partial) row.
-export type ProductRow = ProductSyncFields & ProductExtractionFields & ProductOverrideFields
+// Part M: multi-entity extraction (separate product types + a human model)
+// replaces the single Extracted Image URL/Extracted At pair above with a
+// JSON array of { type: 'product'|'model', label, imageUrl, extractedAt }
+// entries. Appended, not inserted — same append-only rule as
+// EXTRACTION_COLUMNS/OVERRIDE_COLUMNS before it — so the old two columns
+// stay in the sheet, untouched and unused going forward, rather than being
+// deleted or repurposed. All new code reads/writes only this column.
+export interface ProductExtractedReferencesFields {
+  'Extracted References JSON': string
+}
 
-export const PRODUCT_COLUMNS: (keyof ProductRow)[] = [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS, ...OVERRIDE_COLUMNS]
+export const EXTRACTED_REFERENCES_COLUMNS: (keyof ProductExtractedReferencesFields)[] =
+  ['Extracted References JSON']
+
+// The full sheet row shape — mapProduct() only ever produces
+// ProductSyncFields (see its return type below); the extraction/override/
+// extracted-references columns only ever get filled in by their own
+// separate write paths, never by a resync. toRow() accepts a
+// Partial<ProductRow> for exactly that reason — a bare mapProduct() output
+// is a valid (if partial) row.
+export type ProductRow =
+  ProductSyncFields & ProductExtractionFields & ProductOverrideFields & ProductExtractedReferencesFields
+
+export const PRODUCT_COLUMNS: (keyof ProductRow)[] =
+  [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS, ...OVERRIDE_COLUMNS, ...EXTRACTED_REFERENCES_COLUMNS]
 
 const IMAGE_FIELD_PRIORITY = ['detail_image', 'list_image', 'small_image', 'tiny_image']
 const MAX_IMAGES = 20

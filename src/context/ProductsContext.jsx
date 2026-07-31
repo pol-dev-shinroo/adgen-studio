@@ -46,8 +46,7 @@ function groupByBrand(products) {
         adHookCopy: p.adHookCopy,
         adHookCopyOverrideRaw: p.adHookCopyOverrideRaw,
         imageUrl: p.primaryImage,
-        extractedImage: p.extractedImage,
-        extractedAt: p.extractedAt,
+        extractedReferences: p.extractedReferences,
       }
       if (p.lastSynced && (!lastSynced || p.lastSynced > lastSynced)) {
         lastSynced = p.lastSynced
@@ -153,16 +152,21 @@ export function ProductsProvider({ children }) {
     }
   }, [showToast, loadStatus])
 
-  // Costs a real gpt-image-2 call server-side — updates just the one
-  // product's row in local state on success rather than re-fetching the
-  // whole list, since this is fired from a single product's detail view.
+  // Costs 1 detection call + 1 isolation call per detected entity (Part M)
+  // server-side — updates just the one product's row in local state on
+  // success rather than re-fetching the whole list, since this is fired
+  // from a single product's detail view. Merges the raw (unconverted)
+  // references the backend returns into the row's raw sheet shape and
+  // re-runs adaptProduct on it — same pattern updateProductFields already
+  // uses below — so the Drive-webViewLink-to-thumbnail-URL conversion
+  // adaptProduct.js applies isn't duplicated here.
   const extractImage = useCallback(async (brandKey, productId) => {
     setExtractingIds((prev) => new Set(prev).add(productId))
     try {
       const result = await extractProductImage(brandKey, productId)
       setProducts((prev) => prev.map((p) => (
         p.id === productId
-          ? { ...p, extractedImage: result.extractedImage, extractedAt: result.extractedAt }
+          ? adaptProduct({ ...p.raw, 'Extracted References JSON': JSON.stringify(result.references) })
           : p
       )))
       showToast('참조 이미지 추출이 완료됐습니다')

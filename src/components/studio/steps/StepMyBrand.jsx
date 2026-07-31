@@ -107,7 +107,9 @@ export default function StepMyBrand() {
                             onClick={() => toggleProductSelection(b.name, n)}
                           >
                             <Thumb gradient="g5" image={p.imageUrl} fit="contain">
-                              {p.extractedImage && <Badge variant="live">레퍼런스 준비됨</Badge>}
+                              {p.extractedReferences.some((r) => r.type === 'product') && (
+                                <Badge variant="live">레퍼런스 준비됨</Badge>
+                              )}
                             </Thumb>
                             <div className="prod-card-body">
                               <div className="prod-card-name">
@@ -131,6 +133,8 @@ export default function StepMyBrand() {
 
                 {selectedProducts.map((n) => {
                   const product = b.products[n]
+                  const isExtracting = extractingIds.has(product.productId)
+                  const hasRefs = product.extractedReferences.length > 0
                   return (
                     <div key={n} className="prod-select-block">
                       <div className="prod-refs">
@@ -140,39 +144,29 @@ export default function StepMyBrand() {
                             <div className="prod-card-name">원본 마케팅 사진</div>
                           </div>
                         </div>
-                        <div className="prod-card static">
-                          <Thumb gradient="g5" image={product.extractedImage} fit="contain">
-                            {product.extractedImage && <Badge variant="live">레퍼런스 준비됨</Badge>}
-                          </Thumb>
-                          <div className="prod-card-body">
-                            <div className="prod-card-name">우리 제품 참조 이미지</div>
-                            {product.extractedImage ? (
-                              <div className="ref-meta">
-                                <span className="sub">추출일: {formatDateTime(product.extractedAt)}</span>
-                                <button
-                                  className="btn ghost sm"
-                                  disabled={extractingIds.has(product.productId)}
-                                  onClick={() => extractImage(b.key, product.productId)}
-                                >
-                                  {extractingIds.has(product.productId) && <Spinner size="sm" />}{' '}
-                                  {extractingIds.has(product.productId) ? '추출 중...' : '다시 추출'}
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="ref-empty">
-                                <p className="sub" style={{ margin: 0 }}>아직 추출된 참조 이미지가 없습니다.</p>
-                                <button
-                                  className="btn pri sm"
-                                  disabled={extractingIds.has(product.productId)}
-                                  onClick={() => extractImage(b.key, product.productId)}
-                                >
-                                  {extractingIds.has(product.productId) && <Spinner size="sm" />}{' '}
-                                  {extractingIds.has(product.productId) ? '추출 중...' : '참조 이미지 추출'}
-                                </button>
-                              </div>
-                            )}
+                        {product.extractedReferences.map((ref, i) => (
+                          <div key={i} className="prod-card static">
+                            <Thumb gradient="g5" image={ref.imageUrl} fit="contain">
+                              <Badge variant={ref.type === 'model' ? 'model' : 'live'}>
+                                {ref.type === 'model' ? '모델' : (ref.label || '제품')}
+                              </Badge>
+                            </Thumb>
+                            <div className="prod-card-body">
+                              <div className="prod-card-name">{ref.type === 'model' ? '모델' : (ref.label || '제품')} 참조 이미지</div>
+                              <span className="sub">추출일: {formatDateTime(ref.extractedAt)}</span>
+                            </div>
                           </div>
-                        </div>
+                        ))}
+                      </div>
+                      <div className="ref-meta">
+                        {!hasRefs && <p className="sub" style={{ margin: 0 }}>아직 추출된 참조 이미지가 없습니다.</p>}
+                        <button
+                          className={hasRefs ? 'btn ghost sm' : 'btn pri sm'}
+                          disabled={isExtracting}
+                          onClick={() => extractImage(b.key, product.productId)}
+                        >
+                          {isExtracting && <Spinner size="sm" />} {isExtracting ? '추출 중...' : hasRefs ? '다시 추출' : '참조 이미지 추출'}
+                        </button>
                       </div>
 
                       <StepProductFields brandKey={b.key} product={product} />

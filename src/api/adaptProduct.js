@@ -1,13 +1,32 @@
 import { formatKRW } from '../utils/currency.js'
 import { toEmbeddableImageUrl } from './adaptAd.js'
 
-// Adapts a raw sheet product row (keyed by the 12-column PRODUCT_COLUMNS
-// layout — see backend/src/mappers/product.mapper.js) into the shape the
+// Part M: a photo can now yield more than one distinct product plus a
+// human model, so the old single Extracted Image URL/Extracted At pair is
+// replaced by a JSON array of { type: 'product'|'model', label, imageUrl,
+// extractedAt } entries. Safe fallback to [] for older rows (predate this
+// column) or malformed JSON — never throws.
+function parseExtractedReferences(raw) {
+  try {
+    const parsed = JSON.parse(raw || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+// Adapts a raw sheet product row (keyed by the 18-column PRODUCT_COLUMNS
+// layout — see backend/src/mappers/product.mapper.ts) into the shape the
 // products UI (ProductCard/ProductDetailModal/ProductBrowser, and Studio
 // Step 3) is built around. Mirrors adaptAd.js's role for the ad feed.
 export function adaptProduct(product) {
   const images = (product['Image URL'] || '').split('\n').filter(Boolean)
-  const extractedImageLink = product['Extracted Image URL'] || ''
+  // Extraction uploads go through the same Drive pipeline as archived ad
+  // media, so each stored imageUrl is a webViewLink (HTML viewer page, not
+  // raw image bytes) — needs the same thumbnail-endpoint conversion
+  // adaptAd.js applies before it's usable as an <img src>.
+  const extractedReferences = parseExtractedReferences(product['Extracted References JSON'])
+    .map((ref) => ({ ...ref, imageUrl: ref.imageUrl ? toEmbeddableImageUrl(ref.imageUrl, 'w800') : '' }))
 
   // A resync rewrites Price/Promotion Info/Ad Hook Copy every time (see
   // product.mapper.js's SYNC_COLUMNS), so a user correction can't live in
@@ -38,12 +57,7 @@ export function adaptProduct(product) {
     images,
     primaryImage: images[0] || '',
     lastSynced: product['Last Synced'] || '',
-    // Extraction uploads go through the same Drive pipeline as archived ad
-    // media, so the stored value is a webViewLink (HTML viewer page, not
-    // raw image bytes) — needs the same thumbnail-endpoint conversion
-    // adaptAd.js applies before it's usable as an <img src>.
-    extractedImage: extractedImageLink ? toEmbeddableImageUrl(extractedImageLink, 'w800') : '',
-    extractedAt: product['Extracted At'] || '',
+    extractedReferences,
     // Raw override-only values (blank if not overridden) — lets an edit
     // form tell "this field is currently overridden" apart from "this is
     // just the synced value", which the effective fields above can't do on

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   mapProduct, toRow, PRODUCT_COLUMNS, SYNC_COLUMNS, EXTRACTION_COLUMNS, OVERRIDE_COLUMNS,
+  EXTRACTED_REFERENCES_COLUMNS,
 } from '../src/mappers/product.mapper.js'
 
 const fixture = JSON.parse(
@@ -90,10 +91,10 @@ test('handles a near-empty product without throwing', () => {
   assert.equal(mapped['Image URL'], '')
 })
 
-test('toRow keeps all 17 columns (12 sync + 2 extraction + 3 override) in sheet order', () => {
+test('toRow keeps all 18 columns (12 sync + 2 extraction + 3 override + 1 extracted-references) in sheet order', () => {
   const row = toRow(mapProduct('헬시키키', fixture, analysis, CTX))
 
-  assert.equal(row.length, 17)
+  assert.equal(row.length, 18)
   assert.equal(row[0], '4821')
   assert.equal(row[PRODUCT_COLUMNS.indexOf('Brand')], '헬시키키')
   assert.equal(PRODUCT_COLUMNS.indexOf('Ad Hook Copy'), 5, 'ad hook copy sits right before the 4 raw-analysis columns')
@@ -105,18 +106,27 @@ test('toRow keeps all 17 columns (12 sync + 2 extraction + 3 override) in sheet 
   assert.equal(PRODUCT_COLUMNS.indexOf('Price Override'), 14, 'appended after extraction columns too — existing 14 columns keep their positions')
   assert.equal(PRODUCT_COLUMNS.indexOf('Promotion Info Override'), 15)
   assert.equal(PRODUCT_COLUMNS.indexOf('Ad Hook Copy Override'), 16)
+  assert.equal(
+    PRODUCT_COLUMNS.indexOf('Extracted References JSON'), 17,
+    'Part M: appended after the override columns too — existing 17 columns keep their positions'
+  )
   assert.equal(row[12], '', 'extracted-image columns are blank until the separate extraction path fills them')
   assert.equal(row[13], '')
   assert.equal(row[14], '', 'override columns are blank until the user explicitly edits a field')
   assert.equal(row[15], '')
   assert.equal(row[16], '')
+  assert.equal(row[17], '', 'extracted-references JSON is blank until the extraction path fills it')
 })
 
-test('SYNC_COLUMNS/EXTRACTION_COLUMNS/OVERRIDE_COLUMNS split composes PRODUCT_COLUMNS exactly, and mapProduct never touches the extraction or override columns', () => {
-  assert.deepEqual(PRODUCT_COLUMNS, [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS, ...OVERRIDE_COLUMNS])
+test('SYNC_COLUMNS/EXTRACTION_COLUMNS/OVERRIDE_COLUMNS/EXTRACTED_REFERENCES_COLUMNS split composes PRODUCT_COLUMNS exactly, and mapProduct never touches any of them', () => {
+  assert.deepEqual(
+    PRODUCT_COLUMNS,
+    [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS, ...OVERRIDE_COLUMNS, ...EXTRACTED_REFERENCES_COLUMNS]
+  )
   assert.equal(SYNC_COLUMNS.length, 12)
   assert.equal(EXTRACTION_COLUMNS.length, 2)
   assert.equal(OVERRIDE_COLUMNS.length, 3)
+  assert.equal(EXTRACTED_REFERENCES_COLUMNS.length, 1)
 
   const mapped = mapProduct('헬시키키', fixture, analysis, CTX)
   assert.equal('Extracted Image URL' in mapped, false, 'a resync must never overwrite extraction results — mapProduct simply never produces this key')
@@ -124,4 +134,27 @@ test('SYNC_COLUMNS/EXTRACTION_COLUMNS/OVERRIDE_COLUMNS split composes PRODUCT_CO
   assert.equal('Price Override' in mapped, false, 'a resync must never overwrite a user override — mapProduct simply never produces this key')
   assert.equal('Promotion Info Override' in mapped, false)
   assert.equal('Ad Hook Copy Override' in mapped, false)
+  assert.equal(
+    'Extracted References JSON' in mapped, false,
+    'a resync must never overwrite Part M extraction results — mapProduct simply never produces this key'
+  )
+})
+
+test('toRow round-trips a real Extracted References JSON value (Part M) unchanged', () => {
+  const references = [
+    { type: 'product', label: '유산균 A', imageUrl: 'https://drive.google.com/file/d/abc/view', extractedAt: '2026-07-31T00:00:00.000Z' },
+    { type: 'model', label: '모델', imageUrl: 'https://drive.google.com/file/d/def/view', extractedAt: '2026-07-31T00:00:00.000Z' },
+  ]
+  const row = toRow({
+    ...mapProduct('헬시키키', fixture, analysis, CTX),
+    'Extracted References JSON': JSON.stringify(references),
+  })
+
+  assert.deepEqual(JSON.parse(row[17]), references)
+})
+
+test('toRow defaults Extracted References JSON to an empty string (adaptProduct.js treats this as []) for rows that predate the column', () => {
+  const row = toRow(mapProduct('헬시키키', fixture, analysis, CTX))
+
+  assert.equal(row[17], '')
 })
