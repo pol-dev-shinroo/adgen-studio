@@ -6,7 +6,7 @@ import { formatDateTime } from '../../utils/date.js'
 import Thumb from '../common/Thumb.jsx'
 import Badge from '../common/Badge.jsx'
 import PageLoader from '../common/PageLoader.jsx'
-import Spinner from '../common/Spinner.jsx'
+import ScanningOverlay from '../common/ScanningOverlay.jsx'
 import ImageLightbox from '../common/ImageLightbox.jsx'
 
 // One place to see every product's extraction status across every brand, so
@@ -65,7 +65,9 @@ export default function ReferenceImagesScreen() {
                       <div className="ref-screen-item-name">{n}</div>
                       <div className="prod-refs">
                         <div className="prod-card static">
-                          <Thumb gradient="g5" image={p.imageUrl} fit="contain" onClick={() => openLightbox(p.imageUrl)} />
+                          <Thumb gradient="g5" image={p.imageUrl} fit="contain" onClick={() => openLightbox(p.imageUrl)}>
+                            <ScanningOverlay active={isExtracting} />
+                          </Thumb>
                           <div className="prod-card-body">
                             <div className="prod-card-name">원본 마케팅 사진</div>
                           </div>
@@ -91,7 +93,7 @@ export default function ReferenceImagesScreen() {
                           disabled={isExtracting}
                           onClick={() => extractImage(b.key, p.productId)}
                         >
-                          {isExtracting && <Spinner size="sm" />} {isExtracting ? '추출 중...' : hasRefs ? '다시 추출' : '참조 이미지 추출'}
+                          {isExtracting ? '추출 중...' : hasRefs ? '다시 추출' : '참조 이미지 추출'}
                         </button>
                       </div>
                     </div>

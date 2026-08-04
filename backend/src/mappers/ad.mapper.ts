@@ -12,7 +12,10 @@ import { pick } from './pickField.js'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawAdItem = Record<string, any>
 
-export interface AdRow {
+// The columns the scraper/collect job owns and rewrites on every resync —
+// see AdExtractedReferenceFields below for the one column that doesn't
+// belong to this group.
+export interface AdSyncFields {
   'Ad Archive ID': string
   'Brand': string
   'Status': string
@@ -44,7 +47,7 @@ export interface AdRow {
   'Page ID': string
 }
 
-export const AD_COLUMNS: (keyof AdRow)[] = [
+export const SYNC_COLUMNS: (keyof AdSyncFields)[] = [
   'Ad Archive ID',
   'Brand',
   'Status',
@@ -69,6 +72,27 @@ export const AD_COLUMNS: (keyof AdRow)[] = [
   'Page ID',
 ]
 
+// Part N: written only by adImageExtraction.service.js's own write path,
+// never by a resync (mapAd() never produces this key — see mapAd's return
+// type below) — appended, not inserted, same append-only rule as every
+// other column addition in this project. A single JSON object (not an
+// array like products' Part M column), since this pipeline always composes
+// exactly one reference-sheet image per extraction, not a per-entity list.
+export interface AdExtractedReferenceFields {
+  'Extracted Reference JSON': string
+}
+
+export const EXTRACTED_REFERENCE_COLUMNS: (keyof AdExtractedReferenceFields)[] = ['Extracted Reference JSON']
+
+// The full sheet row shape — mapAd() only ever produces AdSyncFields (see
+// its return type below); the extracted-reference column only ever gets
+// filled in by its own separate write path, never by a resync. toRow()
+// accepts a Partial<AdRow> for exactly that reason — a bare mapAd() output
+// is a valid (if partial) row.
+export type AdRow = AdSyncFields & AdExtractedReferenceFields
+
+export const AD_COLUMNS: (keyof AdRow)[] = [...SYNC_COLUMNS, ...EXTRACTED_REFERENCE_COLUMNS]
+
 function toDateString(value: unknown): string {
   if (typeof value === 'number') return new Date(value * 1000).toISOString().slice(0, 10)
   return (value as string) || ''
@@ -83,7 +107,7 @@ export interface MapAdOptions {
   scrapedAt?: string
 }
 
-export function mapAd(item: RawAdItem, { keyword = '', scrapedAt = new Date().toISOString() }: MapAdOptions = {}): AdRow {
+export function mapAd(item: RawAdItem, { keyword = '', scrapedAt = new Date().toISOString() }: MapAdOptions = {}): AdSyncFields {
   const snapshot = item.snapshot || {}
   const images = pick(snapshot, ['images']) || []
   const cards = pick(snapshot, ['cards']) || []
@@ -140,6 +164,6 @@ export function mapAd(item: RawAdItem, { keyword = '', scrapedAt = new Date().to
   }
 }
 
-export function toRow(mappedAd: AdRow): (string | number)[] {
+export function toRow(mappedAd: Partial<AdRow>): (string | number)[] {
   return AD_COLUMNS.map((column) => mappedAd[column] ?? '')
 }

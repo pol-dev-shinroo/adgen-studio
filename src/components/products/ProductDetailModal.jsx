@@ -4,6 +4,7 @@ import RetryImage from '../common/RetryImage.jsx'
 import DetailField from '../common/DetailField.jsx'
 import Thumb from '../common/Thumb.jsx'
 import Badge from '../common/Badge.jsx'
+import ScanningOverlay from '../common/ScanningOverlay.jsx'
 import { formatDateTime } from '../../utils/date.js'
 import { useGalleryLightbox } from '../../hooks/useGalleryLightbox.js'
 import { useProducts } from '../../context/ProductsContext.jsx'
@@ -31,13 +32,19 @@ export default function ProductDetailModal({ product, onClose }) {
         <div className="dtl-gallery">
           {product.images.length > 0 ? (
             product.images.map((src, i) => (
-              <RetryImage
-                key={i}
-                src={src}
-                alt=""
-                onClick={() => setLightboxIndex(i)}
-                fallback={<div className="thumb g5" style={{ cursor: 'default' }} />}
-              />
+              // Only the first (primary) photo doubles as the "source
+              // thumbnail" the ScanningOverlay scans while an extraction is
+              // in flight — position:relative scoped to just this one item
+              // rather than the whole gallery grid.
+              <div key={i} style={{ position: 'relative' }}>
+                <RetryImage
+                  src={src}
+                  alt=""
+                  onClick={() => setLightboxIndex(i)}
+                  fallback={<div className="thumb g5" style={{ cursor: 'default' }} />}
+                />
+                {i === 0 && <ScanningOverlay active={isExtracting} />}
+              </div>
             ))
           ) : (
             <div className="thumb g5" />

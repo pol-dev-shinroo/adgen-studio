@@ -1,10 +1,46 @@
 import { config } from '../config/index.js'
-import { AD_COLUMNS, toRow } from '../mappers/ad.mapper.js'
+import { AD_COLUMNS, SYNC_COLUMNS, toRow } from '../mappers/ad.mapper.js'
 import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
 
-const LAST_COLUMN = 'V' // 22 columns, A..V
+const LAST_COLUMN = 'W' // 23 columns (22 sync + 1 extracted-reference, Part N), A..W
+const SYNC_LAST_COLUMN = columnLetter(SYNC_COLUMNS.length - 1) // 'V' — resync writes never touch the extracted-reference column past this
 
 const tabRange = makeTabRange(config.sheetTabName)
+
+// Unlike productSheets.service.js's ensureProductTab, this tab was created
+// manually up front (see PROGRESS.md) rather than lazily by this app, so
+// there's never a "does the tab exist" branch here — only the header
+// *migration* case: the live sheet's header row predates Part N's
+// Extracted Reference JSON column, so an existing-but-stale header needs
+// its missing trailing cell(s) filled in. Cached the same way
+// ensureProductTab's promise is, so this only ever does real work once per
+// process. A genuinely empty sheet (0 rows, including no header) is left
+// alone here — upsertAdRows already handles that case itself by
+// prepending a full header via appends.unshift([...AD_COLUMNS]).
+let ensureHeaderPromise = null
+function ensureAdSheetHeader() {
+  if (!ensureHeaderPromise) {
+    ensureHeaderPromise = (async () => {
+      const sheets = getClient()
+      const headerRes = await callSheets(() => sheets.spreadsheets.values.get({
+        spreadsheetId: config.sheetId,
+        range: tabRange(`A1:${LAST_COLUMN}1`),
+      }))
+      const existingHeader = headerRes.data.values?.[0] || []
+      if (existingHeader.length > 0 && existingHeader.length < AD_COLUMNS.length) {
+        const missingHeaders = AD_COLUMNS.slice(existingHeader.length)
+        const startColumn = columnLetter(existingHeader.length)
+        await callSheets(() => sheets.spreadsheets.values.update({
+          spreadsheetId: config.sheetId,
+          range: tabRange(`${startColumn}1:${LAST_COLUMN}1`),
+          valueInputOption: 'RAW',
+          requestBody: { values: [missingHeaders] },
+        }))
+      }
+    })()
+  }
+  return ensureHeaderPromise
+}
 
 // The tab's internal numeric sheetId (gid) — needed for deleteDimension
 // requests, which address sheets by gid, not by name. Fetched once and
@@ -41,8 +77,25 @@ const DIFF_IGNORED_INDEXES = new Set([...DIFF_IGNORED_COLUMNS].map((c) => AD_COL
 // to show "last verified"), but each is classified new/updated/unchanged by
 // comparing the incoming row to what was already there, ignoring the columns
 // above.
-export async function upsertAdRows(mappedAds) {
-  const sheets = getClient()
+//
+// Existing rows are deliberately restricted to A..SYNC_LAST_COLUMN, not the
+// full A..LAST_COLUMN range — same reasoning and same fix as
+// productSheets.service.js's upsertProductRows: mapAd() never sets
+// Extracted Reference JSON (see ad.mapper.js), so a full-row overwrite on
+// every resync would silently blank out a real, paid-for ad-reference
+// extraction the moment that ad gets re-scraped (a completely normal
+// 실시간 수집 re-run for the same keyword). New appends don't need this care
+// — a brand-new row has no extraction data yet to protect. The
+// changedFields diff below is restricted to SYNC_COLUMNS for the same
+// reason: comparing the incoming row's always-blank Extracted Reference
+// JSON slot against whatever real value already sits in the sheet would
+// spuriously flag every previously-extracted ad as "updated" on every
+// single resync, even when nothing about the ad itself changed.
+// getClientFn is injected (defaulting to the real getClient) purely so this
+// can be unit-tested against a fake Sheets client without hitting Google —
+// same DI convention as generation.service.js's prepareInputs.
+export async function upsertAdRows(mappedAds, { getClientFn = getClient } = {}) {
+  const sheets = getClientFn()
 
   const existingRes = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
@@ -73,12 +126,16 @@ export async function upsertAdRows(mappedAds) {
     const existingRowNumber = id ? idToRowNumber.get(id) : undefined
 
     if (existingRowNumber) {
-      updates.push({ range: tabRange(`A${existingRowNumber}:${LAST_COLUMN}${existingRowNumber}`), values: [row] })
+      const syncOnlyRow = row.slice(0, SYNC_COLUMNS.length)
+      updates.push({
+        range: tabRange(`A${existingRowNumber}:${SYNC_LAST_COLUMN}${existingRowNumber}`),
+        values: [syncOnlyRow],
+      })
 
       const existingValues = idToExistingValues.get(id) || []
-      const changedFields = AD_COLUMNS.filter((column, i) => {
+      const changedFields = SYNC_COLUMNS.filter((column, i) => {
         if (DIFF_IGNORED_INDEXES.has(i)) return false
-        return String(existingValues[i] ?? '') !== String(row[i] ?? '')
+        return String(existingValues[i] ?? '') !== String(syncOnlyRow[i] ?? '')
       })
       const isUpdated = changedFields.length > 0
       statuses.push({
@@ -133,6 +190,7 @@ export async function upsertAdRows(mappedAds) {
 // way upsertAdRows matches rows (scan column A). Throws with `.notFound =
 // true` if no row has that Ad Archive ID.
 export async function updateAdField(adArchiveId, columnName, value) {
+  await ensureAdSheetHeader()
   const sheets = getClient()
   const columnIndex = AD_COLUMNS.indexOf(columnName)
   if (columnIndex === -1) {
@@ -243,6 +301,7 @@ export async function deleteAdRows(adArchiveIds) {
 // Reads every archived ad row and converts each to an object keyed by
 // AD_COLUMNS (same shape mapAd() produces), for the frontend feed.
 export async function getAllAds() {
+  await ensureAdSheetHeader()
   const sheets = getClient()
   const res = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,

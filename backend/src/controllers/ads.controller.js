@@ -1,5 +1,6 @@
 import { getAllAds, updateAdField, deleteAdRows, revertAdRow } from '../services/sheets.service.js'
 import { deleteAdMedia } from '../services/drive.service.js'
+import { extractAdReferenceImage } from '../services/adImageExtraction.service.js'
 
 // Fields the frontend is allowed to edit directly. Everything else in the
 // sheet is scraper-owned and should only change via a new collection run.
@@ -10,6 +11,21 @@ export async function getAds(req, res, next) {
     const ads = await getAllAds()
     res.json(ads)
   } catch (err) {
+    next(err)
+  }
+}
+
+// Synchronous — a single gpt-image-2 edit call (Part N), not a job/poll
+// flow, same shape as products.controller.js's postExtractProductImage.
+// Real money per call — only ever triggered by an explicit user action,
+// never by a resync/batch operation.
+export async function postExtractAdReferenceImage(req, res, next) {
+  const { adArchiveId } = req.params
+  try {
+    const result = await extractAdReferenceImage(adArchiveId)
+    res.json(result)
+  } catch (err) {
+    if (err.notFound) return res.status(404).json({ error: err.message })
     next(err)
   }
 }

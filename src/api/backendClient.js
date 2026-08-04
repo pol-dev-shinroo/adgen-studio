@@ -38,6 +38,14 @@ export function updateAdField(adArchiveId, field, value) {
   })
 }
 
+// Costs at most 2 real API calls server-side (Part N: one cheap detection
+// call at most, one gpt-image-2 edit call composing a single reference-
+// sheet image) — only ever fired from an explicit user click, never
+// automatically.
+export function extractAdReferenceImage(adArchiveId) {
+  return request(`/api/ads/${encodeURIComponent(adArchiveId)}/extract-reference`, { method: 'POST' })
+}
+
 // items: [{ adArchiveId, action: 'delete'|'revert', previousValues? }]
 export function discardAds(keyword, items) {
   return request('/api/ads/discard', {
