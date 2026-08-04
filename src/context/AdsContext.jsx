@@ -1,7 +1,10 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { initialAds } from '../data/initialAds.js'
 import { useNavigation } from './NavigationContext.jsx'
-import { getAds, startCollect, getJobStatus, updateAdField, discardAds as discardAdsApi } from '../api/backendClient.js'
+import {
+  getAds, startCollect, getJobStatus, updateAdField, discardAds as discardAdsApi,
+  extractAdReferenceImage as extractAdReferenceApi,
+} from '../api/backendClient.js'
 import { adaptAd } from '../api/adaptAd.js'
 import { useJobPolling } from '../hooks/useJobPolling.js'
 
@@ -20,6 +23,10 @@ export function AdsProvider({ children }) {
   // after a collection job finishes — those are already covered by
   // CollectionProgress.
   const [adsLoading, setAdsLoading] = useState(true)
+  // Ad IDs currently mid-extraction (Part N/O) — a Set for the same reason
+  // ProductsContext's extractingIds is: more than one ad's button could be
+  // showing its ScanningOverlay at once.
+  const [extractingIds, setExtractingIds] = useState(() => new Set())
   // Dropped from 1500ms so the live progress UI feels responsive.
   const { activeJob, run } = useJobPolling({ pollIntervalMs: 900 })
 
@@ -176,6 +183,40 @@ export function AdsProvider({ children }) {
     }
   }, [lastQuery, collected, showToast])
 
+  // Costs real money server-side (Part N's image_generation reference-sheet
+  // call + Part O's copy-extraction call, at most 3 calls total — see
+  // adImageExtraction.service.js) — only ever fired from an explicit user
+  // click, never automatically. Updates just the one ad's row in local
+  // state on success (same pattern ProductsContext.extractImage uses):
+  // merges the raw (unconverted) response into the row's raw sheet shape
+  // and re-runs adaptAd on it, so the Drive-webViewLink-to-thumbnail-URL
+  // conversion adaptAd.js applies isn't duplicated here.
+  const extractAdReference = useCallback(async (adId) => {
+    setExtractingIds((prev) => new Set(prev).add(adId))
+    try {
+      const result = await extractAdReferenceApi(adId)
+      setAds((prev) => prev.map((a) => (
+        a.id !== adId ? a : adaptAd({
+          ...a.raw,
+          'Extracted Reference JSON': JSON.stringify({ imageUrl: result.imageUrl, extractedAt: result.extractedAt }),
+          'Extracted Copy JSON': JSON.stringify({
+            price: result.price, promotion: result.promotion, adHooks: result.adHooks,
+          }),
+        })
+      )))
+      showToast('참조 이미지 및 카피 추출이 완료됐습니다')
+    } catch (err) {
+      console.error('Ad reference extraction failed:', err)
+      showToast(`추출 실패: ${err.message}`)
+    } finally {
+      setExtractingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(adId)
+        return next
+      })
+    }
+  }, [showToast])
+
   // Clicking the already-active chip resets to 'all' — same toggle pattern
   // used by the other chip filters in this app.
   const toggleMediaFilter = useCallback((value) => {
@@ -194,7 +235,7 @@ export function AdsProvider({ children }) {
       mediaFilter, toggleMediaFilter,
       recentOnly, toggleRecentOnly,
       collected, collectedUnchangedCount, lastQuery, collect, renameBrand, activeJob, discardAds,
-      adsLoading,
+      adsLoading, extractAdReference, extractingIds,
     }}>
       {children}
     </AdsContext.Provider>

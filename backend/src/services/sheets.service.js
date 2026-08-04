@@ -2,8 +2,13 @@ import { config } from '../config/index.js'
 import { AD_COLUMNS, SYNC_COLUMNS, toRow } from '../mappers/ad.mapper.js'
 import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
 
-const LAST_COLUMN = 'W' // 23 columns (22 sync + 1 extracted-reference, Part N), A..W
-const SYNC_LAST_COLUMN = columnLetter(SYNC_COLUMNS.length - 1) // 'V' — resync writes never touch the extracted-reference column past this
+const LAST_COLUMN = 'X' // 24 columns (22 sync + 1 extracted-reference [Part N] + 1 extracted-copy [Part O]), A..X
+// 'V' — resync writes never touch anything past this, no matter how many
+// extraction-owned columns follow it. Derived from SYNC_COLUMNS.length, not
+// hardcoded against today's specific column count, so adding a THIRD
+// extraction-owned column later needs zero changes to upsertAdRows itself
+// — this is the Part N-2 lesson applied proactively, not just fixed once.
+const SYNC_LAST_COLUMN = columnLetter(SYNC_COLUMNS.length - 1)
 
 const tabRange = makeTabRange(config.sheetTabName)
 
@@ -216,6 +221,49 @@ export async function updateAdField(adArchiveId, columnName, value) {
     range,
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
+  }))
+}
+
+// Same row-lookup as updateAdField, but writes multiple columns in one
+// Sheets API call (values.batchUpdate) instead of one round-trip per field
+// — used by adImageExtraction.service.js to write both extraction-owned
+// columns (Extracted Reference JSON + Extracted Copy JSON) from one
+// extraction action without scanning column A twice. Mirrors
+// productSheets.service.js's updateProductFields exactly. fieldsObj:
+// { [columnName]: value }; columns aren't assumed contiguous.
+export async function updateAdFields(adArchiveId, fieldsObj) {
+  await ensureAdSheetHeader()
+  const sheets = getClient()
+
+  const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheetId,
+    range: tabRange('A:A'),
+  }))
+  const columnA = idColumn.data.values || []
+  const rowNumber = columnA.findIndex((cells) => String(cells?.[0] ?? '').trim() === String(adArchiveId).trim())
+  if (rowNumber < 1) {
+    const err = new Error(`No row found for Ad Archive ID "${adArchiveId}"`)
+    err.notFound = true
+    throw err
+  }
+
+  const data = Object.entries(fieldsObj).map(([columnName, value]) => {
+    const columnIndex = AD_COLUMNS.indexOf(columnName)
+    if (columnIndex === -1) {
+      throw new Error(`Unknown column "${columnName}"`)
+    }
+    const letter = columnLetter(columnIndex)
+    return {
+      range: tabRange(`${letter}${rowNumber + 1}:${letter}${rowNumber + 1}`),
+      values: [[value]],
+    }
+  })
+
+  if (data.length === 0) return
+
+  await callSheets(() => sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: config.sheetId,
+    requestBody: { valueInputOption: 'RAW', data },
   }))
 }
 

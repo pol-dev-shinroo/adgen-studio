@@ -15,10 +15,13 @@ export async function getAds(req, res, next) {
   }
 }
 
-// Synchronous — a single gpt-image-2 edit call (Part N), not a job/poll
-// flow, same shape as products.controller.js's postExtractProductImage.
-// Real money per call — only ever triggered by an explicit user action,
-// never by a resync/batch operation.
+// Synchronous — one gpt-image-2 edit call (Part N reference sheet) plus one
+// cheap text-only copy-extraction call (Part O), run in parallel, not a
+// job/poll flow, same shape as products.controller.js's
+// postExtractProductImage. Response includes both results:
+// { imageUrl, extractedAt, price, promotion, adHooks }. Real money per
+// call — only ever triggered by an explicit user action, never by a
+// resync/batch operation.
 export async function postExtractAdReferenceImage(req, res, next) {
   const { adArchiveId } = req.params
   try {

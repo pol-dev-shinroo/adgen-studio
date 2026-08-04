@@ -42,6 +42,36 @@ function buildTitle(ad) {
   return bottom ? `${line1}\n${bottom}` : line1
 }
 
+// Part N/O: at most one composed reference-sheet image plus one copy
+// object per ad, not a per-entity array like products' extraction column —
+// see adImageExtraction.service.js. Safe fallback to null for ads that
+// predate these columns or have malformed JSON — never throws.
+function parseExtractedReference(raw) {
+  try {
+    const parsed = JSON.parse(raw || 'null')
+    if (!parsed || typeof parsed !== 'object' || !parsed.imageUrl) return null
+    // Same Drive-webViewLink-to-thumbnail-URL conversion every other
+    // extracted image in this app needs before it's usable as an <img src>.
+    return { ...parsed, imageUrl: toEmbeddableImageUrl(parsed.imageUrl, 'w1000') }
+  } catch {
+    return null
+  }
+}
+
+function parseExtractedCopy(raw) {
+  try {
+    const parsed = JSON.parse(raw || 'null')
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      price: typeof parsed.price === 'string' ? parsed.price : null,
+      promotion: typeof parsed.promotion === 'string' ? parsed.promotion : null,
+      adHooks: Array.isArray(parsed.adHooks) ? parsed.adHooks.filter((h) => typeof h === 'string') : [],
+    }
+  } catch {
+    return null
+  }
+}
+
 export function adaptAd(ad) {
   const id = ad['Ad Archive ID']
   const dateStr = formatScrapedDate(ad['Date Scraped'])
@@ -63,6 +93,8 @@ export function adaptAd(ad) {
     image: imageLink ? toEmbeddableImageUrl(imageLink, 'w600') : '',
     images: (ad['Archived Image Links'] || '').split('\n').filter(Boolean),
     searchKeyword: ad['Search Keyword'] || '',
+    extractedReference: parseExtractedReference(ad['Extracted Reference JSON']),
+    extractedCopy: parseExtractedCopy(ad['Extracted Copy JSON']),
     raw: ad,
   }
 }

@@ -1,7 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { mapAd, toRow, AD_COLUMNS, SYNC_COLUMNS, EXTRACTED_REFERENCE_COLUMNS } from '../src/mappers/ad.mapper.js'
+import {
+  mapAd, toRow, AD_COLUMNS, SYNC_COLUMNS, EXTRACTED_REFERENCE_COLUMNS, EXTRACTED_COPY_COLUMNS,
+} from '../src/mappers/ad.mapper.js'
 
 const fixture = JSON.parse(
   readFileSync(new URL('./fixtures/actor-item.json', import.meta.url), 'utf8')
@@ -89,10 +91,10 @@ test('handles a near-empty item without throwing', () => {
   assert.equal(mapped['Date Scraped'], CTX.scrapedAt)
 })
 
-test('toRow keeps all 23 columns (22 sync + 1 extracted-reference) in sheet order', () => {
+test('toRow keeps all 24 columns (22 sync + 1 extracted-reference + 1 extracted-copy) in sheet order', () => {
   const row = toRow(mapAd(fixture, CTX))
 
-  assert.equal(row.length, 23)
+  assert.equal(row.length, 24)
   assert.equal(row[0], '1234567890123456')
   assert.equal(row[AD_COLUMNS.indexOf('Brand')], '뉴트리원')
   assert.equal(AD_COLUMNS.indexOf('Archived Image Links'), 13, 'archived links sit right before Image Links (col N)')
@@ -106,17 +108,27 @@ test('toRow keeps all 23 columns (22 sync + 1 extracted-reference) in sheet orde
     'Part N: appended after every sync column — existing 22 columns keep their positions'
   )
   assert.equal(row[22], '', 'blank until the separate ad-extraction path fills it')
+  assert.equal(
+    AD_COLUMNS.indexOf('Extracted Copy JSON'), 23,
+    'Part O: appended after Extracted Reference JSON too — existing 23 columns keep their positions'
+  )
+  assert.equal(row[23], '', 'blank until the separate ad-extraction path fills it')
 })
 
-test('SYNC_COLUMNS/EXTRACTED_REFERENCE_COLUMNS split composes AD_COLUMNS exactly, and mapAd never touches the extracted-reference column', () => {
-  assert.deepEqual(AD_COLUMNS, [...SYNC_COLUMNS, ...EXTRACTED_REFERENCE_COLUMNS])
+test('SYNC_COLUMNS/EXTRACTED_REFERENCE_COLUMNS/EXTRACTED_COPY_COLUMNS split composes AD_COLUMNS exactly, and mapAd never touches either extraction-owned column', () => {
+  assert.deepEqual(AD_COLUMNS, [...SYNC_COLUMNS, ...EXTRACTED_REFERENCE_COLUMNS, ...EXTRACTED_COPY_COLUMNS])
   assert.equal(SYNC_COLUMNS.length, 22)
   assert.equal(EXTRACTED_REFERENCE_COLUMNS.length, 1)
+  assert.equal(EXTRACTED_COPY_COLUMNS.length, 1)
 
   const mapped = mapAd(fixture, CTX)
   assert.equal(
     'Extracted Reference JSON' in mapped, false,
     'a resync must never overwrite Part N extraction results — mapAd simply never produces this key'
+  )
+  assert.equal(
+    'Extracted Copy JSON' in mapped, false,
+    'a resync must never overwrite Part O extraction results — mapAd simply never produces this key'
   )
 })
 
@@ -125,4 +137,11 @@ test('toRow round-trips a real Extracted Reference JSON value (Part N) unchanged
   const row = toRow({ ...mapAd(fixture, CTX), 'Extracted Reference JSON': JSON.stringify(reference) })
 
   assert.deepEqual(JSON.parse(String(row[22])), reference)
+})
+
+test('toRow round-trips a real Extracted Copy JSON value (Part O) unchanged', () => {
+  const copy = { price: '29,900원', promotion: '오늘만 71% 특가', adHooks: ['운동&식단 필요없는 지방흡착템', '아마존 1등'] }
+  const row = toRow({ ...mapAd(fixture, CTX), 'Extracted Copy JSON': JSON.stringify(copy) })
+
+  assert.deepEqual(JSON.parse(String(row[23])), copy)
 })

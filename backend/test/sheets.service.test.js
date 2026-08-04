@@ -14,11 +14,19 @@ import { upsertAdRows } from '../src/services/sheets.service.js'
 // generation.service.js's prepareInputs dependency-injection convention;
 // there's no established sheets-mocking pattern yet since this is the
 // first test of this file).
+//
+// Part O added a SECOND extraction-owned column (Extracted Copy JSON) —
+// these tests carry a real value in that column too, proving the
+// SYNC_COLUMNS/SYNC_LAST_COLUMN-based protection generalizes to however
+// many extraction-owned columns follow it, not just the first one.
 
 const AD_ID = '1234567890'
 const REAL_EXTRACTED_REFERENCE = JSON.stringify({
   imageUrl: 'https://drive.google.com/file/d/real-extraction/view',
   extractedAt: '2026-08-04T00:00:00.000Z',
+})
+const REAL_EXTRACTED_COPY = JSON.stringify({
+  price: '29,900원', promotion: '오늘만 71% 특가', adHooks: ['운동&식단 필요없는 지방흡착템'],
 })
 
 function buildExistingRow() {
@@ -28,6 +36,7 @@ function buildExistingRow() {
     'Status': '게재중',
     'Search Keyword': 'test',
     'Extracted Reference JSON': REAL_EXTRACTED_REFERENCE,
+    'Extracted Copy JSON': REAL_EXTRACTED_COPY,
   }
   return AD_COLUMNS.map((column) => values[column] ?? '')
 }
@@ -65,7 +74,7 @@ function makeFakeSheets({ existingRow, captured }) {
   }
 }
 
-test('upsertAdRows never writes into the Extracted Reference JSON column when updating an existing row', async () => {
+test('upsertAdRows never writes into either extraction-owned column when updating an existing row', async () => {
   const captured = {}
   const fakeSheets = makeFakeSheets({ existingRow: buildExistingRow(), captured })
   // A real sync-column change (Status flips) so this is genuinely an
@@ -78,10 +87,11 @@ test('upsertAdRows never writes into the Extracted Reference JSON column when up
   const update = captured.batchUpdate.data[0]
 
   assert.doesNotMatch(update.range, /W\d+$/, 'the write range must not reach the Extracted Reference JSON column (W)')
+  assert.doesNotMatch(update.range, /X\d+$/, 'the write range must not reach the Extracted Copy JSON column (X)')
   assert.match(update.range, /V\d+$/, 'the write range should end at the last sync column (V)')
   assert.equal(
     update.values[0].length, SYNC_COLUMNS.length,
-    'the write payload must not include a 23rd value that could blank the extracted-reference column'
+    'the write payload must not include a 23rd or 24th value that could blank either extraction-owned column'
   )
 
   const status = result.statuses.find((s) => s.adArchiveId === AD_ID)
@@ -90,9 +100,13 @@ test('upsertAdRows never writes into the Extracted Reference JSON column when up
     !status.changedFields.includes('Extracted Reference JSON'),
     'the diff must never flag the extracted-reference column as changed — comparing it would always spuriously differ'
   )
+  assert.ok(
+    !status.changedFields.includes('Extracted Copy JSON'),
+    'the diff must never flag the extracted-copy column as changed either — same reason, applied from day one this time'
+  )
 })
 
-test('upsertAdRows leaves a real extracted-reference value in the sheet completely alone on an unrelated resync', async () => {
+test('upsertAdRows leaves real extraction values (both columns) in the sheet completely alone on an unrelated resync', async () => {
   const captured = {}
   const fakeSheets = makeFakeSheets({ existingRow: buildExistingRow(), captured })
   // Identical to the existing row's sync columns — nothing about the ad
@@ -102,13 +116,14 @@ test('upsertAdRows leaves a real extracted-reference value in the sheet complete
   await upsertAdRows([mappedAd], { getClientFn: () => fakeSheets })
 
   const update = captured.batchUpdate.data[0]
-  // The write payload never even contains the real extraction value or a
-  // blank in its place — the range itself stops one column short of it.
+  // The write payload never even contains either real extraction value or
+  // a blank in its place — the range itself stops two columns short.
   assert.equal(update.values[0].length, SYNC_COLUMNS.length)
   assert.ok(!update.values[0].includes(REAL_EXTRACTED_REFERENCE))
+  assert.ok(!update.values[0].includes(REAL_EXTRACTED_COPY))
 })
 
-test('upsertAdRows still writes brand-new rows at full width, extracted-reference column included', async () => {
+test('upsertAdRows still writes brand-new rows at full width, both extraction-owned columns included', async () => {
   const captured = {}
   const fakeSheets = {
     spreadsheets: {

@@ -4,9 +4,8 @@ import { formatDateTime } from '../../../utils/date.js'
 import Thumb from '../../common/Thumb.jsx'
 import Badge from '../../common/Badge.jsx'
 import Spinner from '../../common/Spinner.jsx'
-import ScanningOverlay from '../../common/ScanningOverlay.jsx'
 import SyncProgress from './SyncProgress.jsx'
-import StepProductFields from './StepProductFields.jsx'
+import AdSelectionPanel from './AdSelectionPanel.jsx'
 
 // Falls back to a native <select> once a brand has enough products that a
 // card grid would be more scrolling than picking — the picker itself is
@@ -16,7 +15,7 @@ const CARD_PICKER_MAX = 8
 
 export default function StepMyBrand() {
   const { myBrands, toggleMyBrand, selections, toggleProductSelection } = useStudio()
-  const { sync, activeJob, extractImage, extractingIds } = useProducts()
+  const { sync, activeJob } = useProducts()
   const activeBrands = myBrands.filter((b) => b.active)
 
   return (
@@ -132,52 +131,16 @@ export default function StepMyBrand() {
                   </p>
                 )}
 
-                {selectedProducts.map((n) => {
-                  const product = b.products[n]
-                  const isExtracting = extractingIds.has(product.productId)
-                  const hasRefs = product.extractedReferences.length > 0
-                  return (
-                    <div key={n} className="prod-select-block">
-                      <div className="prod-refs">
-                        <div className="prod-card static">
-                          <Thumb gradient="g5" image={product.imageUrl} fit="contain">
-                            <ScanningOverlay active={isExtracting} />
-                          </Thumb>
-                          <div className="prod-card-body">
-                            <div className="prod-card-name">원본 마케팅 사진</div>
-                          </div>
-                        </div>
-                        {product.extractedReferences.map((ref, i) => (
-                          <div key={i} className="prod-card static">
-                            <Thumb gradient="g5" image={ref.imageUrl} fit="contain">
-                              <Badge variant={ref.type === 'model' ? 'model' : 'live'}>
-                                {ref.type === 'model' ? '모델' : (ref.label || '제품')}
-                              </Badge>
-                            </Thumb>
-                            <div className="prod-card-body">
-                              <div className="prod-card-name">{ref.type === 'model' ? '모델' : (ref.label || '제품')} 참조 이미지</div>
-                              <span className="sub">추출일: {formatDateTime(ref.extractedAt)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="ref-meta">
-                        {!hasRefs && <p className="sub" style={{ margin: 0 }}>아직 추출된 참조 이미지가 없습니다.</p>}
-                        <button
-                          className={hasRefs ? 'btn ghost sm' : 'btn pri sm'}
-                          disabled={isExtracting}
-                          onClick={() => extractImage(b.key, product.productId)}
-                        >
-                          {isExtracting ? '추출 중...' : hasRefs ? '다시 추출' : '참조 이미지 추출'}
-                        </button>
-                      </div>
-
-                      <StepProductFields brandKey={b.key} product={product} />
-                    </div>
-                  )
-                })}
               </>
             )}
+
+            {/* Part O: brand-scoped, not per-product — see AdSelectionPanel's
+                own header comment for why this replaced the old per-selected-
+                product 원본/참조/StepProductFields block entirely. Renders once
+                per active brand here (sibling to the product picker above,
+                same brand card), regardless of how many products are
+                selected. */}
+            <AdSelectionPanel brand={b} />
           </div>
         )
       })}

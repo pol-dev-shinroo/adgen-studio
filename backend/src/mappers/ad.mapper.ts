@@ -84,14 +84,27 @@ export interface AdExtractedReferenceFields {
 
 export const EXTRACTED_REFERENCE_COLUMNS: (keyof AdExtractedReferenceFields)[] = ['Extracted Reference JSON']
 
+// Part O: same extraction action (adImageExtraction.service.js's
+// extractAdReferenceImage) also runs one cheap text-only vision call for
+// reusable copy candidates — a second, independent extraction-owned column,
+// appended after EXTRACTED_REFERENCE_COLUMNS, never written by mapAd()/a
+// resync for the same reason the first one isn't. Kept as its own column
+// (not folded into Extracted Reference JSON) since the two are genuinely
+// separate outputs of separate calls, written independently.
+export interface AdExtractedCopyFields {
+  'Extracted Copy JSON': string
+}
+
+export const EXTRACTED_COPY_COLUMNS: (keyof AdExtractedCopyFields)[] = ['Extracted Copy JSON']
+
 // The full sheet row shape — mapAd() only ever produces AdSyncFields (see
-// its return type below); the extracted-reference column only ever gets
-// filled in by its own separate write path, never by a resync. toRow()
+// its return type below); both extraction-owned columns only ever get
+// filled in by their own separate write path, never by a resync. toRow()
 // accepts a Partial<AdRow> for exactly that reason — a bare mapAd() output
 // is a valid (if partial) row.
-export type AdRow = AdSyncFields & AdExtractedReferenceFields
+export type AdRow = AdSyncFields & AdExtractedReferenceFields & AdExtractedCopyFields
 
-export const AD_COLUMNS: (keyof AdRow)[] = [...SYNC_COLUMNS, ...EXTRACTED_REFERENCE_COLUMNS]
+export const AD_COLUMNS: (keyof AdRow)[] = [...SYNC_COLUMNS, ...EXTRACTED_REFERENCE_COLUMNS, ...EXTRACTED_COPY_COLUMNS]
 
 function toDateString(value: unknown): string {
   if (typeof value === 'number') return new Date(value * 1000).toISOString().slice(0, 10)

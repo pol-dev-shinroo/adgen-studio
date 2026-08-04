@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback } from 'react'
 import { useNavigation } from './NavigationContext.jsx'
 import { useGallery } from './GalleryContext.jsx'
 import { useProducts } from './ProductsContext.jsx'
+import { useAds } from './AdsContext.jsx'
 
 const StudioContext = createContext(null)
 
@@ -17,6 +18,7 @@ export function StudioProvider({ children }) {
   const { showToast, go } = useNavigation()
   const { startGeneration } = useGallery()
   const { brands: productBrands } = useProducts()
+  const { ads } = useAds()
 
   const [step, setStepRaw] = useState(1)
   const [refBrand, setRefBrandState] = useState(null)
@@ -30,6 +32,18 @@ export function StudioProvider({ children }) {
   // b.products are dropped, and if that empties the array entirely it falls
   // back to the first available product instead of pointing at nothing.
   const [productOverrides, setProductOverrides] = useState({})
+  // Part O: raw per-brand ad-selection state, keyed by brand display name —
+  // same convention as productOverrides. Generation wiring is explicitly
+  // out of scope for this part; this only needs to survive step navigation
+  // the same way everything else here does. checkedAdIds: which of the
+  // brand's own ads are checked. selectedPrice/selectedPromotion/
+  // selectedAdHooks: chosen from whatever the checked+extracted ads
+  // actually offer (derived below, in adSelections). selectedSheetAdIds:
+  // which checked+extracted ads' reference sheets are kept selected in the
+  // gallery — a separate selection from checkedAdIds, since unchecking an
+  // ad in the list and deselecting its sheet in the gallery are different
+  // user actions with different controls.
+  const [adSelectionOverrides, setAdSelectionOverrides] = useState({})
   const [formats, setFormats] = useState(DEFAULT_FORMATS)
   const [quantity, setQuantity] = useState('2장')
   const [styleIntensity, setStyleIntensity] = useState(60)
@@ -42,6 +56,43 @@ export function StudioProvider({ children }) {
     const override = productOverrides[b.name]
     const validNames = (override?.products || []).filter((n) => b.products[n])
     selections[b.name] = validNames.length > 0 ? { products: validNames } : defaultSelectionFor(b)
+  })
+
+  // Derived per active brand, the same way `selections` derives from
+  // productOverrides above — reactive to both the raw override state and
+  // to the live `ads` list (an ad getting extracted, or a checked ad
+  // dropping out of the list, immediately reflows the derived options).
+  // availablePrices/availablePromotions/availableAdHooks are deduped across
+  // every checked ad that's already been extracted — an ad that's checked
+  // but not yet extracted contributes nothing, matching every other
+  // extraction gate in this app. Stale selections (a price that's no
+  // longer offered because its ad got unchecked) self-heal the same way
+  // productOverrides' stale product names do.
+  const adSelections = {}
+  myBrands.filter((b) => b.active).forEach((b) => {
+    const override = adSelectionOverrides[b.name] || {}
+    const brandAds = ads.filter((a) => a.brand === b.name)
+    const brandAdIds = new Set(brandAds.map((a) => a.id))
+
+    const checkedAdIds = (override.checkedAdIds || []).filter((id) => brandAdIds.has(id))
+    const extractedChecked = brandAds.filter((a) => checkedAdIds.includes(a.id) && a.extractedReference)
+
+    const availablePrices = [...new Set(extractedChecked.map((a) => a.extractedCopy?.price).filter(Boolean))]
+    const availablePromotions = [...new Set(extractedChecked.map((a) => a.extractedCopy?.promotion).filter(Boolean))]
+    const availableAdHooks = [...new Set(extractedChecked.flatMap((a) => a.extractedCopy?.adHooks || []))]
+    const availableSheetAdIds = extractedChecked.map((a) => a.id)
+
+    adSelections[b.name] = {
+      checkedAdIds,
+      availablePrices,
+      availablePromotions,
+      availableAdHooks,
+      availableSheetAdIds,
+      selectedPrice: availablePrices.includes(override.selectedPrice) ? override.selectedPrice : null,
+      selectedPromotion: availablePromotions.includes(override.selectedPromotion) ? override.selectedPromotion : null,
+      selectedAdHooks: (override.selectedAdHooks || []).filter((h) => availableAdHooks.includes(h)),
+      selectedSheetAdIds: (override.selectedSheetAdIds || []).filter((id) => availableSheetAdIds.includes(id)),
+    }
   })
 
   const pickRefBrand = useCallback((brand) => {
@@ -91,6 +142,67 @@ export function StudioProvider({ children }) {
     })
   }, [productBrands])
 
+  // Toggles one ad in/out of a brand's checked-ads list. Unlike
+  // toggleProductSelection, this CAN go empty — there's no "must always
+  // have one" rule for ads the way there is for products.
+  const toggleAdChecked = useCallback((brandName, adId) => {
+    setAdSelectionOverrides((prev) => {
+      const current = prev[brandName]?.checkedAdIds || []
+      const next = current.includes(adId) ? current.filter((id) => id !== adId) : [...current, adId]
+      return { ...prev, [brandName]: { ...prev[brandName], checkedAdIds: next } }
+    })
+  }, [])
+
+  // 전체 선택 for the ad list — checks every ad ID passed in, or clears the
+  // list entirely if every one of them is already checked (so the single
+  // control correctly acts as an indeterminate-aware toggle: partial or
+  // none checked -> select all; all checked -> deselect all).
+  const toggleAllAdsChecked = useCallback((brandName, allAdIds) => {
+    setAdSelectionOverrides((prev) => {
+      const current = prev[brandName]?.checkedAdIds || []
+      const allChecked = allAdIds.length > 0 && allAdIds.every((id) => current.includes(id))
+      return { ...prev, [brandName]: { ...prev[brandName], checkedAdIds: allChecked ? [] : [...allAdIds] } }
+    })
+  }, [])
+
+  const selectAdPrice = useCallback((brandName, price) => {
+    setAdSelectionOverrides((prev) => ({ ...prev, [brandName]: { ...prev[brandName], selectedPrice: price } }))
+  }, [])
+
+  const selectAdPromotion = useCallback((brandName, promotion) => {
+    setAdSelectionOverrides((prev) => ({ ...prev, [brandName]: { ...prev[brandName], selectedPromotion: promotion } }))
+  }, [])
+
+  const toggleAdHookSelection = useCallback((brandName, hook) => {
+    setAdSelectionOverrides((prev) => {
+      const current = prev[brandName]?.selectedAdHooks || []
+      const next = current.includes(hook) ? current.filter((h) => h !== hook) : [...current, hook]
+      return { ...prev, [brandName]: { ...prev[brandName], selectedAdHooks: next } }
+    })
+  }, [])
+
+  // Reference-sheet gallery selection — deliberately separate state from
+  // checkedAdIds (see the adSelectionOverrides comment above): unchecking
+  // an ad in the list and deselecting its sheet in the gallery are
+  // different controls, even though a sheet can only ever be selected for
+  // an ad that's currently checked+extracted (enforced by the self-heal in
+  // the adSelections derivation above, not here).
+  const toggleSheetSelected = useCallback((brandName, adId) => {
+    setAdSelectionOverrides((prev) => {
+      const current = prev[brandName]?.selectedSheetAdIds || []
+      const next = current.includes(adId) ? current.filter((id) => id !== adId) : [...current, adId]
+      return { ...prev, [brandName]: { ...prev[brandName], selectedSheetAdIds: next } }
+    })
+  }, [])
+
+  const toggleAllSheetsSelected = useCallback((brandName, allAdIds) => {
+    setAdSelectionOverrides((prev) => {
+      const current = prev[brandName]?.selectedSheetAdIds || []
+      const allSelected = allAdIds.length > 0 && allAdIds.every((id) => current.includes(id))
+      return { ...prev, [brandName]: { ...prev[brandName], selectedSheetAdIds: allSelected ? [] : [...allAdIds] } }
+    })
+  }, [])
+
   const toggleFormat = useCallback((fmt) => {
     setFormats((prev) => (prev.includes(fmt) ? prev.filter((f) => f !== fmt) : [...prev, fmt]))
   }, [])
@@ -117,6 +229,18 @@ export function StudioProvider({ children }) {
     setStepRaw((s) => Math.max(1, s - 1))
   }, [])
 
+  // Part O interim-state note (deliberate, not an oversight): Step 3's UI
+  // now also shows the new brand-scoped ad-selection panel (checked ads,
+  // extracted reference sheets, chosen price/promotion/adHooks — all in
+  // `adSelections` above), but generation wiring is explicitly out of scope
+  // for that part. This validation below, and the actual startGeneration
+  // payload further down, still only look at `selections`/productOverrides
+  // and each selected product's `extractedReferences` — exactly as they did
+  // before Part O. Nothing here reads `adSelections` yet. That means a user
+  // can fully fill out the new ad panel and still be blocked by (or only
+  // gated by) the old per-product extraction check, with no visible link
+  // between the two — genuinely inconsistent, left for a later part to
+  // connect once the new selections actually feed a real generation call.
   const goNext = useCallback(() => {
     if (step === 2 && refAdIds.length === 0) {
       showToast('광고소재를 1개 이상 선택하세요')
@@ -203,6 +327,9 @@ export function StudioProvider({ children }) {
         refAdIds, toggleRefAd,
         myBrands, toggleMyBrand,
         selections, toggleProductSelection,
+        adSelections, toggleAdChecked, toggleAllAdsChecked,
+        selectAdPrice, selectAdPromotion, toggleAdHookSelection,
+        toggleSheetSelected, toggleAllSheetsSelected,
         formats, toggleFormat,
         quantity, setQuantity,
         styleIntensity, setStyleIntensity,
