@@ -299,6 +299,22 @@ export function StudioProvider({ children }) {
 
     const qty = Number(String(quantity).replace(/\D/g, '')) || 1
 
+    // Part P: real, user-picked copy from Step 3's ad-selection panel (the
+    // SAME brand `b` the rest of this payload is already built for), used
+    // instead of the backend's Pinecone lookup when the user actually
+    // touched the new panel. Only sent if at least one of the three is
+    // actually populated — omitted (null) otherwise, so anyone who never
+    // touches the new panel gets exactly the old behavior, unchanged.
+    const brandAdSel = adSelections[b.name]
+    const hasAdCopyOverride = !!brandAdSel && (
+      brandAdSel.selectedPrice || brandAdSel.selectedPromotion || brandAdSel.selectedAdHooks.length > 0
+    )
+    const adCopyOverride = hasAdCopyOverride ? {
+      price: brandAdSel.selectedPrice || null,
+      promotion: brandAdSel.selectedPromotion || null,
+      adHooks: brandAdSel.selectedAdHooks,
+    } : null
+
     startGeneration({
       refBrand,
       refAdIds,
@@ -307,6 +323,7 @@ export function StudioProvider({ children }) {
       quantity: qty,
       styleIntensity,
       instructions,
+      adCopyOverride,
     })
 
     showToast('생성 잡이 시작됐습니다 — 결과 갤러리에서 진행 상황을 확인하세요')
@@ -315,7 +332,7 @@ export function StudioProvider({ children }) {
     // in this file, rather than the old mock's artificial setTimeout delay.
     go('gallery')
   }, [
-    step, refAdIds, myBrands, formats, selections, refBrand, quantity, styleIntensity, instructions,
+    step, refAdIds, myBrands, formats, selections, adSelections, refBrand, quantity, styleIntensity, instructions,
     startGeneration, showToast, go,
   ])
 

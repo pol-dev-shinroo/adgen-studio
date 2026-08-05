@@ -11,7 +11,7 @@ export async function postGenerate(req, res, next) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
 
-  const { refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions } = req.body ?? {}
+  const { refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride } = req.body ?? {}
 
   if (!Array.isArray(refAdIds) || refAdIds.length === 0) {
     return res.status(400).json({ error: '"refAdIds" must be a non-empty array' })
@@ -40,6 +40,14 @@ export async function postGenerate(req, res, next) {
       quantity: qty,
       styleIntensity: intensity,
       instructions: typeof instructions === 'string' ? instructions : '',
+      // Part P: { price, promotion, adHooks } from Step 3's ad-selection
+      // panel — real, curated copy the user hand-picked, used instead of
+      // the Pinecone semantic lookup for this run when present. Loosely
+      // validated here (just "is it an object") — generation.service.js's
+      // own conversion is already defensive about malformed/empty
+      // sub-fields, same "don't trust the frontend as the only gate"
+      // convention as prepareInputs's own validation.
+      adCopyOverride: adCopyOverride && typeof adCopyOverride === 'object' ? adCopyOverride : null,
     })
     res.status(202).json({ jobId })
   } catch (err) {

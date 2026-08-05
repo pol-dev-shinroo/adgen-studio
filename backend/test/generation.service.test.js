@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { prepareInputs, computeTotalRenders } from '../src/services/generation.service.js'
+import { prepareInputs, computeTotalRenders, counterFactsFromAdCopyOverride } from '../src/services/generation.service.js'
 
 // config.brands is read from env at module load — healthykiki/헬시키키 is the
 // one real brand configured throughout this project's test fixtures/manual
@@ -143,4 +143,50 @@ test('prepareInputs throws for an unknown brand key', async () => {
       return true
     }
   )
+})
+
+test('counterFactsFromAdCopyOverride converts a real-shaped override to the counter_facts array shape', () => {
+  const facts = counterFactsFromAdCopyOverride({
+    price: '29,900원', promotion: '오늘만 71% 특가', adHooks: ['운동&식단 필요없는 지방흡착템', '★아마존 1등★'],
+  })
+
+  assert.deepEqual(facts, [
+    { category: '가격', fact: '29,900원' },
+    { category: '프로모션', fact: '오늘만 71% 특가' },
+    { category: '광고 후킹 카피', fact: '운동&식단 필요없는 지방흡착템' },
+    { category: '광고 후킹 카피', fact: '★아마존 1등★' },
+  ])
+})
+
+test('counterFactsFromAdCopyOverride returns null for no override at all (falls through to Pinecone)', () => {
+  assert.equal(counterFactsFromAdCopyOverride(null), null)
+  assert.equal(counterFactsFromAdCopyOverride(undefined), null)
+})
+
+test('counterFactsFromAdCopyOverride returns null when every field is empty, not an empty-facts override', () => {
+  assert.equal(counterFactsFromAdCopyOverride({ price: null, promotion: null, adHooks: [] }), null)
+  assert.equal(counterFactsFromAdCopyOverride({}), null)
+})
+
+test('counterFactsFromAdCopyOverride includes only whichever fields are actually populated', () => {
+  assert.deepEqual(
+    counterFactsFromAdCopyOverride({ price: null, promotion: '반값 특가', adHooks: [] }),
+    [{ category: '프로모션', fact: '반값 특가' }]
+  )
+  assert.deepEqual(
+    counterFactsFromAdCopyOverride({ price: '10,000원', promotion: null, adHooks: [] }),
+    [{ category: '가격', fact: '10,000원' }]
+  )
+  assert.deepEqual(
+    counterFactsFromAdCopyOverride({ price: null, promotion: null, adHooks: ['hook only'] }),
+    [{ category: '광고 후킹 카피', fact: 'hook only' }]
+  )
+})
+
+test('counterFactsFromAdCopyOverride ignores blank strings and malformed adHooks entries', () => {
+  const facts = counterFactsFromAdCopyOverride({
+    price: '   ', promotion: '', adHooks: ['real hook', '', '   ', 42, null],
+  })
+
+  assert.deepEqual(facts, [{ category: '광고 후킹 카피', fact: 'real hook' }])
 })

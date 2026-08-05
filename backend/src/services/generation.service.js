@@ -48,6 +48,41 @@ export function computeTotalRenders(products, refAds, formats, quantity) {
   return products.length * refAds.length * formats.length * quantity
 }
 
+// Part P: converts Step 3's ad-selection panel's { price, promotion,
+// adHooks } into the exact counter_facts shape findCounterFacts already
+// produces ([{category, fact}]), so writeReplacementCopy needs zero
+// changes — it already just JSON.stringifies whatever counter_facts array
+// it's handed. Real, user-picked copy from the brand's own past ads is
+// more reliable than a Pinecone semantic guess, so when present this
+// replaces (not supplements) the Pinecone lookup for the run.
+//
+// Returns null — not []  — for "no usable override", covering both "no
+// override object at all" and "an override object with every field empty"
+// (a malformed/stale payload the frontend shouldn't send per its own
+// contract, but this backend never trusts the frontend as the only gate —
+// see prepareInputs's own comment on the same principle). null is the
+// signal callers use to fall through to the existing Pinecone path
+// unchanged; an override that resolves to zero facts is treated exactly
+// the same as no override, not as "replace with nothing."
+export function counterFactsFromAdCopyOverride(override) {
+  if (!override || typeof override !== 'object') return null
+
+  const facts = []
+  if (typeof override.price === 'string' && override.price.trim()) {
+    facts.push({ category: '가격', fact: override.price.trim() })
+  }
+  if (typeof override.promotion === 'string' && override.promotion.trim()) {
+    facts.push({ category: '프로모션', fact: override.promotion.trim() })
+  }
+  for (const hook of Array.isArray(override.adHooks) ? override.adHooks : []) {
+    if (typeof hook === 'string' && hook.trim()) {
+      facts.push({ category: '광고 후킹 카피', fact: hook.trim() })
+    }
+  }
+
+  return facts.length > 0 ? facts : null
+}
+
 // Synchronous (well, awaited-but-fast) validation before any job/money is
 // committed: unknown brand, unknown/unextracted product(s), or no matching
 // reference ads all fail here with `.badRequest = true` rather than only
@@ -142,7 +177,7 @@ export async function prepareInputs(
 // calls per product. Only the render step itself (and the one-time-per-
 // product reference-image download) repeats per product.
 export async function startGeneration(input) {
-  const { refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions } = input
+  const { refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride } = input
   const { brandDef, products, refAds } = await prepareInputs({ refAdIds, brand })
 
   const totalRenders = computeTotalRenders(products, refAds, formats, quantity)
@@ -170,7 +205,7 @@ export async function startGeneration(input) {
         resultIds: [],
       },
     },
-    (job) => runJob(job, { refAds, products, brandDef, formats, quantity, styleIntensity, instructions }),
+    (job) => runJob(job, { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride }),
     (job, err) => {
       job.status = 'failed'
       job.error = err.message
@@ -183,9 +218,15 @@ export function getJob(jobId) {
   return jobStore.getJob(jobId)
 }
 
-async function runJob(job, { refAds, products, brandDef, formats, quantity, styleIntensity, instructions }) {
+async function runJob(job, { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride }) {
   const progress = job.progress
   const summary = job.summary
+
+  // Part P: resolved once per job, not per reference ad — same as the
+  // Pinecone-backed facts it can replace, this has always been one shared
+  // fact set applied uniformly across every selected reference ad, never
+  // varied per ad.
+  const overrideFacts = counterFactsFromAdCopyOverride(adCopyOverride)
 
   // Built exactly once regardless of how many products are selected —
   // vision/counter-fact/copywriting analysis is keyed on the reference ad,
@@ -207,7 +248,10 @@ async function runJob(job, { refAds, products, brandDef, formats, quantity, styl
       const analysis = await analyzeReferenceAd(referenceImageBase64)
 
       progress.phase = 'researching'
-      const { counter_facts } = await findCounterFacts(brandDef.key, analysis.identified_texts)
+      // Real, user-picked copy from Step 3's ad-selection panel skips the
+      // Pinecone/embedding lookup entirely when present — not just a
+      // different source of facts, a cheaper path too.
+      const counter_facts = overrideFacts ?? (await findCounterFacts(brandDef.key, analysis.identified_texts)).counter_facts
 
       progress.phase = 'writing'
       const { replacements } = await writeReplacementCopy(analysis.identified_texts, counter_facts)
