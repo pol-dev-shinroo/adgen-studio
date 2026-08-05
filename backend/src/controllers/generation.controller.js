@@ -11,7 +11,9 @@ export async function postGenerate(req, res, next) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
 
-  const { refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride } = req.body ?? {}
+  const {
+    refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl,
+  } = req.body ?? {}
 
   if (!Array.isArray(refAdIds) || refAdIds.length === 0) {
     return res.status(400).json({ error: '"refAdIds" must be a non-empty array' })
@@ -48,6 +50,14 @@ export async function postGenerate(req, res, next) {
       // sub-fields, same "don't trust the frontend as the only gate"
       // convention as prepareInputs's own validation.
       adCopyOverride: adCopyOverride && typeof adCopyOverride === 'object' ? adCopyOverride : null,
+      // Part Q: URL of one of our own brand's composed reference sheets
+      // (Part N/O), used as a third, supplementary style-reference image in
+      // the render call. Loosely validated the same way as adCopyOverride
+      // above — generation.service.js treats a bad/unreachable URL as "no
+      // style reference this run" rather than failing the job.
+      referenceSheetImageUrl: typeof referenceSheetImageUrl === 'string' && referenceSheetImageUrl.trim()
+        ? referenceSheetImageUrl.trim()
+        : null,
     })
     res.status(202).json({ jobId })
   } catch (err) {

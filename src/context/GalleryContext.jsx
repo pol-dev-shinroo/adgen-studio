@@ -44,11 +44,14 @@ export function GalleryProvider({ children }) {
   }, [])
 
   // input: { refBrand, refAdIds, brand:{key,productIds}, formats, quantity,
-  // styleIntensity, instructions, adCopyOverride }. adCopyOverride (Part P):
-  // { price, promotion, adHooks } | null — real, user-picked copy from Step
-  // 3's ad-selection panel, used instead of the backend's Pinecone lookup
-  // when present; null preserves the old behavior exactly. Real money per
-  // call — every render is a
+  // styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl }.
+  // adCopyOverride (Part P): { price, promotion, adHooks } | null — real,
+  // user-picked copy from Step 3's ad-selection panel, used instead of the
+  // backend's Pinecone lookup when present; null preserves the old behavior
+  // exactly. referenceSheetImageUrl (Part Q): string | null — URL of one of
+  // our own brand's composed reference sheets (Part N/O), used as a third,
+  // supplementary style-reference image in the render call; null preserves
+  // the old two-image render exactly. Real money per call — every render is a
   // gpt-5.5 image_generation-tool call, chained behind vision/research/
   // copywriting calls per reference ad. productIds is an array — Step 3
   // allows selecting more than one product, each getting its own full

@@ -164,11 +164,15 @@ export async function prepareInputs(
 }
 
 // Input: { refBrand, refAdIds, brand:{key,productIds}, formats, quantity,
-// styleIntensity, instructions }. formats: array of format strings (see
-// renderImage.service.js's FORMAT_SIZE keys). quantity: plain integer
-// (frontend converts its '2장'-style chip value before calling this).
-// productIds: array — Step 3 allows selecting more than one of a brand's
-// own products, each producing its own full render pass.
+// styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl }.
+// formats: array of format strings (see renderImage.service.js's
+// FORMAT_SIZE keys). quantity: plain integer (frontend converts its
+// '2장'-style chip value before calling this). productIds: array — Step 3
+// allows selecting more than one of a brand's own products, each producing
+// its own full render pass. referenceSheetImageUrl (Part Q): string | null
+// — URL of one of our own brand's Part N/O composed reference sheets, used
+// as a third, supplementary style-reference image in every render this job
+// produces; null preserves the exact pre-Part-Q two-image render.
 //
 // Runs the expensive per-reference-ad stages (vision analysis, counter-fact
 // research, copywriting) exactly once per selected reference ad and caches
@@ -177,7 +181,9 @@ export async function prepareInputs(
 // calls per product. Only the render step itself (and the one-time-per-
 // product reference-image download) repeats per product.
 export async function startGeneration(input) {
-  const { refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride } = input
+  const {
+    refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl,
+  } = input
   const { brandDef, products, refAds } = await prepareInputs({ refAdIds, brand })
 
   const totalRenders = computeTotalRenders(products, refAds, formats, quantity)
@@ -205,7 +211,10 @@ export async function startGeneration(input) {
         resultIds: [],
       },
     },
-    (job) => runJob(job, { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride }),
+    (job) => runJob(
+      job,
+      { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl }
+    ),
     (job, err) => {
       job.status = 'failed'
       job.error = err.message
@@ -218,7 +227,10 @@ export function getJob(jobId) {
   return jobStore.getJob(jobId)
 }
 
-async function runJob(job, { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride }) {
+async function runJob(
+  job,
+  { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl }
+) {
   const progress = job.progress
   const summary = job.summary
 
@@ -227,6 +239,22 @@ async function runJob(job, { refAds, products, brandDef, formats, quantity, styl
   // fact set applied uniformly across every selected reference ad, never
   // varied per ad.
   const overrideFacts = counterFactsFromAdCopyOverride(adCopyOverride)
+
+  // Part Q: resolved once per job — an even broader scope than counter_facts
+  // above, since this doesn't vary per product OR per reference ad either;
+  // it's one shared supplementary style image for the whole run. A download
+  // failure here is deliberately non-fatal — this image is a nice-to-have
+  // enhancement, never load-bearing the way the product's own extracted
+  // reference image is, so every render in the job just proceeds without a
+  // third image rather than the whole job failing over an optional extra.
+  let styleReferenceImageBase64 = null
+  if (referenceSheetImageUrl) {
+    try {
+      styleReferenceImageBase64 = (await downloadImageAsBase64(referenceSheetImageUrl)).base64
+    } catch (err) {
+      console.warn(`Style-reference sheet download failed, proceeding without it: ${err.message}`)
+    }
+  }
 
   // Built exactly once regardless of how many products are selected —
   // vision/counter-fact/copywriting analysis is keyed on the reference ad,
@@ -294,6 +322,7 @@ async function runJob(job, { refAds, products, brandDef, formats, quantity, styl
             const resultBase64 = await renderFinalImage({
               referenceImageBase64: ctx.referenceImageBase64,
               productImageBase64,
+              styleReferenceImageBase64,
               productInstances: ctx.productInstances,
               replacements: ctx.replacements,
               format,

@@ -315,6 +315,17 @@ export function StudioProvider({ children }) {
       adHooks: brandAdSel.selectedAdHooks,
     } : null
 
+    // Part Q: resolves the first selected reference-sheet ad — capped to
+    // one, per renderImage.service.js's scope note (several busy composite
+    // images competing for the model's attention is worse than one clear
+    // supplementary reference) — to that ad's real composed reference-sheet
+    // image URL. null when nothing's selected in the gallery, so the
+    // payload/behavior is unchanged for anyone who hasn't touched it.
+    const selectedSheetAdId = brandAdSel?.selectedSheetAdIds?.[0] || null
+    const referenceSheetImageUrl = selectedSheetAdId
+      ? ads.find((a) => a.id === selectedSheetAdId)?.extractedReference?.imageUrl || null
+      : null
+
     startGeneration({
       refBrand,
       refAdIds,
@@ -324,6 +335,7 @@ export function StudioProvider({ children }) {
       styleIntensity,
       instructions,
       adCopyOverride,
+      referenceSheetImageUrl,
     })
 
     showToast('생성 잡이 시작됐습니다 — 결과 갤러리에서 진행 상황을 확인하세요')
@@ -332,7 +344,7 @@ export function StudioProvider({ children }) {
     // in this file, rather than the old mock's artificial setTimeout delay.
     go('gallery')
   }, [
-    step, refAdIds, myBrands, formats, selections, adSelections, refBrand, quantity, styleIntensity, instructions,
+    step, refAdIds, myBrands, formats, selections, adSelections, ads, refBrand, quantity, styleIntensity, instructions,
     startGeneration, showToast, go,
   ])
 
