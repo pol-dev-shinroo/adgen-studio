@@ -3,3 +3,20 @@
 .res .thumb .badge{position:absolute;top:10px;left:10px;z-index:2}
 .res .body{padding:12px}
 .res .acts{display:flex;gap:6px;margin-top:10px}
+
+/* Part V: real side-by-side compare view, replacing the old swipe-between-
+   two ImageLightbox 비교. */
+.compare-dialog{max-width:min(980px,94vw)}
+.compare-modal{padding:24px}
+.compare-sbs{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.compare-pane{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:zoom-in;background:var(--bg)}
+.compare-pane-label{padding:8px 12px;font-weight:700;font-size:12.5px;color:var(--sub);border-bottom:1px solid var(--line);background:#fff}
+.compare-pane img{display:block;width:100%;height:320px;object-fit:contain;background:var(--bg)}
+.compare-pane-fallback{height:320px;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:13px;text-align:center;padding:0 16px}
+.compare-used{margin-top:20px}
+.compare-used-row{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap}
+.compare-used-thumb{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;width:96px}
+.compare-used-thumb img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:var(--bg)}
+.compare-used-thumb:hover img{border-color:var(--brand)}
+.compare-used-thumb-label{font-size:11.5px;color:var(--sub);font-weight:600;text-align:center}
+@media (max-width:640px){.compare-sbs{grid-template-columns:1fr}}

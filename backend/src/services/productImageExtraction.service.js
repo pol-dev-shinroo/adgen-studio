@@ -35,47 +35,47 @@ const ORCHESTRATOR_MODEL = 'gpt-5.5'
 // not chasing savings at the cost of a real quality regression.
 const DETECTION_MODEL = 'gpt-5.5'
 
-const VALID_KINDS = new Set(['visual', 'text'])
+// Part V: reverses Part T's visual/text cost split entirely, per direct
+// client instruction — a phrase's exact font/color/size/badge treatment is
+// itself part of what's worth reusing, not just its words, so every
+// detected entity (including phrases) now goes through the same
+// isolation-call-and-upload path product/human_model already used. Real
+// cost consequence, stated plainly: a rich photo with a headline,
+// subheadline, and promo phrase now costs 3 MORE real image_generation
+// calls than it did under Part T's design. The "text" field survives
+// (additively) for entities that are inherently textual, since the exact
+// transcription is still useful on its own for Step 3's 후킹 카피 chips,
+// and it costs nothing extra — detection already reads the whole photo.
+const DETECTION_SYSTEM_PROMPT = `You are an expert Product Photo Analyst. Inspect this product marketing photo and identify every distinct, individually reusable element in it — every one of these will be isolated as its own cropped image asset, so be thorough.
 
-// Part T: generalizes Part M's two-stage pipeline beyond product/model.
-// Stage 1 (this prompt) now identifies every distinct, individually
-// reusable element in the photo — not just product types and an optional
-// human model — classifying each as "visual" (worth its own cropped image
-// asset, isolated in stage 2 below) or "text" (just marketing copy,
-// transcribed verbatim right here, no separate isolation call needed —
-// same principle adImageExtraction.service.js's extractAdCopy already
-// proved works well for price/promotion/adHooks). `type` is a free-form
-// label the model chooses itself (seeded with examples below) rather than
-// a fixed enum, since real ad creative varies in what's worth naming.
-const DETECTION_SYSTEM_PROMPT = `You are an expert Product Photo Analyst. Inspect this product marketing photo and identify every distinct, individually reusable element in it.
-
-For each element, classify it:
-- "kind": "visual" if it should become its own cropped image asset (a distinct product, the human model, a promotion badge/sticker graphic, a logo, or any other visual worth isolating on its own), or "text" if it's just marketing copy with no standalone visual identity of its own (a headline, subheadline, promo phrase, or similar).
-- "type": a short English category label. Use one of these when it genuinely fits: product, human_model, promo_badge, logo, headline_copy, subheadline_copy, promo_phrase — but choose a different label yourself if something present doesn't fit any of these.
+For each element:
+- "type": a short English category label. Use one of these when it genuinely fits: product, human_model, promo_badge, authority_badge, logo, headline_copy, subheadline_copy, promo_phrase — but choose a different label yourself if something present doesn't fit any of these.
+  - "promo_badge" is specifically a price/discount callout graphic (e.g. "Up to 46%").
+  - "authority_badge" is a credential/endorsement graphic instead — an expert's photo+title (e.g. a "피부과 의사" stamp), a certification mark, or an "전문가 추천" stamp. This is a distinct concept from promo_badge, worth its own type.
 - "label": a short Korean label for this element.
-- For "kind": "visual" elements, a "description" of what it looks like and where it is in the photo (this feeds a later step that isolates it).
-- For "kind": "text" elements, the exact "text" as it verbatim appears in the photo.
+- "description": what this element looks like and exactly where it is in the photo — this feeds a later step that isolates it as its own image. For a phrase (headline/subheadline/promo phrase), describe its exact font, color, size, and any badge/highlight graphic around it, not just its wording — the isolated asset needs to look like it does on the ad, not just say the same words in an arbitrary font.
+- "text": ONLY when this element is inherently textual (a headline, subheadline, or promo phrase) — the exact text as it verbatim appears in the photo. Omit this field for a product, human model, badge, or logo, which has no transcribable text of its own worth capturing.
 
 Rules:
 - Ignore multiple instances/angles of the SAME product — list each genuinely distinct product type once.
-- Ignore any text printed on a product's own packaging — that's part of the product's own visual, not a separate text element.
+- Ignore any text printed on a product's own packaging — that's part of the product's own visual, not a separate element.
 - Only include a human_model entity if a person is visibly holding, using, or posing with the product(s).
-- Transcribe "text" values exactly as shown — do not paraphrase, translate, omit decorative symbols/emoji, or invent wording that isn't actually in the photo.
+- When a "text" field is present, transcribe it exactly as shown — do not paraphrase, translate, omit decorative symbols/emoji, or invent wording that isn't actually in the photo.
 - If nothing else besides the product itself is present, that's fine — just return the product entity.
 
 Output ONLY valid JSON:
 {
   "entities": [
-    { "kind": "visual"|"text", "type": "...", "label": "...", "description": "... (visual only)", "text": "... (text only)" }
+    { "type": "...", "label": "...", "description": "...", "text": "... (only for a headline/subheadline/promo phrase)" }
   ]
 }`
 
 const DETECTION_USER_PROMPT = 'Analyze the provided product photo according to the system instructions. ' +
   'Output ONLY a valid JSON object.'
 
-// Pure and exported so the shape-normalization logic (missing/invalid
-// kind, malformed entries per kind, the zero-entities fallback) is
-// unit-testable against fake JSON text without any real OpenAI call.
+// Pure and exported so the shape-normalization logic (malformed entries,
+// the optional text field, the zero-entities fallback) is unit-testable
+// against fake JSON text without any real OpenAI call.
 export function parseDetectionResult(rawText) {
   let parsed
   try {
@@ -87,51 +87,50 @@ export function parseDetectionResult(rawText) {
   const entities = (Array.isArray(parsed.entities) ? parsed.entities : [])
     .map((e) => {
       if (!e || typeof e !== 'object') return null
-      // Missing/invalid kind defaults to 'visual' — the safer assumption
-      // (every entity was visual before Part T), and avoids silently
-      // discarding something the model deemed worth extracting just
-      // because it didn't label kind correctly.
-      const kind = VALID_KINDS.has(e.kind) ? e.kind : 'visual'
+      // Every entity is isolated as its own image now (Part V), so a
+      // description is required unconditionally — an entity without one
+      // can't be isolated at all and is dropped.
+      if (typeof e.description !== 'string' || !e.description.trim()) return null
       const type = typeof e.type === 'string' && e.type.trim() ? e.type.trim() : 'product'
       const label = typeof e.label === 'string' && e.label.trim() ? e.label.trim() : '항목'
 
-      if (kind === 'text') {
-        if (typeof e.text !== 'string' || !e.text.trim()) return null
-        return { kind, type, label, text: e.text.trim() }
-      }
-      if (typeof e.description !== 'string' || !e.description.trim()) return null
-      return { kind, type, label, description: e.description.trim() }
+      const entity = { type, label, description: e.description.trim() }
+      // "text" is additive, present only for inherently textual entities
+      // (headline/subheadline/promo phrase) — still transcribed for free
+      // in this same detection call, for Step 3's 후킹 카피 chips.
+      if (typeof e.text === 'string' && e.text.trim()) entity.text = e.text.trim()
+      return entity
     })
     .filter(Boolean)
 
   // A photo the model failed to break into distinct entities at all is
   // still a real single-product photo in practice (this was every photo's
-  // assumption before Part M) — fall back to one generic visual product
-  // entity rather than extracting nothing.
+  // assumption before Part M) — fall back to one generic product entity
+  // rather than extracting nothing.
   if (entities.length === 0) {
-    entities.push({ kind: 'visual', type: 'product', label: '제품', description: 'the main product shown in this photo' })
+    entities.push({ type: 'product', label: '제품', description: 'the main product shown in this photo' })
   }
 
   return { entities }
 }
 
 // Part T: generalizes the old product-only isolation prompt to any
-// "visual"-kind entity (product, human_model, promo_badge, logo, or any
-// other free-form visual type detection chose) — same isolation mechanic
-// and preservation constraints, just parameterized by the entity's own
-// type/label/description instead of hardcoding "product" wording. A
-// single-visual-entity photo keeps the exact original unscoped wording
+// detected entity (product, human_model, promo_badge, authority_badge,
+// logo, a phrase, or any other free-form type detection chose) — same
+// isolation mechanic and preservation constraints, just parameterized by
+// the entity's own type/label/description instead of hardcoding "product"
+// wording. A single-entity photo keeps the exact original unscoped wording
 // (so a genuinely single-product photo's prompt, and cost/behavior, stays
-// identical to before this part). Exported for direct unit testing of the
+// identical to before Part M). Exported for direct unit testing of the
 // scoping/wording logic.
-export function buildProductIsolationPrompt(entity, totalVisualEntities) {
+export function buildProductIsolationPrompt(entity, totalEntities) {
   const subject = entity.type === 'human_model'
     ? 'the human model (person)'
     : entity.type === 'product'
       ? 'the product'
       : `the ${entity.label || entity.type}`
 
-  const target = totalVisualEntities > 1
+  const target = totalEntities > 1
     ? `Isolate ONLY ${subject} described as: ${entity.description}. `
     : `Isolate ONLY ${subject} from this photo. `
   return target +
@@ -203,15 +202,17 @@ async function isolateEntity(imageBase64, mimeType, prompt) {
 }
 
 // Synchronous request/response by design — same as before Part M, just now
-// 1 detection call + 1 isolation call per detected VISUAL entity (product(s),
-// an optional human model, and now any other visual worth its own asset —
-// promo badges, logos, etc.) instead of always exactly 1 call. Detected
-// TEXT entities (Part T: headlines, subheadlines, promo phrases) cost
-// nothing extra — they're transcribed directly in the one detection call,
-// same principle adImageExtraction.service.js's extractAdCopy already
-// proved. Real money per call: a typical single-product, no-model, no-
-// extra-visual photo still costs exactly 2 calls, same as before this
-// part. Invoked on demand from 상품관리, not a background job.
+// 1 detection call + 1 isolation call per detected entity (product(s), an
+// optional human model, badges, logos, and — as of Part V — phrases too:
+// headline/subheadline/promo copy is isolated as its own image asset like
+// everything else, not transcribed-for-free the way Part T had it, per
+// direct client instruction that a phrase's actual font/color/badge
+// treatment is worth reusing, not just its words. Real cost consequence:
+// a rich photo with a headline, subheadline, and promo phrase now costs 3
+// MORE real image_generation calls than it did under Part T. A typical
+// single-product, no-model, no-extra-element photo still costs exactly 2
+// calls (1 detection + 1 isolation), same as before Part M. Invoked on
+// demand from 상품관리, not a background job.
 export async function extractProductImage(brandKey, productId) {
   const brand = findBrand(brandKey)
   if (!brand) {
@@ -239,28 +240,23 @@ export async function extractProductImage(brandKey, productId) {
   const extractedAt = new Date().toISOString()
   const references = []
 
-  const visualEntities = detection.entities.filter((e) => e.kind === 'visual')
-  let visualIndex = 0
+  const totalEntities = detection.entities.length
 
-  for (const entity of detection.entities) {
-    // Part T: 'text' entities cost nothing extra — the exact string was
-    // already transcribed in the one detection call above. No imageUrl,
-    // by design (ProductReferenceGallery.jsx renders these as a text card
-    // instead of a thumbnail).
-    if (entity.kind === 'text') {
-      references.push({ type: entity.type, label: entity.label, text: entity.text, extractedAt })
-      continue
-    }
-
-    const prompt = buildProductIsolationPrompt(entity, visualEntities.length)
+  for (let i = 0; i < detection.entities.length; i += 1) {
+    const entity = detection.entities[i]
+    const prompt = buildProductIsolationPrompt(entity, totalEntities)
     const resultBase64 = await isolateEntity(base64, mimeType, prompt)
     const link = await uploadImage(resultBase64, {
       rootFolderName: 'AdGen Product References',
       subfolder: brandKey,
-      fileName: `${productId}-${sanitizeForFilename(entity.type)}-${visualIndex}.png`,
+      fileName: `${productId}-${sanitizeForFilename(entity.type)}-${i}.png`,
     })
-    references.push({ type: storedTypeFor(entity), label: entity.label, imageUrl: link, extractedAt })
-    visualIndex += 1
+    const reference = { type: storedTypeFor(entity), label: entity.label, imageUrl: link, extractedAt }
+    // Part V: additive — a phrase entity still carries its exact
+    // transcription alongside its new imageUrl, since Step 3's 후킹 카피
+    // chips reuse the plain text independently of the image.
+    if (entity.text) reference.text = entity.text
+    references.push(reference)
   }
 
   await updateProductField(String(productId), 'Extracted References JSON', JSON.stringify(references))

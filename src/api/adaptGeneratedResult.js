@@ -40,6 +40,15 @@ export function adaptGeneratedResult(row) {
     approved: row['Status'] === '승인',
     createdAt: row['Created At'] || '',
     replacements: parseReplacements(row['Replacements JSON']),
+    // Part V: snapshotted at generation time by generation.service.js's
+    // runJob, adapted the same plain-URL way originalImage/image already
+    // are. Rows that predate this part have none of these three columns —
+    // falls back to '' like every other older-row-missing-column case in
+    // this app, letting ResultCard.jsx's compare view simply skip whichever
+    // of these it doesn't have rather than erroring.
+    originalReferenceAdImage: row['Reference Ad Image URL'] || '',
+    productReferenceImage: row['Product Reference Image URL'] || '',
+    styleReferenceImage: row['Style Reference Image URL'] || '',
     raw: row,
   }
 }

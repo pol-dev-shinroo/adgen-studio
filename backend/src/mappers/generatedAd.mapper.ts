@@ -25,6 +25,9 @@ export interface GeneratedAdRow {
   'Created At': string
   'Product ID': string
   'Replacements JSON': string
+  'Reference Ad Image URL': string
+  'Product Reference Image URL': string
+  'Style Reference Image URL': string
 }
 
 export const GENERATED_AD_COLUMNS: (keyof GeneratedAdRow)[] = [
@@ -46,6 +49,14 @@ export const GENERATED_AD_COLUMNS: (keyof GeneratedAdRow)[] = [
   // that runJob previously computed and threw away — see figma-export
   // endpoint (generation.controller.js) for the consumer.
   'Replacements JSON',
+  // Part V: snapshotted at generation time — nothing to look up live for
+  // these, since a product/style reference selection can change after the
+  // fact. Style Reference Image URL is blank when no style reference was
+  // used for that particular render, same "optional, empty when absent"
+  // convention every other optional column here already follows.
+  'Reference Ad Image URL',
+  'Product Reference Image URL',
+  'Style Reference Image URL',
 ]
 
 export interface MapGeneratedAdInput {
@@ -59,11 +70,15 @@ export interface MapGeneratedAdInput {
   productId?: string
   replacements?: Replacement[]
   createdAt?: string
+  referenceAdImageUrl?: string
+  productReferenceImageUrl?: string
+  styleReferenceImageUrl?: string
 }
 
 export function mapGeneratedAd({
   generationId, brand, referenceAdId, format, styleIntensity, instructions, imageUrl, productId, replacements,
   createdAt = new Date().toISOString(),
+  referenceAdImageUrl, productReferenceImageUrl, styleReferenceImageUrl,
 }: MapGeneratedAdInput): GeneratedAdRow {
   return {
     'Generation ID': String(generationId ?? ''),
@@ -79,6 +94,11 @@ export function mapGeneratedAd({
     'Created At': createdAt,
     'Product ID': String(productId ?? ''),
     'Replacements JSON': JSON.stringify(replacements ?? []),
+    'Reference Ad Image URL': referenceAdImageUrl || '',
+    'Product Reference Image URL': productReferenceImageUrl || '',
+    // Blank when no style reference was selected for this render — Part
+    // Q/T's referenceSheetImageUrl was already optional at the job level.
+    'Style Reference Image URL': styleReferenceImageUrl || '',
   }
 }
 

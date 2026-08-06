@@ -325,7 +325,7 @@ async function runJob(
       const { replacements } = await writeReplacementCopy(analysis.identified_texts, counter_facts, styleIntensity)
 
       perAdContext.push({
-        adId, referenceImageBase64, productInstances: analysis.product_instances, replacements,
+        adId, imageLink, referenceImageBase64, productInstances: analysis.product_instances, replacements,
       })
     } catch (err) {
       summary.failed += products.length * formats.length * quantity
@@ -387,6 +387,11 @@ async function runJob(
               imageUrl,
               productId: productEntry.productId,
               replacements: ctx.replacements,
+              // Part V: snapshotted at generation time, for the Gallery's
+              // redesigned 비교 view — nothing to look up live for these.
+              referenceAdImageUrl: ctx.imageLink,
+              productReferenceImageUrl: productEntry.extractedImageUrl,
+              styleReferenceImageUrl: referenceSheetImageUrl || '',
             }))
 
             summary.succeeded += 1

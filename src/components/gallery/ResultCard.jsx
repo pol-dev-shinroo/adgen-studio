@@ -3,7 +3,7 @@ import { useGallery } from '../../context/GalleryContext.jsx'
 import { useAds } from '../../context/AdsContext.jsx'
 import Thumb from '../common/Thumb.jsx'
 import Badge from '../common/Badge.jsx'
-import ImageLightbox from '../common/ImageLightbox.jsx'
+import CompareModal from './CompareModal.jsx'
 
 // Every result here is an already-finished render (see
 // adaptGeneratedResult.js) — the in-progress state lives in
@@ -13,13 +13,14 @@ export default function ResultCard({ result }) {
   const { approveResult } = useGallery()
   const { ads } = useAds()
   const [compareOpen, setCompareOpen] = useState(false)
-  const [lightboxIndex, setLightboxIndex] = useState(0)
 
   const referenceAd = ads.find((a) => String(a.id) === String(result.referenceAdId))
-  // ImageLightbox expects ORIGINAL (non-embeddable) links — it converts
-  // them itself. referenceAd.images[0] is the reference ad's own original
-  // image; result.originalImage is the generated image's raw Drive link.
-  const compareImages = [referenceAd?.images?.[0], result.originalImage].filter(Boolean)
+  // Part V: prefer the snapshot generation.service.js persisted at
+  // generation time (correct even if the ad feed changes later) — falls
+  // back to the live AdsContext lookup only for rows that predate that
+  // column, so older rows don't lose 비교 entirely.
+  const referenceImage = result.originalReferenceAdImage || referenceAd?.images?.[0] || ''
+  const compareImages = [referenceImage, result.originalImage].filter(Boolean)
 
   return (
     <div className="card res">
@@ -50,12 +51,7 @@ export default function ResultCard({ result }) {
       </div>
 
       {compareOpen && (
-        <ImageLightbox
-          images={compareImages}
-          index={lightboxIndex}
-          onIndexChange={setLightboxIndex}
-          onClose={() => setCompareOpen(false)}
-        />
+        <CompareModal referenceImage={referenceImage} result={result} onClose={() => setCompareOpen(false)} />
       )}
     </div>
   )
