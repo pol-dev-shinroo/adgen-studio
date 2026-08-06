@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { prepareInputs, computeTotalRenders, counterFactsFromAdCopyOverride } from '../src/services/generation.service.js'
+import {
+  prepareInputs, computeTotalRenders, counterFactsFromAdCopyOverride,
+} from '../src/services/generation.service.js'
 
 // config.brands is read from env at module load — healthykiki/헬시키키 is the
 // one real brand configured throughout this project's test fixtures/manual
@@ -22,6 +24,17 @@ const PRODUCTS = [
     'Extracted References JSON': JSON.stringify([{ type: 'model', label: '모델', imageUrl: 'https://example.com/model.png' }]),
   },
   { 'Product ID': '5', 'Brand': BRAND_NAME, 'Product Name': '제품 E 손상된JSON', 'Extracted References JSON': 'not valid json' },
+  // Part S: two real type:'product' entries (a genuine multi-reference
+  // product, e.g. front + back label shots) — the sheet stores each as a
+  // Drive webViewLink ("/file/d/<id>/view"), same form every other fixture
+  // above uses.
+  {
+    'Product ID': '6', 'Brand': BRAND_NAME, 'Product Name': '제품 F 다중참조',
+    'Extracted References JSON': JSON.stringify([
+      { type: 'product', label: '정면', imageUrl: 'https://drive.google.com/file/d/FILE_FRONT/view?usp=drivesdk' },
+      { type: 'product', label: '후면', imageUrl: 'https://drive.google.com/file/d/FILE_BACK/view?usp=drivesdk' },
+    ]),
+  },
 ]
 
 const ADS = [
@@ -189,4 +202,64 @@ test('counterFactsFromAdCopyOverride ignores blank strings and malformed adHooks
   })
 
   assert.deepEqual(facts, [{ category: '광고 후킹 카피', fact: 'real hook' }])
+})
+
+// Part S: brand.productImageOverrides — a client-supplied { [productId]:
+// url } map, only trusted when it matches (by Drive file ID) one of that
+// product's own real type:'product' entries. Product '6' above has two.
+test('prepareInputs uses a productImageOverrides entry that matches the product\'s own second real reference, instead of the default first one', async () => {
+  const { products } = await prepareInputs(
+    {
+      refAdIds: ['ad-1'],
+      brand: {
+        key: BRAND_KEY,
+        productIds: ['6'],
+        // Thumbnail-endpoint form (what the frontend actually sends —
+        // adaptProduct.js converts the sheet's webViewLink before the
+        // frontend ever sees it) — deliberately NOT the same string form
+        // as the sheet's own stored value, to prove the match is by Drive
+        // file ID, not literal string equality.
+        productImageOverrides: { 6: 'https://drive.google.com/thumbnail?id=FILE_BACK&sz=w800' },
+      },
+    },
+    deps
+  )
+
+  assert.equal(
+    products.find((p) => p.productId === '6').extractedImageUrl,
+    'https://drive.google.com/file/d/FILE_BACK/view?usp=drivesdk'
+  )
+})
+
+test('prepareInputs falls back to the default first reference when productImageOverrides doesn\'t match any real entry for that product', async () => {
+  const { products } = await prepareInputs(
+    {
+      refAdIds: ['ad-1'],
+      brand: {
+        key: BRAND_KEY,
+        productIds: ['6'],
+        // A file ID that isn't one of product 6's own real entries at all
+        // — never trusted, never thrown on, just ignored.
+        productImageOverrides: { 6: 'https://drive.google.com/thumbnail?id=SOME_OTHER_FILE&sz=w800' },
+      },
+    },
+    deps
+  )
+
+  assert.equal(
+    products.find((p) => p.productId === '6').extractedImageUrl,
+    'https://drive.google.com/file/d/FILE_FRONT/view?usp=drivesdk'
+  )
+})
+
+test('prepareInputs behaves exactly as before Part S when brand.productImageOverrides is absent entirely', async () => {
+  const { products } = await prepareInputs(
+    { refAdIds: ['ad-1'], brand: { key: BRAND_KEY, productIds: ['6'] } },
+    deps
+  )
+
+  assert.equal(
+    products.find((p) => p.productId === '6').extractedImageUrl,
+    'https://drive.google.com/file/d/FILE_FRONT/view?usp=drivesdk'
+  )
 })

@@ -5,7 +5,7 @@ import Thumb from '../../common/Thumb.jsx'
 import Badge from '../../common/Badge.jsx'
 import Spinner from '../../common/Spinner.jsx'
 import SyncProgress from './SyncProgress.jsx'
-import AdSelectionPanel from './AdSelectionPanel.jsx'
+import ProductReferencePanel from './ProductReferencePanel.jsx'
 
 // Falls back to a native <select> once a brand has enough products that a
 // card grid would be more scrolling than picking — the picker itself is
@@ -96,32 +96,59 @@ export default function StepMyBrand() {
                     // full adapted-product shape ProductCard expects).
                     // .selected is now checkbox-like (toggleProductSelection),
                     // not radio-like — multiple cards can be highlighted.
-                    <div className="prod-grid">
-                      {productNames.map((n) => {
-                        const p = b.products[n]
-                        const isSelected = selectedProducts.includes(n)
-                        return (
-                          <div
-                            key={n}
-                            className={`prod-card${isSelected ? ' selected' : ''}`}
-                            onClick={() => toggleProductSelection(b.name, n)}
-                          >
-                            <Thumb gradient="g5" image={p.imageUrl} fit="contain">
-                              {p.extractedReferences.some((r) => r.type === 'product') && (
-                                <Badge variant="live">레퍼런스 준비됨</Badge>
-                              )}
-                            </Thumb>
-                            <div className="prod-card-body">
-                              <div className="prod-card-name">
-                                <span className="dot" style={{ background: b.color }}>{b.name[0]}</span>
-                                {n}
+                    <>
+                      {/* Part S: small parity addition for the card-grid
+                          variant only — the native <select multiple>
+                          fallback above doesn't need one. No new
+                          StudioContext action: reuses toggleProductSelection
+                          per changed name, same technique the <select>
+                          fallback's onChange already uses. Never lets the
+                          selection go empty — deselect-all leaves the first
+                          product selected, same invariant
+                          toggleProductSelection itself already enforces. */}
+                      {productNames.length > 1 && (
+                        <label className="ad-sel-allrow">
+                          <input
+                            type="checkbox"
+                            checked={selectedProducts.length === productNames.length}
+                            onChange={() => {
+                              const allSelected = selectedProducts.length === productNames.length
+                              const changed = allSelected
+                                ? productNames.slice(1).filter((n) => selectedProducts.includes(n))
+                                : productNames.filter((n) => !selectedProducts.includes(n))
+                              changed.forEach((n) => toggleProductSelection(b.name, n))
+                            }}
+                          />
+                          전체 선택 <span className="count">{selectedProducts.length}/{productNames.length}개 선택됨</span>
+                        </label>
+                      )}
+                      <div className="prod-grid">
+                        {productNames.map((n) => {
+                          const p = b.products[n]
+                          const isSelected = selectedProducts.includes(n)
+                          return (
+                            <div
+                              key={n}
+                              className={`prod-card${isSelected ? ' selected' : ''}`}
+                              onClick={() => toggleProductSelection(b.name, n)}
+                            >
+                              <Thumb gradient="g5" image={p.imageUrl} fit="contain">
+                                {p.extractedReferences.some((r) => r.type === 'product') && (
+                                  <Badge variant="live">레퍼런스 준비됨</Badge>
+                                )}
+                              </Thumb>
+                              <div className="prod-card-body">
+                                <div className="prod-card-name">
+                                  <span className="dot" style={{ background: b.color }}>{b.name[0]}</span>
+                                  {n}
+                                </div>
+                                <div className="prod-card-price">{p.price}</div>
                               </div>
-                              <div className="prod-card-price">{p.price}</div>
                             </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                          )
+                        })}
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -134,13 +161,14 @@ export default function StepMyBrand() {
               </>
             )}
 
-            {/* Part O: brand-scoped, not per-product — see AdSelectionPanel's
-                own header comment for why this replaced the old per-selected-
-                product 원본/참조/StepProductFields block entirely. Renders once
-                per active brand here (sibling to the product picker above,
-                same brand card), regardless of how many products are
-                selected. */}
-            <AdSelectionPanel brand={b} />
+            {/* Part S: brand-scoped, not per-product — see
+                ProductReferencePanel's own header comment for why this
+                replaced Part O's ad-driven AdSelectionPanel entirely.
+                Renders once per active brand here (sibling to the product
+                picker above, same brand card), driven by whichever products
+                are currently selected. Only renders once the brand actually
+                has synced products — nothing to show otherwise. */}
+            {productNames.length > 0 && <ProductReferencePanel brand={b} />}
           </div>
         )
       })}

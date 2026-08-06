@@ -25,21 +25,54 @@ function findBrandDef(brandKey) {
 // Part M: 'Extracted Image URL' (single value) is replaced by 'Extracted
 // References JSON' (an array of { type: 'product'|'model', imageUrl, ... }
 // entries, since a photo can now yield more than one distinct product plus
-// a human model). Choosing which reference to render with when several
-// product entries exist is Part O's job (cross-product mixing/selection) —
-// this just needs generation to keep working via a sane default: the first
-// product-type entry. Malformed/missing JSON (older rows, or rows that
-// were never extracted) safely yields null, same "not extracted yet"
-// outcome prepareInputs already handled for the old single-field case.
-function firstProductReferenceImageUrl(product) {
+// a human model). Malformed/missing JSON (older rows, or rows that were
+// never extracted) safely yields [], same "not extracted yet" outcome
+// prepareInputs already handled for the old single-field case.
+function productTypeReferences(product) {
   let references
   try {
     references = JSON.parse(product['Extracted References JSON'] || '[]')
   } catch {
-    return null
+    return []
   }
-  if (!Array.isArray(references)) return null
-  return references.find((r) => r?.type === 'product')?.imageUrl || null
+  return Array.isArray(references) ? references.filter((r) => r?.type === 'product') : []
+}
+
+// Sane default when nothing more specific is picked: the first product-type
+// entry.
+function firstProductReferenceImageUrl(product) {
+  return productTypeReferences(product)[0]?.imageUrl || null
+}
+
+// Part S: extracts a Drive file ID from either URL form this app produces
+// for the same file — a sheet-stored webViewLink ("/file/d/<id>/view") or
+// the thumbnail-endpoint form the frontend actually sends ("?id=<id>...",
+// from adaptProduct.js's toEmbeddableImageUrl) — so the two are comparable
+// despite never matching as plain strings.
+function driveFileIdFrom(url) {
+  if (typeof url !== 'string') return null
+  const viewMatch = url.match(/\/file\/d\/([^/]+)/)
+  if (viewMatch) return viewMatch[1]
+  const idParamMatch = url.match(/[?&]id=([^&]+)/)
+  return idParamMatch ? idParamMatch[1] : null
+}
+
+// Part S: resolves which of a product's own type:'product' entries to
+// render with, honoring a client-supplied `productImageOverrides[productId]`
+// URL only when it's independently verifiable against that product's own
+// real 'Extracted References JSON' — matched by Drive file ID (see
+// driveFileIdFrom above), never trusted as a raw string. No match (absent,
+// malformed, or pointing at a file that isn't actually one of this
+// product's own real product-type entries) falls back to the exact same
+// firstProductReferenceImageUrl default as before this part — identical
+// behavior for every existing call site that never sends an override.
+function resolveProductReferenceImageUrl(product, overrideImageUrl) {
+  const overrideId = driveFileIdFrom(overrideImageUrl)
+  if (overrideId) {
+    const match = productTypeReferences(product).find((r) => driveFileIdFrom(r.imageUrl) === overrideId)
+    if (match) return match.imageUrl
+  }
+  return firstProductReferenceImageUrl(product)
 }
 
 // Pure — no reason this needs the real job/products/ads plumbing to verify,
@@ -135,8 +168,12 @@ export async function prepareInputs(
     throw err
   }
 
+  // Part S: brand.productImageOverrides is an optional { [productId]: url }
+  // map — see resolveProductReferenceImageUrl above for the verification
+  // this goes through before an override is actually trusted.
+  const productImageOverrides = brand?.productImageOverrides || {}
   const withFirstProductRef = resolved.map(({ productId, product }) => (
-    { productId, product, extractedImageUrl: firstProductReferenceImageUrl(product) }
+    { productId, product, extractedImageUrl: resolveProductReferenceImageUrl(product, productImageOverrides[productId]) }
   ))
 
   const unextracted = withFirstProductRef.filter(({ extractedImageUrl }) => !extractedImageUrl)

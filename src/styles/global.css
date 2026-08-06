@@ -38,6 +38,7 @@ h1{font-size:20px;font-weight:800;letter-spacing:-.3px}
 .badge.media{background:rgba(0,0,0,.45);color:#fff}
 .badge.edited{background:#fdf1e3;color:var(--amber)}
 .badge.model{background:#eaf1fd;color:#2563c9}
+.badge.text{background:#fbeef8;color:#b0348a}
 
 /* Thumb's fit="contain" mode (see Thumb.jsx) — a neutral backdrop so
    letterboxing around a product photo reads as intentional, not broken.
