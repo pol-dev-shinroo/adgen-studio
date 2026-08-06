@@ -319,7 +319,10 @@ async function runJob(
       const counter_facts = overrideFacts ?? (await findCounterFacts(brandDef.key, analysis.identified_texts)).counter_facts
 
       progress.phase = 'writing'
-      const { replacements } = await writeReplacementCopy(analysis.identified_texts, counter_facts)
+      // Part U-2: same shared styleIntensity slider renderFinalImage
+      // already receives below — same "competitor original vs our own
+      // material" axis, applied to copy instead of image.
+      const { replacements } = await writeReplacementCopy(analysis.identified_texts, counter_facts, styleIntensity)
 
       perAdContext.push({
         adId, referenceImageBase64, productInstances: analysis.product_instances, replacements,

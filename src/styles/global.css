@@ -37,8 +37,11 @@ h1{font-size:20px;font-weight:800;letter-spacing:-.3px}
 .badge.new{background:#e9e9fb;color:var(--brand)}
 .badge.media{background:rgba(0,0,0,.45);color:#fff}
 .badge.edited{background:#fdf1e3;color:var(--amber)}
+/* .badge.model: kept for ReferenceImagesScreen.jsx's own read-only card
+   grid (out of scope for Part U-1's polish pass) — Step 3's own gallery
+   (ProductReferenceGallery.jsx) no longer uses a per-type badge color, see
+   that file's own Part U-1 comment for why. */
 .badge.model{background:#eaf1fd;color:#2563c9}
-.badge.text{background:#fbeef8;color:#b0348a}
 
 /* Thumb's fit="contain" mode (see Thumb.jsx) — a neutral backdrop so
    letterboxing around a product photo reads as intentional, not broken.

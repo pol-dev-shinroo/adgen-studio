@@ -5,6 +5,12 @@
 .panel{padding:20px}
 .sect{font-weight:800;margin-bottom:12px;font-size:14px}
 .sect .hint{color:var(--sub);font-weight:500;font-size:12.5px}
+/* Part U-1: one visual step below .sect — for a sub-section header nested
+   inside a block that already has its own .sect (e.g. the reference
+   gallery nested inside ProductReferencePanel's own header), so two bold
+   headers back to back don't read as redundant duplicates. */
+.sub-sect{font-weight:700;font-size:13px;color:var(--ink)}
+.sub-sect .hint{color:var(--sub);font-weight:500;font-size:12px}
 .refrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
 .refpick{cursor:pointer;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;transition:border-color .15s,box-shadow .15s}
 .refpick.on{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-soft)}

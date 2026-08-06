@@ -26,6 +26,17 @@ import ImageLightbox from '../../common/ImageLightbox.jsx'
 // below is scoped to the selectable (visual) subset only, so a text entry
 // never counts against "선택됨" and can never end up silently marked
 // selected by 전체 선택.
+//
+// Part U-1: badge coloring collapsed onto the app's existing restrained
+// status palette instead of inventing new hues per entity type (the old
+// per-part accretion — Part M's 'model' blue, Part T's 'text' pink — read
+// as unrelated one-offs next to the mockup's small, reused set). Every
+// visual (selectable) entry now shares the same 'live' green regardless of
+// its specific type — the badge's LABEL text (아래 ternary) still says
+// 모델/제품/etc, color no longer needs to; a text (non-selectable) entry
+// uses 'arch' gray instead, the same tone this app already uses elsewhere
+// for "informational, not an action" — so color itself now reinforces the
+// selectable-vs-informational split the two card layouts already express.
 export default function ProductReferenceGallery({ items, selectedKeys, onToggle, onToggleAll }) {
   const [lightboxIndex, setLightboxIndex] = useState(null)
   const selectableItems = items.filter((item) => item.ref.imageUrl)
@@ -41,7 +52,11 @@ export default function ProductReferenceGallery({ items, selectedKeys, onToggle,
   return (
     <div className="sheet-gallery">
       <div className="sheet-gallery-head">
-        <div className="sect" style={{ marginBottom: 0 }}>
+        {/* Part U-1: demoted from .sect (this panel's own main header
+            already carries that weight) to .sub-sect — two stacked bold
+            14px headers back to back read as redundant, not as two
+            distinct sections. */}
+        <div className="sub-sect" style={{ marginBottom: 0 }}>
           참조 이미지 갤러리 <span className="hint">— 선택한 제품에서 추출된 참조 이미지, 생성에 쓸 이미지를 선택하세요</span>
         </div>
         <label className="ad-sel-allrow" style={{ marginBottom: 0 }}>
@@ -68,14 +83,14 @@ export default function ProductReferenceGallery({ items, selectedKeys, onToggle,
                   />
                   <div className="sheet-card-img" onClick={() => setLightboxIndex(lightboxImages.indexOf(ref.imageUrl))}>
                     <img src={ref.imageUrl} alt="" />
-                    <Badge variant={ref.type === 'model' ? 'model' : 'live'} className="sheet-card-type">
+                    <Badge variant="live" className="sheet-card-type">
                       {ref.type === 'model' ? '모델' : (ref.label || '제품')}
                     </Badge>
                   </div>
                 </>
               ) : (
                 <div className="sheet-card-text">
-                  <Badge variant="text" className="sheet-card-text-badge">{ref.label || '텍스트'}</Badge>
+                  <Badge variant="arch" className="sheet-card-text-badge">{ref.label || '텍스트'}</Badge>
                   <div className="sheet-card-text-body">{ref.text}</div>
                 </div>
               )}

@@ -11,6 +11,19 @@ const EMPTY_SELECTION = {
   selectedPrice: null, selectedPromotion: null, selectedAdHooks: [],
 }
 
+// Part U-1: small provenance/context tag next to a field label, same
+// convention the original mockup's own sel() helper used throughout —
+// .auto ("자동", green) when there's only one real option so nothing to
+// decide, .multi ("N개 옵션", amber) when there's a real choice to make.
+// multiSelect skips the "자동" case for 광고 후킹 카피's chip picker: it's
+// multi-select by design, so a single option isn't "auto-applied" the way
+// a single-option dropdown's is — there's just nothing worth flagging.
+function ProvenanceTag({ count, multiSelect = false }) {
+  if (count > 1) return <span className="multi">{count}개 옵션</span>
+  if (count === 1 && !multiSelect) return <span className="auto">자동</span>
+  return null
+}
+
 // Part S: replaces Part O's ad-driven AdSelectionPanel entirely — real user
 // testing found that panel confusingly treated our OWN brand as if it were
 // a competitor (it filtered the scraped 경쟁사 광고 피드 ads collection by
@@ -41,30 +54,48 @@ export default function ProductReferencePanel({ brand }) {
       </div>
 
       {unextracted.length > 0 && (
-        <div className="refrow" style={{ marginBottom: sel.galleryItems.length > 0 ? 16 : 0 }}>
-          {unextracted.map(({ name, product }) => {
-            const isExtracting = extractingIds.has(product.productId)
-            return (
-              <div key={name} className="refpick" style={{ cursor: 'default' }}>
-                <Thumb gradient="g5" image={product.imageUrl} fit="contain">
-                  <ScanningOverlay active={isExtracting} />
-                </Thumb>
-                <div className="refpick-body">
-                  <div className="refpick-copy">{name}</div>
-                  <button
-                    type="button"
-                    className="btn pri sm"
-                    style={{ width: '100%' }}
-                    disabled={isExtracting}
-                    onClick={() => extractImage(brand.key, product.productId)}
-                  >
-                    {isExtracting ? '추출 중...' : '참조 이미지 추출'}
-                  </button>
+        <>
+          {/* Part U-1: paired with the gallery's own .sub-sect below it, so
+              both halves of this panel read as siblings under the one
+              .sect header above, instead of one having a header and the
+              other not. */}
+          <div className="sub-sect">
+            참조 이미지 미추출 <span className="hint">— 추출 후 아래 갤러리에서 선택할 수 있습니다</span>
+          </div>
+          {/* Part U-1: .prod-grid/.prod-card.static (already established by
+              ReferenceImagesScreen.jsx for this exact "photo + CTA, the
+              card itself isn't clickable" case) instead of .refrow/.refpick
+              — that pair is styled for a whole-card click-to-select
+              interaction (hover ring, .on state) this block never actually
+              has; only the button inside is interactive. */}
+          <div className="prod-grid" style={{ marginBottom: sel.galleryItems.length > 0 ? 16 : 0 }}>
+            {unextracted.map(({ name, product }) => {
+              const isExtracting = extractingIds.has(product.productId)
+              return (
+                <div key={name} className="prod-card static">
+                  <Thumb gradient="g5" image={product.imageUrl} fit="contain">
+                    <ScanningOverlay active={isExtracting} />
+                  </Thumb>
+                  <div className="prod-card-body">
+                    <div className="prod-card-name">
+                      <span className="dot" style={{ background: brand.color }}>{brand.name[0]}</span>
+                      {name}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn pri sm"
+                      style={{ width: '100%', marginTop: 4 }}
+                      disabled={isExtracting}
+                      onClick={() => extractImage(brand.key, product.productId)}
+                    >
+                      {isExtracting ? '추출 중...' : '참조 이미지 추출'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        </>
       )}
 
       {sel.galleryItems.length > 0 && (
@@ -89,7 +120,7 @@ export default function ProductReferencePanel({ brand }) {
       {selectedProductNames.length > 0 && (
         <div className="ad-sel-copy">
           <div className="field">
-            <label>가격</label>
+            <label>가격 <ProvenanceTag count={sel.availablePrices.length} /></label>
             {sel.availablePrices.length === 0 ? (
               <p className="sub" style={{ margin: 0 }}>선택한 제품 중 가격 정보가 있는 제품이 없습니다.</p>
             ) : (
@@ -104,7 +135,7 @@ export default function ProductReferencePanel({ brand }) {
           </div>
 
           <div className="field">
-            <label>프로모션</label>
+            <label>프로모션 <ProvenanceTag count={sel.availablePromotions.length} /></label>
             {sel.availablePromotions.length === 0 ? (
               <p className="sub" style={{ margin: 0 }}>선택한 제품 중 프로모션 정보가 있는 제품이 없습니다.</p>
             ) : (
@@ -119,7 +150,10 @@ export default function ProductReferencePanel({ brand }) {
           </div>
 
           <div className="field">
-            <label>광고 후킹 카피 <span className="hint">— 여러 개 선택 가능</span></label>
+            <label>
+              광고 후킹 카피 <ProvenanceTag count={sel.availableAdHooks.length} multiSelect />{' '}
+              <span className="hint">— 여러 개 선택 가능</span>
+            </label>
             {sel.availableAdHooks.length === 0 ? (
               <p className="sub" style={{ margin: 0 }}>선택한 제품 중 후킹 카피가 있는 제품이 없습니다.</p>
             ) : (

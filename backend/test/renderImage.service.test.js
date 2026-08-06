@@ -133,3 +133,89 @@ test('renderFinalImage still appends instructions after the style-reference para
   assert.notEqual(instructionsIndex, -1)
   assert.ok(instructionsIndex > styleRefIndex)
 })
+
+// Part U-2: styleIntensity redefined as a competitor-original-vs-our-own-
+// material axis, not general artistic license. These cover the three
+// tiers' actual wording, both with and without a style-reference image —
+// the earlier tests above already exercised MEDIUM (styleIntensity 50)
+// incidentally, since its style-reference wording was deliberately kept
+// matching the old always-on styleReferenceInstructionFor text.
+
+test('renderFinalImage LOW (<=33) with a style reference tells the model to give it minimal to no influence', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 20,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: LOW/)
+  assert.match(text, /minimal to no influence/)
+  assert.match(text, /competitor ad's own original treatment should win/)
+})
+
+test('renderFinalImage LOW (<=33) with no style reference stays close to the original preservation wording, no third-image mention', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 0,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: LOW/)
+  assert.match(text, /as close to the original reference ad as possible/)
+  assert.doesNotMatch(text, /third image/i)
+})
+
+test('renderFinalImage HIGH (>66) with a style reference actively prefers it as a strong influence', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 90,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: HIGH/)
+  assert.match(text, /Actively prefer our own reference material/)
+  assert.match(text, /strong influence/)
+})
+
+test('renderFinalImage HIGH (>66) with no style reference falls back to the original freer-reinterpretation wording, not a third-image reference', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 100,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: HIGH/)
+  assert.match(text, /reinterpret the lighting, color grading, and background styling more freely/)
+  assert.doesNotMatch(text, /third image/i)
+  assert.doesNotMatch(text, /Actively prefer our own reference material/)
+})
