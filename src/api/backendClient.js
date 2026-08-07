@@ -3,13 +3,81 @@
 // without duplicating the env-var-with-fallback logic.
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
 
+// Part X: logout clears the session cookie, but the JWT itself is
+// stateless — there's no server-side revocation, so a second, already-open
+// tab (same browser, same cookie jar) keeps whatever React state it last
+// rendered until it makes another request of its own. AuthContext registers
+// itself here on mount so that ANY 401 from ANY call site (not just the
+// initial GET /me hydration check) immediately clears `user`, bouncing that
+// tab to the login screen the moment it next touches the backend, rather
+// than silently erroring while still showing the logged-in app shell.
+let unauthorizedHandler = null
+export function setUnauthorizedHandler(fn) {
+  unauthorizedHandler = fn
+}
+
 async function request(path, options) {
-  const res = await fetch(`${BASE_URL}${path}`, options)
+  // Part X: every route (except POST /api/auth/login and GET /api/health)
+  // now requires the httpOnly session cookie set on login. 'include' makes
+  // every existing call site get this for free — frontend (Vercel) and
+  // backend (Railway) are different origins in production, so without this
+  // the browser would never attach the cookie cross-site at all.
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, credentials: 'include' })
   if (!res.ok) {
+    if (res.status === 401) unauthorizedHandler?.()
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `Request to ${path} failed (HTTP ${res.status})`)
+    const err = new Error(body.error || `Request to ${path} failed (HTTP ${res.status})`)
+    err.status = res.status
+    throw err
   }
   return res.status === 204 ? null : res.json()
+}
+
+// Resolves to { user } on success, or 401s — AuthContext calls this once on
+// app mount to know if a valid session already exists.
+export function getMe() {
+  return request('/api/auth/me')
+}
+
+export function login(email, password) {
+  return request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+export function logout() {
+  return request('/api/auth/logout', { method: 'POST' })
+}
+
+// Admin-only backend route (requireAdmin) — 회원가입's actual implementation,
+// reachable only from inside 설정's 사용자 관리 section.
+export function createUserAccount(email, password, passwordConfirm) {
+  return request('/api/auth/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, passwordConfirm }),
+  })
+}
+
+export function getUsers() {
+  return request('/api/auth/users')
+}
+
+// Admin-only backend routes (requireAdmin) — 설정 → 자격 증명's data source.
+// GET returns masked status only; the real plaintext never round-trips back
+// to the frontend, on this call or the PUT below.
+export function getCredentials() {
+  return request('/api/credentials')
+}
+
+export function setCredential(key, value) {
+  return request(`/api/credentials/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value }),
+  })
 }
 
 // Every archived ad row from the sheet, keyed by the 22-column layout

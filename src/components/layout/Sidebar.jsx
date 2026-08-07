@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigation } from '../../context/NavigationContext.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
 
 const NAV_ITEMS = [
   { key: 'feed', icon: '📡', label: '경쟁사 광고 피드' },
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
 // — and harmless — at desktop widths.
 export default function Sidebar() {
   const { screen, go } = useNavigation()
+  const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
 
   const handleNav = (key) => {
@@ -41,6 +43,12 @@ export default function Sidebar() {
               <span className="ic">{item.icon}</span>{item.label}
             </button>
           ))}
+        </div>
+        <div className="nav-footer">
+          <div className="nav-footer-email" title={user?.email}>{user?.email}</div>
+          <button type="button" className="nav-footer-logout" onClick={logout}>
+            <span className="ic">🚪</span>로그아웃
+          </button>
         </div>
       </aside>
     </>

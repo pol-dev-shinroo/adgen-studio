@@ -1,0 +1,39 @@
+/* Part X: login screen + (reused) admin account-creation form. Built on
+   the app's existing tokens (--brand/--card/--r/--shadow/--line/--sub/
+   --red) rather than inventing a second visual language. */
+
+.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)}
+.auth-card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:36px 32px;max-width:400px;width:100%;display:flex;flex-direction:column;gap:16px}
+.auth-logo{font-weight:800;font-size:15px;color:var(--ink)}
+.auth-logo span{color:var(--brand)}
+.auth-title{font-size:20px;font-weight:800;margin:4px 0 0}
+.auth-sub{color:var(--sub);font-size:13px;margin:-8px 0 0}
+
+/* Reusable field-stack, also used standalone (no card chrome) inside
+   UserManagementCard.jsx's own .card set-sect wrapper on 설정. */
+.auth-form{display:flex;flex-direction:column;gap:16px}
+
+.auth-field{display:flex;flex-direction:column;gap:6px}
+.auth-field-label{font-size:12.5px;font-weight:700;color:var(--ink)}
+.auth-field input{padding:10px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13.5px;font-family:inherit;background:#fff;width:100%}
+.auth-field input:focus{outline:none;border-color:var(--brand)}
+.auth-field input.invalid{border-color:var(--red)}
+.auth-field-error{font-size:11.5px;color:var(--red);font-weight:600}
+
+.auth-password-row{position:relative;display:flex}
+.auth-password-row input{padding-right:40px}
+.auth-password-toggle{all:unset;position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:15px;line-height:1;opacity:.6}
+.auth-password-toggle:hover{opacity:1}
+
+.auth-error{background:#fdeaea;color:var(--red);border-radius:8px;padding:10px 12px;font-size:12.5px;font-weight:600}
+
+.auth-submit{width:100%;display:flex;align-items:center;justify-content:center;margin-top:4px}
+.auth-submit:disabled{opacity:.55;cursor:default}
+
+/* Admin user list (UserManagementCard.jsx), same restrained table language
+   the rest of the app's .row/.t/.d already establish in settings.css. */
+.auth-user-list{margin-top:20px;display:flex;flex-direction:column}
+.auth-user-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.auth-user-row:last-child{border-bottom:none}
+.auth-user-email{font-weight:700;font-size:13px}
+.auth-user-meta{font-size:11.5px;color:var(--sub);margin-top:2px}

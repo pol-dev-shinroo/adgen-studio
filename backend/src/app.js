@@ -1,10 +1,14 @@
 import express from 'express'
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import { config } from './config/index.js'
+import { requireAuth } from './middleware/requireAuth.js'
+import authRoutes from './routes/auth.routes.js'
 import collectRoutes from './routes/collect.routes.js'
 import adsRoutes from './routes/ads.routes.js'
 import productsRoutes from './routes/products.routes.js'
 import generationRoutes from './routes/generation.routes.js'
+import credentialsRoutes from './routes/credentials.routes.js'
 
 // Every existing endpoint is only ever called from our own Vercel frontend,
 // so the app-wide default stays locked to config.corsOrigin exactly as
@@ -22,32 +26,51 @@ import generationRoutes from './routes/generation.routes.js'
 // this server-side opening is what actually makes the fetch succeed, not
 // the manifest alone.
 //
-// All three are read-only/non-mutating/free (no paid API calls, no writes)
-// — POST /api/generate (starts a real paid job) and PATCH .../results/:id
-// (mutates approval status) are deliberately NOT matched here and stay
-// exactly as locked-down as every other endpoint. A permissive cors()
-// layered on *after* the restrictive one via app.use wouldn't actually work
-// — the restrictive instance already intercepts and terminates CORS
-// preflight (OPTIONS) requests for every path before any later middleware
-// runs — so instead this dispatches to one cors() instance or the other
-// based on path, decided before either one runs.
+// Part X: this CORS carve-out is now moot in practice — the requireAuth
+// gate below applies to these three routes too (a deliberate, confirmed
+// choice: closing the real data-exposure gap outweighed keeping the Figma
+// plugin working), and a Figma plugin has no way to present our session
+// cookie from its sandboxed origin, so every request through here now
+// 401s regardless of CORS. Left in place rather than removed — it's still
+// correct/harmless, and ready to matter again once a later part gives the
+// plugin its own machine-to-machine auth (an API key bypassing requireAuth
+// for just these paths, most likely) rather than session cookies.
 const CORS_OPEN_PATHS_RE = /^\/api\/generate\/results(\/[^/]+\/figma-export(\/image)?)?$/
+
+// Part X: gates every route except the two that must work before a session
+// can even exist. POST /api/auth/login is how a session gets created in
+// the first place; GET /api/health is an infra liveness check with no user
+// context at all. Every other route — including /api/auth/logout, /me,
+// /users (requireAdmin layers on top of this inside auth.routes.js), and
+// the three CORS-open Figma routes above — goes through this.
+const PUBLIC_ROUTES = [
+  { method: 'GET', path: '/api/health' },
+  { method: 'POST', path: '/api/auth/login' },
+]
 
 export function createApp() {
   const app = express()
 
-  const restrictiveCors = cors({ origin: config.corsOrigin })
+  const restrictiveCors = cors({ origin: config.corsOrigin, credentials: true })
   const permissiveCors = cors({ origin: true })
   app.use((req, res, next) => (
     CORS_OPEN_PATHS_RE.test(req.path) ? permissiveCors(req, res, next) : restrictiveCors(req, res, next)
   ))
   app.use(express.json())
+  app.use(cookieParser())
+
+  app.use((req, res, next) => {
+    const isPublic = PUBLIC_ROUTES.some((r) => r.method === req.method && r.path === req.path)
+    return isPublic ? next() : requireAuth(req, res, next)
+  })
 
   app.get('/api/health', (req, res) => res.json({ ok: true }))
+  app.use('/api/auth', authRoutes)
   app.use('/api/collect', collectRoutes)
   app.use('/api/ads', adsRoutes)
   app.use('/api/products', productsRoutes)
   app.use('/api/generate', generationRoutes)
+  app.use('/api/credentials', credentialsRoutes)
 
   app.use((req, res) => res.status(404).json({ error: 'Not found' }))
 

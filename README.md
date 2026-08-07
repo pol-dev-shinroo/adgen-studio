@@ -149,6 +149,68 @@ cd backend
 npm test    # node built-in test runner; covers the ad -> row and product -> row mappers
 ```
 
+## Authentication
+
+The whole app is gated behind a real login — there is no public sign-up
+page. Only an already-logged-in admin can create a new account (설정 →
+사용자 관리); the very first account is a real bootstrap problem (an
+admin-only invite system needs an admin to already exist), so it's created
+by a one-time script instead:
+
+```bash
+cd backend
+npx tsx scripts/create-admin.js <email> <password>
+```
+
+This calls `createUser` directly, bypassing the API/auth entirely, and
+creates one real row in the sheet's `Users` tab. Log in at the app's
+`/login` screen with that email/password afterward — every further account
+goes through the real admin UI, not this script.
+
+Part Y: the same run also migrates every credential currently sitting in
+`backend/.env` into the encrypted credentials vault, owned by the admin it
+just created — see "Credentials vault" below. Safe to re-run.
+
+Sessions are a signed JWT (`SESSION_JWT_SECRET` in `backend/.env` — see
+`.env.example` for how to generate one) set as an httpOnly cookie, 7-day
+expiry. In production, frontend (Vercel) and backend (Railway) are
+different origins, so the cookie is `SameSite=None; Secure` there (flipped
+automatically by `NODE_ENV=production`, which Railway sets); locally both
+run on `localhost` over plain http, where a `Secure` cookie would just be
+dropped, so it's `SameSite=Lax` instead.
+
+## Credentials vault
+
+Every real API credential this app uses *except* the ones needed just to
+reach the vault in the first place — Google/Sheets OAuth
+(`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN`,
+`SHEET_ID`), `SESSION_JWT_SECRET`, and the vault's own
+`CREDENTIALS_ENCRYPTION_KEY` — lives encrypted (AES-256-GCM) in a
+`Credentials` tab of the same Google Sheet as everything else, not in
+`backend/.env`. That covers `APIFY_TOKEN`, both brands' `CAFE24_*` triples,
+`OPENAI_API_KEY`, and `PINECONE_API_KEY`.
+
+`CREDENTIALS_ENCRYPTION_KEY` (`backend/.env`, real Railway env var in
+production) is a 32-byte hex key, generated once via:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Rotating it makes every already-migrated credential undecryptable, so treat
+it like `SESSION_JWT_SECRET` — set once, keep it safe, don't rotate
+casually.
+
+`scripts/create-admin.js` (see "Authentication" above) does double duty:
+besides creating the bootstrap admin account, it also reads the current
+migratable values straight out of `backend/.env` and writes each one into
+the vault, owned by that admin — a one-time step against the real deployed
+Sheet. After that, every migrated key resolves from the vault instead of
+`.env` (with `.env`/Railway env vars remaining a real fallback for any key
+that hasn't been migrated yet, so a fresh deploy never hard-fails). From
+then on, an admin can view (masked) and edit any of these from 설정 → 자격
+증명 — a save re-encrypts and takes effect immediately, no redeploy needed.
+
 ## Product sync (Studio Step 3: Cafe24 -> AI analysis -> Pinecone)
 
 Mirrors an earlier n8n workflow, simplified/hardened in a few ways (see

@@ -29,9 +29,14 @@ export default function Cafe24CallbackPage() {
     let cancelled = false
     setExchangeStatus('loading')
 
+    // Part X: this endpoint is now behind requireAuth like everything else
+    // — credentials: 'include' sends the session cookie set when the admin
+    // was logged into the main app (they had to be, to reach 상품관리's
+    // "지금 동기화" flow that kicked this redirect off in the first place).
     fetch(`${BASE_URL}/api/products/${encodeURIComponent(state)}/cafe24/exchange`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ code }),
     })
       .then(async (res) => {
