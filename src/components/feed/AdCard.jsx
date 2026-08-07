@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import Thumb from '../common/Thumb.jsx'
 import Badge from '../common/Badge.jsx'
 import { useAds } from '../../context/AdsContext.jsx'
@@ -6,15 +7,27 @@ import { useStudio } from '../../context/StudioContext.jsx'
 export default function AdCard({ ad, note, onOpenDetail, selectable, selected, onToggleSelect }) {
   const { renameBrand } = useAds()
   const { prefillFromAd } = useStudio()
+  // Part W: replaces window.prompt() — the one native browser dialog left
+  // in an app that otherwise uses its own modal language everywhere else
+  // (product field overrides, Pinecone reset confirmation) — with an
+  // inline editable field, the smallest affordance that fits a single
+  // short text value next to where it's already displayed.
+  const [editingName, setEditingName] = useState(false)
+  const [draftName, setDraftName] = useState(ad.brand)
 
-  const handleRename = (e) => {
+  const startRename = (e) => {
     e.stopPropagation()
-    const next = window.prompt(
-      `이 광고의 브랜드명(검색 키워드)을 수정합니다.\n(Drive 아카이브 폴더 및 피드 표시명에 반영)\n\n현재: ${ad.brand}`,
-      ad.brand
-    )
-    if (next && next.trim()) renameBrand(ad.id, next.trim())
+    setDraftName(ad.brand)
+    setEditingName(true)
   }
+
+  const commitRename = () => {
+    const next = draftName.trim()
+    if (next && next !== ad.brand) renameBrand(ad.id, next)
+    setEditingName(false)
+  }
+
+  const cancelRename = () => setEditingName(false)
 
   const handleGenerate = (e) => {
     e.stopPropagation()
@@ -52,7 +65,28 @@ export default function AdCard({ ad, note, onOpenDetail, selectable, selected, o
       </Thumb>
       <div className="body">
         <div className="name">
-          {ad.brand} {!selectable && <span className="edit" title="브랜드명 수정" onClick={handleRename}>✏️</span>}
+          {editingName ? (
+            <span className="name-edit" onClick={(e) => e.stopPropagation()}>
+              <input
+                autoFocus
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitRename()
+                  if (e.key === 'Escape') cancelRename()
+                }}
+              />
+              <button type="button" className="name-edit-btn" onClick={commitRename} aria-label="저장">✓</button>
+              <button type="button" className="name-edit-btn" onClick={cancelRename} aria-label="취소">✕</button>
+            </span>
+          ) : (
+            <>
+              {ad.brand}{' '}
+              {!selectable && (
+                <button type="button" className="edit" title="브랜드명 수정" onClick={startRename}>✏️</button>
+              )}
+            </>
+          )}
         </div>
         {ad.pageName && ad.pageName !== ad.brand && (
           <div className="pagename">{ad.pageName}</div>

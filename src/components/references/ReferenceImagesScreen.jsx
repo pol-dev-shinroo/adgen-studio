@@ -9,6 +9,34 @@ import PageLoader from '../common/PageLoader.jsx'
 import ScanningOverlay from '../common/ScanningOverlay.jsx'
 import ImageLightbox from '../common/ImageLightbox.jsx'
 
+// Part W: since Part V, a single product can yield 5-9 reference cards
+// (product, model, promo_badge, authority_badge, logo, headline_copy,
+// subheadline_copy, promo_phrase) instead of the 1-2 this screen was
+// designed around — grouping by category (with a small icon per group) so
+// a glance groups similar things together instead of scanning one flat
+// wall of same-sized white-background cutouts. Order is deliberate: the
+// actual subject first, then graphic elements, then phrases, then
+// anything genuinely unrecognized.
+const CATEGORY_DEFS = [
+  { key: 'product', icon: '📦', label: '제품', match: (ref) => ref.type === 'product' },
+  { key: 'model', icon: '🙎', label: '모델', match: (ref) => ref.type === 'model' },
+  { key: 'badge', icon: '🏷️', label: '배지 / 로고', match: (ref) => ['promo_badge', 'authority_badge', 'logo'].includes(ref.type) },
+  // Part V entities carry an additive `text` field only when they're
+  // inherently a phrase (headline/subheadline/promo) — reused here as the
+  // classifier rather than hardcoding the type-string list a second time.
+  { key: 'phrase', icon: '💬', label: '문구', match: (ref) => !!ref.text },
+]
+
+function categorize(refs) {
+  const buckets = CATEGORY_DEFS.map((def) => ({ ...def, items: [] }))
+  const other = { key: 'other', icon: '✦', label: '기타', items: [] }
+  for (const ref of refs) {
+    const bucket = buckets.find((b) => b.match(ref)) || other
+    bucket.items.push(ref)
+  }
+  return [...buckets, other].filter((b) => b.items.length > 0)
+}
+
 // One place to see every product's extraction status across every brand, so
 // nobody re-triggers a gpt-5.5 extraction that's already done just because
 // they couldn't see it from wherever they were (상품관리's detail modal,
@@ -54,17 +82,20 @@ export default function ReferenceImagesScreen() {
                   // Same array every thumb opens into, so ← → inside the
                   // lightbox can move between all of them — index depends on
                   // whichever is actually present (a product can have an
-                  // original photo with no extraction yet).
+                  // original photo with no extraction yet, or — pre-Part-V —
+                  // a text-only entry with no imageUrl at all).
                   const refImages = [p.imageUrl, ...p.extractedReferences.map((r) => r.imageUrl)].filter(Boolean)
                   const openLightbox = (image) => {
                     if (!image) return // nothing to show yet — skip gracefully
                     setLightbox({ images: refImages, index: refImages.indexOf(image) })
                   }
+                  const categories = categorize(p.extractedReferences)
                   return (
                     <div key={n} className="ref-screen-item">
                       <div className="ref-screen-item-name">{n}</div>
+
                       <div className="prod-refs">
-                        <div className="prod-card static">
+                        <div className="prod-card static compact">
                           <Thumb gradient="g5" image={p.imageUrl} fit="contain" onClick={() => openLightbox(p.imageUrl)}>
                             <ScanningOverlay active={isExtracting} />
                           </Thumb>
@@ -72,20 +103,46 @@ export default function ReferenceImagesScreen() {
                             <div className="prod-card-name">원본 마케팅 사진</div>
                           </div>
                         </div>
-                        {p.extractedReferences.map((ref, i) => (
-                          <div key={i} className="prod-card static">
-                            <Thumb gradient="g5" image={ref.imageUrl} fit="contain" onClick={() => openLightbox(ref.imageUrl)}>
-                              <Badge variant={ref.type === 'model' ? 'model' : 'live'}>
-                                {ref.type === 'model' ? '모델' : (ref.label || '제품')}
-                              </Badge>
-                            </Thumb>
-                            <div className="prod-card-body">
-                              <div className="prod-card-name">{ref.type === 'model' ? '모델' : (ref.label || '제품')} 참조 이미지</div>
-                              <span className="sub">추출일: {formatDateTime(ref.extractedAt)}</span>
-                            </div>
-                          </div>
-                        ))}
                       </div>
+
+                      {categories.map((cat) => (
+                        <div key={cat.key} className="ref-cat">
+                          <div className="ref-cat-label">
+                            <span aria-hidden="true">{cat.icon}</span> {cat.label} <span className="count">{cat.items.length}</span>
+                          </div>
+                          <div className="prod-refs">
+                            {cat.items.map((ref, i) => {
+                              const label = ref.type === 'model' ? '모델' : (ref.label || '제품')
+                              // Part U-1's convention, applied here for the
+                              // first time: every real (image-bearing) entry
+                              // is 'live' green regardless of specific type —
+                              // only a genuinely text-only legacy entry (a
+                              // pre-Part-V row that was never re-extracted)
+                              // gets 'arch' gray, matching
+                              // ProductReferenceGallery.jsx's own selectable-
+                              // vs-informational split.
+                              return ref.imageUrl ? (
+                                <div key={i} className="prod-card static compact">
+                                  <Thumb gradient="g5" image={ref.imageUrl} fit="contain" onClick={() => openLightbox(ref.imageUrl)}>
+                                    <Badge variant="live">{cat.icon} {label}</Badge>
+                                  </Thumb>
+                                  <div className="prod-card-body">
+                                    <div className="prod-card-name">{label} 참조 이미지</div>
+                                    <span className="sub">추출일: {formatDateTime(ref.extractedAt)}</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div key={i} className="prod-card static compact ref-text-card">
+                                  <Badge variant="arch">{cat.icon} {label}</Badge>
+                                  <div className="ref-text-card-body">{ref.text}</div>
+                                  <span className="sub">추출일: {formatDateTime(ref.extractedAt)}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+
                       <div className="ref-meta">
                         {!hasRefs && <p className="sub" style={{ margin: 0 }}>아직 추출된 참조 이미지가 없습니다.</p>}
                         <button

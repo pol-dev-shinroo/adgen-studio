@@ -1,4 +1,4 @@
-/* Shares .set-sect, .row, .status-ok, .prod-review, .pr-field/.pr-head/.pr-body,
+/* Shares .set-sect, .row, .prod-review, .pr-field/.pr-head/.pr-body,
    and .badge.rev-ok/.rev-no/.rev-chg with settings.css (imported alongside
    this file in ProductsScreen.jsx) — only genuinely new classes live here. */
 

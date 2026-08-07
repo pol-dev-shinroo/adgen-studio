@@ -32,8 +32,13 @@
 .select-actions{display:flex;gap:8px;margin-left:auto}
 .ad .body{padding:12px}
 .ad .name{font-weight:700;display:flex;align-items:center;gap:6px}
-.ad .name .edit{cursor:pointer;font-size:12px;opacity:.5}
+.ad .name .edit{all:unset;cursor:pointer;font-size:12px;opacity:.5}
 .ad .name .edit:hover{opacity:1}
+/* Part W: inline brand-rename affordance, replaces window.prompt(). */
+.ad .name-edit{display:inline-flex;align-items:center;gap:4px}
+.ad .name-edit input{padding:4px 8px;border:1.5px solid var(--line);border-radius:6px;font-size:13px;font-family:inherit;width:140px}
+.ad .name-edit-btn{all:unset;cursor:pointer;font-size:12px;padding:2px 5px;border-radius:4px;opacity:.7}
+.ad .name-edit-btn:hover{opacity:1;background:var(--bg)}
 .ad .pagename{color:var(--sub);font-size:11px;margin-top:1px}
 .ad .copy-line{color:var(--sub);font-size:12px;margin:6px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ad .meta{color:var(--sub);font-size:12px;margin:6px 0 10px}

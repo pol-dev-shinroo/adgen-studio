@@ -1,5 +1,5 @@
 import '../../styles/settings.css'
-import N8nIntegrationCard from './N8nIntegrationCard.jsx'
+import SystemStatusCard from './SystemStatusCard.jsx'
 
 export default function SettingsScreen() {
   return (
@@ -7,11 +7,11 @@ export default function SettingsScreen() {
       <div className="head">
         <div>
           <h1>설정</h1>
-          <p className="sub">n8n 연동</p>
+          <p className="sub">시스템 연동 상태</p>
         </div>
       </div>
 
-      <N8nIntegrationCard />
+      <SystemStatusCard />
     </section>
   )
 }

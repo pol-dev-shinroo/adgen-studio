@@ -20,6 +20,18 @@ export default function AdGrid({ onOpenDetail }) {
 
   if (adsLoading && list.length === 0) return <PageLoader />
 
+  // Part W: every other list screen in this app (ProductBrowser, Gallery,
+  // StepReferenceAds) handles "no results" explicitly with a distinct
+  // message per cause — this one only handled the loading case, silently
+  // rendering a blank grid for a genuinely empty archive or a filter
+  // combination matching nothing.
+  if (ads.length === 0) {
+    return <p className="sub">아직 수집된 광고가 없습니다 — 위에서 브랜드명 또는 AD ID를 검색해 실시간 수집을 시작하세요.</p>
+  }
+  if (list.length === 0) {
+    return <p className="sub">현재 필터 조건에 맞는 광고가 없습니다.</p>
+  }
+
   return (
     <div className="grid">
       {list.map((ad) => (
