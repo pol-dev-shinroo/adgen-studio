@@ -1,5 +1,5 @@
-import { config } from '../config/index.js'
-import { AD_COLUMNS, SYNC_COLUMNS, toRow } from '../mappers/ad.mapper.js'
+import { config } from '../../config/index.js'
+import { AD_COLUMNS, SYNC_COLUMNS, toRow } from '../../mappers/ad.mapper.js'
 import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
 
 const LAST_COLUMN = 'X' // 24 columns (22 sync + 1 extracted-reference [Part N] + 1 extracted-copy [Part O]), A..X

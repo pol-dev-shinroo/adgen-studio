@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { renderFinalImage } from '../src/services/renderImage.service.js'
+import { renderFinalImage } from '../src/services/generation/renderImage.service.js'
 
 const FORMAT = '1:1 피드'
 

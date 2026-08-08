@@ -5,7 +5,7 @@ import { USER_COLUMNS } from '../src/mappers/user.mapper.js'
 import {
   createUser, verifyCredentials, getUserByEmail, getUserById, touchLastLogin,
   signSessionToken, verifySessionToken,
-} from '../src/services/auth.service.js'
+} from '../src/services/auth/auth.service.js'
 
 // Fake Sheets client — no real Google API call anywhere in this suite, same
 // DI-via-getClientFn convention sheets.service.test.js already established

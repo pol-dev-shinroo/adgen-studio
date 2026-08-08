@@ -1,4 +1,4 @@
-import { verifySessionToken } from '../services/auth.service.js'
+import { verifySessionToken } from '../services/auth/auth.service.js'
 
 // Validates the session cookie set on login, attaching req.user (id, email,
 // role) on success. Applied globally in app.js to every route except

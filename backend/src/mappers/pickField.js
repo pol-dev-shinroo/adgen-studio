@@ -1,4 +1,4 @@
-// Shared by ad.mapper.js and product.mapper.js: both actor/API responses
+// Shared by ad.mapper.ts and product.mapper.ts: both actor/API responses
 // have shipped multiple field-name variants over time (camelCase vs.
 // snake_case, or just renamed fields), so every lookup tries known aliases
 // in order.

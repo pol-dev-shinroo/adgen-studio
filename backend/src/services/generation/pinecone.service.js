@@ -1,19 +1,11 @@
 import { Pinecone } from '@pinecone-database/pinecone'
-import { config } from '../config/index.js'
+import { config } from '../../config/index.js'
+import { createCachedClient } from '../cachedApiClient.js'
 
-let client = null
-let clientKey = null
+const getClient = createCachedClient(() => config.pineconeApiKey, (apiKey) => new Pinecone({ apiKey }))
 
-// Part Y: config.pineconeApiKey can change live (a Settings-UI credential
-// edit), so the cached client is rebuilt whenever the key it was built
-// with no longer matches — otherwise a live edit would silently keep using
-// the stale key here even though config.pineconeApiKey itself updated.
 function getIndex() {
-  if (!client || clientKey !== config.pineconeApiKey) {
-    client = new Pinecone({ apiKey: config.pineconeApiKey })
-    clientKey = config.pineconeApiKey
-  }
-  return client.index(config.pineconeIndex)
+  return getClient().index(config.pineconeIndex)
 }
 
 function getNamespace(brandKey) {

@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import { config } from '../config/index.js'
+import { config } from '../../config/index.js'
 
 // Single OAuth2 client shared by the Sheets and Drive services.
 // The refresh token must carry both the spreadsheets and drive.file scopes

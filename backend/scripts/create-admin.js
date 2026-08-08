@@ -16,9 +16,9 @@
 // which plain node's ESM loader can't resolve):
 //   npx tsx scripts/create-admin.js <email> <password>
 
-import { createUser } from '../src/services/auth.service.js'
+import { createUser } from '../src/services/auth/auth.service.js'
 import { MIGRATABLE_CREDENTIAL_KEYS } from '../src/config/index.js'
-import { setCredential } from '../src/services/credentials.service.js'
+import { setCredential } from '../src/services/auth/credentials.service.js'
 
 const [, , email, password] = process.argv
 

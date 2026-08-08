@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parseAdCopyResult } from '../src/services/adImageExtraction.service.js'
+import { parseAdCopyResult } from '../src/services/generation/adImageExtraction.service.js'
 
 test('parseAdCopyResult normalizes a real-shaped result with price, promotion, and multiple hooks', () => {
   const raw = JSON.stringify({

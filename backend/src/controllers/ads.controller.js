@@ -1,6 +1,6 @@
-import { getAllAds, updateAdField, deleteAdRows, revertAdRow } from '../services/sheets.service.js'
-import { deleteAdMedia } from '../services/drive.service.js'
-import { extractAdReferenceImage } from '../services/adImageExtraction.service.js'
+import { getAllAds, updateAdField, deleteAdRows, revertAdRow } from '../services/sheets/sheets.service.js'
+import { deleteAdMedia } from '../services/sheets/drive.service.js'
+import { extractAdReferenceImage } from '../services/generation/adImageExtraction.service.js'
 
 // Fields the frontend is allowed to edit directly. Everything else in the
 // sheet is scraper-owned and should only change via a new collection run.

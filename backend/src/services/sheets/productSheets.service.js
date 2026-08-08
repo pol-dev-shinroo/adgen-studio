@@ -1,5 +1,5 @@
-import { config } from '../config/index.js'
-import { PRODUCT_COLUMNS, SYNC_COLUMNS, toRow } from '../mappers/product.mapper.js'
+import { config } from '../../config/index.js'
+import { PRODUCT_COLUMNS, SYNC_COLUMNS, toRow } from '../../mappers/product.mapper.js'
 import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
 
 // Same spreadsheet as the ad-collection sheet (config.sheetId), a separate
@@ -12,53 +12,49 @@ const SYNC_LAST_COLUMN = columnLetter(SYNC_COLUMNS.length - 1) // 'L' — resync
 
 const tabRange = makeTabRange(PRODUCT_TAB_NAME)
 
-// Unlike the ad tab (created manually up front), the product tab is new
-// with this feature, so it's created on first use — same lazy-create,
-// cached-promise pattern as sheets.service.js's getSheetGid. Also handles
-// the header *migration* case: the live sheet already had a 12-column
-// header + 4 real rows before EXTRACTION_COLUMNS was appended to
-// PRODUCT_COLUMNS, so an existing-but-stale header needs its missing
-// trailing cells filled in, not just a "tab already exists, skip" check.
-let ensureTabPromise = null
-function ensureProductTab() {
-  if (!ensureTabPromise) {
-    ensureTabPromise = (async () => {
-      const sheets = getClient()
-      const meta = await callSheets(() => sheets.spreadsheets.get({ spreadsheetId: config.sheetId }))
-      const exists = meta.data.sheets.some((s) => s.properties.title === PRODUCT_TAB_NAME)
+// Part Z: takes the resolved sheets client as a parameter (not cached in a
+// module-level promise the way this used to be) so every exported function
+// below can be DI-tested against a fresh fake Sheets client with zero
+// cross-test state leakage — same convention auth.service.js's
+// ensureUsersTab and credentials.service.js's ensureCredentialsTab already
+// use. Also handles the header *migration* case: the live sheet already
+// had a 12-column header + 4 real rows before EXTRACTION_COLUMNS was
+// appended to PRODUCT_COLUMNS, so an existing-but-stale header needs its
+// missing trailing cells filled in, not just a "tab already exists, skip"
+// check.
+async function ensureProductTab(sheets) {
+  const meta = await callSheets(() => sheets.spreadsheets.get({ spreadsheetId: config.sheetId }))
+  const exists = meta.data.sheets.some((s) => s.properties.title === PRODUCT_TAB_NAME)
 
-      if (!exists) {
-        await callSheets(() => sheets.spreadsheets.batchUpdate({
-          spreadsheetId: config.sheetId,
-          requestBody: { requests: [{ addSheet: { properties: { title: PRODUCT_TAB_NAME } } }] },
-        }))
-        await callSheets(() => sheets.spreadsheets.values.update({
-          spreadsheetId: config.sheetId,
-          range: tabRange(`A1:${LAST_COLUMN}1`),
-          valueInputOption: 'RAW',
-          requestBody: { values: [[...PRODUCT_COLUMNS]] },
-        }))
-        return
-      }
-
-      const headerRes = await callSheets(() => sheets.spreadsheets.values.get({
-        spreadsheetId: config.sheetId,
-        range: tabRange(`A1:${LAST_COLUMN}1`),
-      }))
-      const existingHeader = headerRes.data.values?.[0] || []
-      if (existingHeader.length < PRODUCT_COLUMNS.length) {
-        const missingHeaders = PRODUCT_COLUMNS.slice(existingHeader.length)
-        const startColumn = columnLetter(existingHeader.length)
-        await callSheets(() => sheets.spreadsheets.values.update({
-          spreadsheetId: config.sheetId,
-          range: tabRange(`${startColumn}1:${LAST_COLUMN}1`),
-          valueInputOption: 'RAW',
-          requestBody: { values: [missingHeaders] },
-        }))
-      }
-    })()
+  if (!exists) {
+    await callSheets(() => sheets.spreadsheets.batchUpdate({
+      spreadsheetId: config.sheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title: PRODUCT_TAB_NAME } } }] },
+    }))
+    await callSheets(() => sheets.spreadsheets.values.update({
+      spreadsheetId: config.sheetId,
+      range: tabRange(`A1:${LAST_COLUMN}1`),
+      valueInputOption: 'RAW',
+      requestBody: { values: [[...PRODUCT_COLUMNS]] },
+    }))
+    return
   }
-  return ensureTabPromise
+
+  const headerRes = await callSheets(() => sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheetId,
+    range: tabRange(`A1:${LAST_COLUMN}1`),
+  }))
+  const existingHeader = headerRes.data.values?.[0] || []
+  if (existingHeader.length < PRODUCT_COLUMNS.length) {
+    const missingHeaders = PRODUCT_COLUMNS.slice(existingHeader.length)
+    const startColumn = columnLetter(existingHeader.length)
+    await callSheets(() => sheets.spreadsheets.values.update({
+      spreadsheetId: config.sheetId,
+      range: tabRange(`${startColumn}1:${LAST_COLUMN}1`),
+      valueInputOption: 'RAW',
+      requestBody: { values: [missingHeaders] },
+    }))
+  }
 }
 
 // Upserts by Product ID: known IDs get their sync-owned columns (A..L)
@@ -72,9 +68,13 @@ function ensureProductTab() {
 // on every resync would silently blank out image-extraction results the
 // moment a product's data changes upstream. New appends don't need this
 // care — a brand-new row has no extraction data yet to protect.
-export async function upsertProductRows(mappedProducts) {
-  await ensureProductTab()
-  const sheets = getClient()
+//
+// getClientFn is injected (defaulting to the real getClient) purely so this
+// can be unit-tested against a fake Sheets client without hitting Google —
+// same DI convention as sheets.service.js's upsertAdRows.
+export async function upsertProductRows(mappedProducts, { getClientFn = getClient } = {}) {
+  const sheets = getClientFn()
+  await ensureProductTab(sheets)
 
   const existingRes = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
@@ -134,9 +134,9 @@ export async function upsertProductRows(mappedProducts) {
 // upsertProductRows matches rows (scan column A). Used by the image-
 // extraction path to write Extracted Image URL/Extracted At without a full
 // re-upsert. Mirrors sheets.service.js's updateAdField exactly.
-export async function updateProductField(productId, columnName, value) {
-  await ensureProductTab()
-  const sheets = getClient()
+export async function updateProductField(productId, columnName, value, { getClientFn = getClient } = {}) {
+  const sheets = getClientFn()
+  await ensureProductTab(sheets)
   const columnIndex = PRODUCT_COLUMNS.indexOf(columnName)
   if (columnIndex === -1) {
     throw new Error(`Unknown column "${columnName}"`)
@@ -168,9 +168,9 @@ export async function updateProductField(productId, columnName, value) {
 // Sheets API call (values.batchUpdate) instead of one round-trip per field
 // — used to save all three *_Override fields at once. fieldsObj:
 // { [columnName]: value }; columns aren't assumed contiguous.
-export async function updateProductFields(productId, fieldsObj) {
-  await ensureProductTab()
-  const sheets = getClient()
+export async function updateProductFields(productId, fieldsObj, { getClientFn = getClient } = {}) {
+  const sheets = getClientFn()
+  await ensureProductTab(sheets)
 
   const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
@@ -204,9 +204,9 @@ export async function updateProductFields(productId, fieldsObj) {
   }))
 }
 
-export async function getAllProducts() {
-  await ensureProductTab()
-  const sheets = getClient()
+export async function getAllProducts({ getClientFn = getClient } = {}) {
+  const sheets = getClientFn()
+  await ensureProductTab(sheets)
   const res = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
     range: tabRange(`A:${LAST_COLUMN}`),

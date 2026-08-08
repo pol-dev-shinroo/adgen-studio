@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream'
 import { google } from 'googleapis'
-import { getAuthClient } from './google.client.js'
-import { withRetry, googleIsRetryable } from '../utils/retry.js'
+import { getAuthClient } from '../sheets/google.client.js'
+import { withRetry, googleIsRetryable } from '../../utils/retry.js'
 
 // Every Drive API call in this file goes through this so rate-limit/quota
 // errors get retried with backoff, same pattern as drive.service.js.

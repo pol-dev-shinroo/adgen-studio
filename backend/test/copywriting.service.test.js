@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { writeReplacementCopy, styleIntensityInstructionFor } from '../src/services/copywriting.service.js'
+import { writeReplacementCopy, styleIntensityInstructionFor } from '../src/services/generation/copywriting.service.js'
 
 // Part U-2: this file had zero tests before this part — same gap Part Q
 // found and fixed for renderImage.service.js. Same DI-fake-client

@@ -1,6 +1,6 @@
 import { MIGRATABLE_CREDENTIAL_KEYS } from '../config/index.js'
-import { listCredentialStatus, setCredential } from '../services/credentials.service.js'
-import { getUserById } from '../services/auth.service.js'
+import { listCredentialStatus, setCredential } from '../services/auth/credentials.service.js'
+import { getUserById } from '../services/auth/auth.service.js'
 
 // Admin-only (requireAdmin runs before both of these in credentials.routes.js).
 // Resolves each row's "Updated By User ID" to a real email for display —

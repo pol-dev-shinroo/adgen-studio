@@ -1,4 +1,4 @@
-import { startCollection, getJob } from '../services/collect.service.js'
+import { startCollection, getJob } from '../services/collection/collect.service.js'
 
 const DEFAULT_RESULTS_LIMIT = 200
 const MIN_RESULTS_LIMIT = 10

@@ -1,9 +1,9 @@
 import { config } from '../config/index.js'
-import { startSync, getJob } from '../services/productSync.service.js'
-import { getAllProducts, updateProductFields } from '../services/productSheets.service.js'
-import { isAuthorized, exchangeCodeForTokens } from '../services/cafe24.client.js'
-import { getNamespaceStats, resetNamespace } from '../services/pinecone.service.js'
-import { extractProductImage } from '../services/productImageExtraction.service.js'
+import { startSync, getJob } from '../services/cafe24/productSync.service.js'
+import { getAllProducts, updateProductFields } from '../services/sheets/productSheets.service.js'
+import { isAuthorized, exchangeCodeForTokens } from '../services/cafe24/cafe24.client.js'
+import { getNamespaceStats, resetNamespace } from '../services/generation/pinecone.service.js'
+import { extractProductImage } from '../services/generation/productImageExtraction.service.js'
 
 function findBrand(brandKey) {
   return config.brands.find((b) => b.key === brandKey)

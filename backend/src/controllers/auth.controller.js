@@ -1,7 +1,7 @@
 import { config } from '../config/index.js'
 import {
   createUser, verifyCredentials, touchLastLogin, getAllUsers, signSessionToken,
-} from '../services/auth.service.js'
+} from '../services/auth/auth.service.js'
 
 const SESSION_COOKIE_NAME = 'session'
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days, matches auth.service.js's SESSION_EXPIRY

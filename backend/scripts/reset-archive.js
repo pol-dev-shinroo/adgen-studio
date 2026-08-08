@@ -10,7 +10,7 @@
 
 import { google } from 'googleapis'
 import { config } from '../src/config/index.js'
-import { getAuthClient } from '../src/services/google.client.js'
+import { getAuthClient } from '../src/services/sheets/google.client.js'
 
 const ROOT_FOLDER_NAME = 'AdGen Media Archive'
 const FOLDER_MIME = 'application/vnd.google-apps.folder'

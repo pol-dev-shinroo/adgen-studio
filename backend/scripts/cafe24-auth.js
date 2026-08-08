@@ -24,7 +24,7 @@
 //      page shows success/failure directly — nothing further to run.
 
 import { config } from '../src/config/index.js'
-import { getAuthorizeUrl } from '../src/services/cafe24.client.js'
+import { getAuthorizeUrl } from '../src/services/cafe24/cafe24.client.js'
 
 const brandKey = process.argv[2]
 const validKeys = config.brands.map((b) => b.key)

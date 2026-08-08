@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import jwt from 'jsonwebtoken'
 import { config } from '../src/config/index.js'
 import { requireAuth, requireAdmin } from '../src/middleware/requireAuth.js'
-import { signSessionToken } from '../src/services/auth.service.js'
+import { signSessionToken } from '../src/services/auth/auth.service.js'
 
 // Minimal Express req/res doubles — no real HTTP server needed to exercise
 // middleware logic directly.

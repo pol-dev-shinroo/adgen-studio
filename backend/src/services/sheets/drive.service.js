@@ -1,8 +1,8 @@
 import { Readable } from 'node:stream'
 import { google } from 'googleapis'
-import { config } from '../config/index.js'
+import { config } from '../../config/index.js'
 import { getAuthClient } from './google.client.js'
-import { withRetry, googleIsRetryable } from '../utils/retry.js'
+import { withRetry, googleIsRetryable } from '../../utils/retry.js'
 
 // Every Drive API call in this file goes through this so rate-limit/quota
 // errors (429, or 403 with a rateLimitExceeded reason) get retried with

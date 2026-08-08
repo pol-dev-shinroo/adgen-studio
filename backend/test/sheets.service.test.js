@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { AD_COLUMNS, SYNC_COLUMNS } from '../src/mappers/ad.mapper.js'
-import { upsertAdRows } from '../src/services/sheets.service.js'
+import { upsertAdRows } from '../src/services/sheets/sheets.service.js'
 
 // Regression coverage for Part N-2: a resync used to write the FULL
 // A..LAST_COLUMN range for an existing row, which — once LAST_COLUMN grew

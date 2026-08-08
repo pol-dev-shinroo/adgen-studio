@@ -1,5 +1,5 @@
-import { config } from '../config/index.js'
-import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
+import { config } from '../../config/index.js'
+import { getClient, callSheets, makeTabRange, columnLetter } from '../sheets/sheetsBase.js'
 
 // Cafe24 access tokens expire in ~2 hours and the refresh token itself
 // rotates (and expires in ~2 weeks) on every use, so this can't just live

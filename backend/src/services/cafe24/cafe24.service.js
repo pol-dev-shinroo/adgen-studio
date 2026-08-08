@@ -1,6 +1,6 @@
-import { config } from '../config/index.js'
+import { config } from '../../config/index.js'
 import { getAccessToken } from './cafe24.client.js'
-import { mapWithConcurrency } from '../utils/pool.js'
+import { mapWithConcurrency } from '../../utils/pool.js'
 
 const PAGE_SIZE = 100
 const DETAIL_CONCURRENCY = 3 // parallel per-product detail fetches

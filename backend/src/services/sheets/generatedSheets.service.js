@@ -1,5 +1,5 @@
-import { config } from '../config/index.js'
-import { GENERATED_AD_COLUMNS, toRow } from '../mappers/generatedAd.mapper.js'
+import { config } from '../../config/index.js'
+import { GENERATED_AD_COLUMNS, toRow } from '../../mappers/generatedAd.mapper.js'
 import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
 
 // New tab, same sheet as the ad-collection/product tabs — same

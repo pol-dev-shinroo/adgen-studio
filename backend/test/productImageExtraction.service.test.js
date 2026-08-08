@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   parseDetectionResult, buildProductIsolationPrompt,
-} from '../src/services/productImageExtraction.service.js'
+} from '../src/services/generation/productImageExtraction.service.js'
 
 // Part V: every entity is now isolated as its own image (no more visual/text
 // kind split) — these tests reflect the all-visual shape. A phrase entity

@@ -1,5 +1,5 @@
-import { config } from '../config/index.js'
-import { withRetry } from '../utils/retry.js'
+import { config } from '../../config/index.js'
+import { withRetry } from '../../utils/retry.js'
 
 const ACTOR_ENDPOINT = 'https://api.apify.com/v2/acts/apify~facebook-ads-scraper/run-sync-get-dataset-items'
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000

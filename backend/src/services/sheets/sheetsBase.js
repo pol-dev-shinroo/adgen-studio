@@ -1,6 +1,6 @@
 import { google } from 'googleapis'
 import { getAuthClient } from './google.client.js'
-import { withRetry, googleIsRetryable } from '../utils/retry.js'
+import { withRetry, googleIsRetryable } from '../../utils/retry.js'
 
 // Shared Sheets API client + retry wrapper + tab-scoped range builder,
 // extracted from sheets.service.js and productSheets.service.js — both

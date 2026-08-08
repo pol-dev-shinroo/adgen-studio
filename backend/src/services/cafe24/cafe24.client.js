@@ -1,4 +1,4 @@
-import { config } from '../config/index.js'
+import { config } from '../../config/index.js'
 import { getTokenEntry, saveTokenEntry } from './cafe24TokenStore.service.js'
 
 // Unlike google.client.js's static long-lived refresh token, Cafe24 access

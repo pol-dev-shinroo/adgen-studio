@@ -5,7 +5,7 @@ import { encrypt, decrypt } from '../src/utils/crypto.js'
 import { config } from '../src/config/index.js'
 import {
   getCredential, setCredential, listCredentialStatus, maskValue,
-} from '../src/services/credentials.service.js'
+} from '../src/services/auth/credentials.service.js'
 
 // Fake Sheets client — no real Google API call anywhere in this suite, same
 // DI-via-getClientFn convention auth.service.test.js/sheets.service.test.js

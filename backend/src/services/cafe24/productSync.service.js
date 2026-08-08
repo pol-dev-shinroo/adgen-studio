@@ -1,11 +1,11 @@
-import { config } from '../config/index.js'
+import { config } from '../../config/index.js'
 import { fetchAllProducts } from './cafe24.service.js'
-import { analyzeProduct, ANALYSIS_KEYS } from './analyzeProduct.service.js'
-import { embedText } from './embeddings.service.js'
-import * as pineconeService from './pinecone.service.js'
-import { upsertProductRows } from './productSheets.service.js'
-import { mapProduct } from '../mappers/product.mapper.js'
-import { createJobStore } from '../utils/jobStore.js'
+import { analyzeProduct, ANALYSIS_KEYS } from '../generation/analyzeProduct.service.js'
+import { embedText } from '../generation/embeddings.service.js'
+import * as pineconeService from '../generation/pinecone.service.js'
+import { upsertProductRows } from '../sheets/productSheets.service.js'
+import { mapProduct } from '../../mappers/product.mapper.js'
+import { createJobStore } from '../../utils/jobStore.js'
 
 const jobStore = createJobStore()
 

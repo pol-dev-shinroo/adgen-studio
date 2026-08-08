@@ -1,9 +1,9 @@
 import { runFacebookAdsScraper } from './apify.service.js'
-import { upsertAdRows } from './sheets.service.js'
-import { uploadFromUrl } from './drive.service.js'
-import { mapAd } from '../mappers/ad.mapper.js'
-import { mapWithConcurrency } from '../utils/pool.js'
-import { createJobStore } from '../utils/jobStore.js'
+import { upsertAdRows } from '../sheets/sheets.service.js'
+import { uploadFromUrl } from '../sheets/drive.service.js'
+import { mapAd } from '../../mappers/ad.mapper.js'
+import { mapWithConcurrency } from '../../utils/pool.js'
+import { createJobStore } from '../../utils/jobStore.js'
 
 const jobStore = createJobStore()
 

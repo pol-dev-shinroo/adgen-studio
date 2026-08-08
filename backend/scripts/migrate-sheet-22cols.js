@@ -8,7 +8,7 @@
 
 import { google } from 'googleapis'
 import { config } from '../src/config/index.js'
-import { getAuthClient } from '../src/services/google.client.js'
+import { getAuthClient } from '../src/services/sheets/google.client.js'
 import { AD_COLUMNS } from '../src/mappers/ad.mapper.js'
 
 const sheets = google.sheets({ version: 'v4', auth: getAuthClient() })

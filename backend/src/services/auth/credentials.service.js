@@ -1,7 +1,7 @@
-import { config, applyCredentialToConfig, MIGRATABLE_CREDENTIAL_KEYS } from '../config/index.js'
-import { CREDENTIAL_COLUMNS, mapCredential, toRow } from '../mappers/credentials.mapper.js'
-import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
-import { encrypt, decrypt } from '../utils/crypto.js'
+import { config, applyCredentialToConfig, MIGRATABLE_CREDENTIAL_KEYS } from '../../config/index.js'
+import { CREDENTIAL_COLUMNS, mapCredential, toRow } from '../../mappers/credentials.mapper.js'
+import { getClient, callSheets, makeTabRange, columnLetter } from '../sheets/sheetsBase.js'
+import { encrypt, decrypt } from '../../utils/crypto.js'
 
 // Same one-spreadsheet-many-tabs convention every other data type in this
 // app already uses. Same "don't cache the tab-exists check across calls"

@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { config } from '../config/index.js'
-import { USER_COLUMNS, mapUser, toRow, toSafeUser } from '../mappers/user.mapper.js'
-import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.js'
+import { config } from '../../config/index.js'
+import { USER_COLUMNS, mapUser, toRow, toSafeUser } from '../../mappers/user.mapper.js'
+import { getClient, callSheets, makeTabRange, columnLetter } from '../sheets/sheetsBase.js'
 
 // Same one-spreadsheet-many-tabs convention every other data type in this
 // app already uses (product/generated-ad tabs). Real work factor for

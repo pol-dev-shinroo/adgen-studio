@@ -1,7 +1,7 @@
 import { config } from '../config/index.js'
 import { startGeneration, getJob } from '../services/generation.service.js'
-import { getAllGeneratedResults, updateGeneratedStatus } from '../services/generatedSheets.service.js'
-import { downloadImageAsBase64 } from '../services/imageIO.service.js'
+import { getAllGeneratedResults, updateGeneratedStatus } from '../services/sheets/generatedSheets.service.js'
+import { downloadImageAsBase64 } from '../services/generation/imageIO.service.js'
 import { sizeForFormat } from '../utils/formatSize.js'
 
 const VALID_STATUSES = new Set(['미승인', '승인'])
