@@ -126,8 +126,13 @@ export function ProductsProvider({ children }) {
         const { products: refreshed } = await getProducts()
         setProducts(refreshed.map(adaptProduct))
         await loadStatus()
+        // AA-4: a product whose analysis-relevant fields haven't changed
+        // since its last sync skips the real analyze/embed/Pinecone-upsert
+        // calls — surfaced here so "동기화 완료: 0건 성공" doesn't read as
+        // if nothing happened when everything was actually just unchanged.
         showToast(
           `동기화 완료: ${job.summary.synced}건 성공` +
+          (job.summary.skipped ? ` · 변경 없음 ${job.summary.skipped}건` : '') +
           (job.summary.failed ? ` · 실패 ${job.summary.failed}건` : '')
         )
       },
@@ -160,16 +165,23 @@ export function ProductsProvider({ children }) {
   // re-runs adaptProduct on it — same pattern updateProductFields already
   // uses below — so the Drive-webViewLink-to-thumbnail-URL conversion
   // adaptProduct.js applies isn't duplicated here.
-  const extractImage = useCallback(async (brandKey, productId) => {
+  const extractImage = useCallback(async (brandKey, productId, { force = false } = {}) => {
     setExtractingIds((prev) => new Set(prev).add(productId))
     try {
-      const result = await extractProductImage(brandKey, productId)
+      const result = await extractProductImage(brandKey, productId, { force })
       setProducts((prev) => prev.map((p) => (
         p.id === productId
           ? adaptProduct({ ...p.raw, 'Extracted References JSON': JSON.stringify(result.references) })
           : p
       )))
-      showToast('참조 이미지 추출이 완료됐습니다')
+      // AA-2: a partial failure still saves whatever succeeded rather than
+      // discarding everything — surface that explicitly rather than
+      // reporting a silent "완료" that hides missing entities.
+      if (result.failures?.length > 0) {
+        showToast(`참조 이미지 추출 완료 (${result.references.length}개 성공, ${result.failures.length}개 실패)`)
+      } else {
+        showToast('참조 이미지 추출이 완료됐습니다')
+      }
     } catch (err) {
       console.error('Product image extraction failed:', err)
       showToast(`이미지 추출 실패: ${err.message}`)

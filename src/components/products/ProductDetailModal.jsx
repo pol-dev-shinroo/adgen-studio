@@ -22,7 +22,12 @@ export default function ProductDetailModal({ product, onClose }) {
   // extraction endpoint needs the internal brand key.
   const brandKey = brands.find((b) => b.name === product.brand)?.key
   const isExtracting = extractingIds.has(product.id)
-  const handleExtract = () => brandKey && extractImage(brandKey, product.id)
+  const hasRefs = product.extractedReferences.length > 0
+  // AA-1: "다시 추출" is a deliberate re-run (force:true, always re-pays for
+  // the real pipeline); the first-extraction button leaves force false, so
+  // an accidental re-click of a stale first-time button state is free —
+  // the backend just returns whatever's already stored.
+  const handleExtract = () => brandKey && extractImage(brandKey, product.id, { force: hasRefs })
 
   return (
     <Modal onClose={closeModal}>

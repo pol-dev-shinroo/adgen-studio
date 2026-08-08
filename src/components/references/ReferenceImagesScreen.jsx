@@ -148,7 +148,7 @@ export default function ReferenceImagesScreen() {
                         <button
                           className={hasRefs ? 'btn ghost sm' : 'btn pri sm'}
                           disabled={isExtracting}
-                          onClick={() => extractImage(b.key, p.productId)}
+                          onClick={() => extractImage(b.key, p.productId, { force: hasRefs })}
                         >
                           {isExtracting ? '추출 중...' : hasRefs ? '다시 추출' : '참조 이미지 추출'}
                         </button>

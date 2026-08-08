@@ -84,17 +84,36 @@ export interface ProductExtractedReferencesFields {
 export const EXTRACTED_REFERENCES_COLUMNS: (keyof ProductExtractedReferencesFields)[] =
   ['Extracted References JSON']
 
+// AA-4: a sha256 hash of the exact fields that feed analyzeProduct.service.js's
+// prompt (product name, price, and the three description fields) — lets
+// productSync.service.js's runJob skip the real analyze/embed/Pinecone-upsert
+// calls entirely when a product's underlying data hasn't actually changed
+// since its last sync. Written only by productSync.service.js's own
+// dedicated per-product write (via updateProductField, same as
+// EXTRACTION_COLUMNS's own out-of-band write path below) — a resync's main
+// upsertProductRows call never touches it, same append-only reasoning as
+// every column addition on this list: appended at the very end so existing
+// rows/data never need reordering or a migration.
+export interface ProductContentHashFields {
+  'Content Hash': string
+}
+
+export const CONTENT_HASH_COLUMNS: (keyof ProductContentHashFields)[] = ['Content Hash']
+
 // The full sheet row shape — mapProduct() only ever produces
 // ProductSyncFields (see its return type below); the extraction/override/
-// extracted-references columns only ever get filled in by their own
-// separate write paths, never by a resync. toRow() accepts a
+// extracted-references/content-hash columns only ever get filled in by
+// their own separate write paths, never by a resync. toRow() accepts a
 // Partial<ProductRow> for exactly that reason — a bare mapProduct() output
 // is a valid (if partial) row.
 export type ProductRow =
-  ProductSyncFields & ProductExtractionFields & ProductOverrideFields & ProductExtractedReferencesFields
+  ProductSyncFields & ProductExtractionFields & ProductOverrideFields
+  & ProductExtractedReferencesFields & ProductContentHashFields
 
-export const PRODUCT_COLUMNS: (keyof ProductRow)[] =
-  [...SYNC_COLUMNS, ...EXTRACTION_COLUMNS, ...OVERRIDE_COLUMNS, ...EXTRACTED_REFERENCES_COLUMNS]
+export const PRODUCT_COLUMNS: (keyof ProductRow)[] = [
+  ...SYNC_COLUMNS, ...EXTRACTION_COLUMNS, ...OVERRIDE_COLUMNS,
+  ...EXTRACTED_REFERENCES_COLUMNS, ...CONTENT_HASH_COLUMNS,
+]
 
 const IMAGE_FIELD_PRIORITY = ['detail_image', 'list_image', 'small_image', 'tiny_image']
 const MAX_IMAGES = 20

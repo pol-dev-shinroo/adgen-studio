@@ -24,8 +24,9 @@ export async function getAds(req, res, next) {
 // resync/batch operation.
 export async function postExtractAdReferenceImage(req, res, next) {
   const { adArchiveId } = req.params
+  const force = req.body?.force === true
   try {
-    const result = await extractAdReferenceImage(adArchiveId)
+    const result = await extractAdReferenceImage(adArchiveId, { force })
     res.json(result)
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })

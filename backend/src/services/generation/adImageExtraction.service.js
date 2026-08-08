@@ -5,7 +5,11 @@ import { downloadImageAsBase64, uploadImage } from './imageIO.service.js'
 import { extractGeneratedImageBase64 } from '../../utils/gptImage.js'
 import { createCachedClient } from '../cachedApiClient.js'
 
-const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new OpenAI({ apiKey }))
+// AA-6: maxRetries retries connection errors + 408/409/429/5xx with the
+// SDK's own built-in exponential backoff (never other 4xx, e.g.
+// content-policy rejections) — simpler than wrapping every real call site
+// by hand, and applies to every call this client makes automatically.
+const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new OpenAI({ apiKey, maxRetries: 2 }))
 
 // Same orchestrator convention as productImageExtraction.service.js — the
 // Responses API's hosted image_generation tool always renders/edits through
@@ -62,6 +66,36 @@ const COPY_EXTRACTION_USER_PROMPT = 'Analyze the provided advertisement image ac
 
 function findAdById(ads, adId) {
   return ads.find((a) => String(a['Ad Archive ID'] ?? '').trim() === String(adId).trim())
+}
+
+// AA-1: safely reads whatever reference/copy data is already stored for an
+// ad, so extractAdReferenceImage can skip the paid pipeline entirely
+// rather than re-running it on every click. Malformed/absent JSON is
+// treated as "nothing stored yet", never thrown — read-only idempotency
+// checks, not validation gates.
+function parseStoredReference(raw) {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed.imageUrl === 'string' && parsed.imageUrl ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function parseStoredCopy(raw) {
+  const empty = { price: null, promotion: null, adHooks: [] }
+  if (!raw) return empty
+  try {
+    const parsed = JSON.parse(raw)
+    return {
+      price: typeof parsed.price === 'string' ? parsed.price : null,
+      promotion: typeof parsed.promotion === 'string' ? parsed.promotion : null,
+      adHooks: Array.isArray(parsed.adHooks) ? parsed.adHooks : [],
+    }
+  } catch {
+    return empty
+  }
 }
 
 // Same fallback chain used elsewhere in this codebase for "the best image
@@ -138,8 +172,26 @@ async function extractAdCopy(base64, mimeType) {
 // call (reference sheet) plus one cheap text-only call (copy candidates),
 // run in parallel since they're independent, invoked on demand, never part
 // of any batch/resync.
-export async function extractAdReferenceImage(adId) {
-  const ads = await getAllAds()
+//
+// AA-1: idempotency guard — if this ad already has a stored reference and
+// the caller hasn't explicitly asked for a fresh run (force: true), return
+// the existing stored result without calling OpenAI at all. getClientFn is
+// injected (defaulting to the real getClient) and passed through to
+// getAllAds/updateAdFields purely so this is unit-testable against a fake
+// Sheets client, same DI convention as elsewhere in this codebase.
+// extractReferenceSheetFn/extractAdCopyFn/downloadImageAsBase64Fn/
+// uploadImageFn are injected the same way, purely so AA-3's
+// partial-failure persistence behavior is unit-testable without any real
+// OpenAI/Drive call.
+export async function extractAdReferenceImage(adId, {
+  force = false,
+  getClientFn,
+  extractReferenceSheetFn = extractReferenceSheet,
+  extractAdCopyFn = extractAdCopy,
+  downloadImageAsBase64Fn = downloadImageAsBase64,
+  uploadImageFn = uploadImage,
+} = {}) {
+  const ads = await getAllAds({ getClientFn })
   const ad = findAdById(ads, adId)
   if (!ad) {
     const err = new Error(`No ad found for Ad Archive ID "${adId}"`)
@@ -147,36 +199,73 @@ export async function extractAdReferenceImage(adId) {
     throw err
   }
 
+  if (!force) {
+    const existingRef = parseStoredReference(ad['Extracted Reference JSON'])
+    if (existingRef) {
+      return { imageUrl: existingRef.imageUrl, extractedAt: existingRef.extractedAt, ...parseStoredCopy(ad['Extracted Copy JSON']) }
+    }
+  }
+
   const sourceImageUrl = firstSourceImageUrl(ad)
   if (!sourceImageUrl) {
     throw new Error(`Ad "${adId}" has no archived or raw image to extract a reference from.`)
   }
 
-  const { base64, mimeType } = await downloadImageAsBase64(sourceImageUrl)
+  const { base64, mimeType } = await downloadImageAsBase64Fn(sourceImageUrl)
 
-  const [resultBase64, copy] = await Promise.all([
-    extractReferenceSheet(base64, mimeType),
-    extractAdCopy(base64, mimeType),
+  // AA-3: Promise.allSettled, not Promise.all — both legs are real,
+  // independently-paid calls (the reference-sheet image_generation call
+  // and the copy-extraction call). Promise.all would throw away whichever
+  // one succeeded the instant the other rejects; each outcome is handled
+  // on its own below so a real, already-paid success is never silently
+  // discarded just because its sibling call failed.
+  const [refOutcome, copyOutcome] = await Promise.allSettled([
+    extractReferenceSheetFn(base64, mimeType),
+    extractAdCopyFn(base64, mimeType),
   ])
 
-  // Grouped by Search Keyword, not Brand — matches how drive.service.js
-  // already organizes every other piece of this ad's media (the ad's
-  // scraped "Brand" is really just the competitor's raw Page name, already
-  // known to be an unreliable grouping axis — see drive.service.js's own
-  // getKeywordFolder). Products use their own internal brandKey instead
-  // because that concept doesn't exist for an arbitrary scraped ad.
-  const subfolder = (ad['Search Keyword'] || '').trim() || 'unknown'
-  const imageUrl = await uploadImage(resultBase64, {
-    rootFolderName: 'AdGen Ad References',
-    subfolder,
-    fileName: `${adId}.png`,
-  })
+  const failures = []
+  const fieldsToSave = {}
+  let imageUrl = null
+  let extractedAt = null
+  let copy = { price: null, promotion: null, adHooks: [] }
 
-  const extractedAt = new Date().toISOString()
-  await updateAdFields(String(adId), {
-    'Extracted Reference JSON': JSON.stringify({ imageUrl, extractedAt }),
-    'Extracted Copy JSON': JSON.stringify(copy),
-  })
+  if (refOutcome.status === 'fulfilled') {
+    // Grouped by Search Keyword, not Brand — matches how drive.service.js
+    // already organizes every other piece of this ad's media (the ad's
+    // scraped "Brand" is really just the competitor's raw Page name,
+    // already known to be an unreliable grouping axis — see
+    // drive.service.js's own getKeywordFolder). Products use their own
+    // internal brandKey instead because that concept doesn't exist for an
+    // arbitrary scraped ad.
+    const subfolder = (ad['Search Keyword'] || '').trim() || 'unknown'
+    imageUrl = await uploadImageFn(refOutcome.value, {
+      rootFolderName: 'AdGen Ad References',
+      subfolder,
+      fileName: `${adId}.png`,
+    })
+    extractedAt = new Date().toISOString()
+    fieldsToSave['Extracted Reference JSON'] = JSON.stringify({ imageUrl, extractedAt })
+  } else {
+    failures.push({ leg: 'referenceSheet', error: refOutcome.reason.message })
+    console.warn(`Reference-sheet extraction failed (ad ${adId}): ${refOutcome.reason.message}`)
+  }
 
-  return { imageUrl, extractedAt, ...copy }
+  if (copyOutcome.status === 'fulfilled') {
+    copy = copyOutcome.value
+    fieldsToSave['Extracted Copy JSON'] = JSON.stringify(copy)
+  } else {
+    failures.push({ leg: 'copy', error: copyOutcome.reason.message })
+    console.warn(`Copy extraction failed (ad ${adId}): ${copyOutcome.reason.message}`)
+  }
+
+  if (Object.keys(fieldsToSave).length === 0) {
+    throw new Error(
+      `Ad reference extraction failed entirely for ad "${adId}": ${failures.map((f) => `${f.leg}: ${f.error}`).join('; ')}`
+    )
+  }
+
+  await updateAdFields(String(adId), fieldsToSave, { getClientFn })
+
+  return { imageUrl, extractedAt, ...copy, failures }
 }

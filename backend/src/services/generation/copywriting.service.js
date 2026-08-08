@@ -2,8 +2,25 @@ import OpenAI from 'openai'
 import { config } from '../../config/index.js'
 import { createCachedClient } from '../cachedApiClient.js'
 
-const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new OpenAI({ apiKey }))
+// AA-6: maxRetries retries connection errors + 408/409/429/5xx with the
+// SDK's own built-in exponential backoff (never other 4xx, e.g.
+// content-policy rejections) — simpler than wrapping every real call site
+// by hand, and applies to every call this client makes automatically.
+const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new OpenAI({ apiKey, maxRetries: 2 }))
 
+// AA-5: tried gpt-4o-mini for real (same real-comparison discipline as
+// counterFacts.service.js's MODEL comment above/DETECTION_MODEL in
+// productImageExtraction.service.js) — same SYSTEM_PROMPT, same real
+// extractedTexts + counterFacts input (MEDIUM styleIntensity), only the
+// chat model varied. Result: two of the three replacements came out
+// identical between the two models, but on the third gpt-4o-mini produced
+// a noticeably longer new_text than gpt-5.5 for the same original_text —
+// a real, visible miss on the Length Matching constraint this prompt
+// treats as CRITICAL, where gpt-5.5 stayed close. This is the final,
+// consumer-facing ad copy (no downstream step re-checks or corrects it),
+// so a real adherence gap here carries more weight than the same gap
+// would earlier in the pipeline. Keeping gpt-5.5, per this task's own
+// explicit allowance for that outcome.
 const MODEL = 'gpt-5.5'
 
 // Lead Copywriter system prompt carried over verbatim from the n8n workflow

@@ -5,7 +5,11 @@ import { downloadImageAsBase64, uploadImage } from './imageIO.service.js'
 import { extractGeneratedImageBase64 } from '../../utils/gptImage.js'
 import { createCachedClient } from '../cachedApiClient.js'
 
-const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new OpenAI({ apiKey }))
+// AA-6: maxRetries retries connection errors + 408/409/429/5xx with the
+// SDK's own built-in exponential backoff (never other 4xx, e.g.
+// content-policy rejections) — simpler than wrapping every real call site
+// by hand, and applies to every call this client makes automatically.
+const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new OpenAI({ apiKey, maxRetries: 2 }))
 
 // The Responses API's hosted image_generation tool always renders/edits
 // through OpenAI's current flagship image model (gpt-image-2 at time of
@@ -139,6 +143,21 @@ function findBrand(brandKey) {
   return config.brands.find((b) => b.key === brandKey)
 }
 
+// AA-1: safely reads whatever references are already stored for a product,
+// so extractProductImage can decide to skip the paid pipeline entirely
+// rather than re-running it on every click. Malformed/absent JSON is
+// treated as "nothing stored yet", never thrown — this is a read-only
+// idempotency check, not a validation gate.
+function parseStoredReferences(raw) {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 // Part T: detection labels the human model 'human_model' internally (a
 // clearer prompt label than the pre-existing terse 'model'), but every
 // already-extracted product's real sheet data, plus frontend badge/style
@@ -208,7 +227,28 @@ async function isolateEntity(imageBase64, mimeType, prompt) {
 // single-product, no-model, no-extra-element photo still costs exactly 2
 // calls (1 detection + 1 isolation), same as before Part M. Invoked on
 // demand from 상품관리, not a background job.
-export async function extractProductImage(brandKey, productId) {
+//
+// AA-1: idempotency guard — if this product already has stored references
+// and the caller hasn't explicitly asked for a fresh run (force: true),
+// return the existing result without calling OpenAI at all. Protects
+// against an accidental re-click/double-submit re-paying for a run that
+// already happened; a deliberate re-extraction (the frontend's own re-
+// extract button) still passes force: true and always re-runs the real
+// pipeline. getClientFn is injected (defaulting to the real getClient) and
+// passed through to getAllProducts/updateProductField purely so this
+// idempotency check is unit-testable against a fake Sheets client, same DI
+// convention as elsewhere in this codebase. detectEntitiesFn/
+// isolateEntityFn/downloadImageAsBase64Fn/uploadImageFn are injected the
+// same way, purely so AA-2's partial-failure persistence behavior is
+// unit-testable without any real OpenAI/Drive call.
+export async function extractProductImage(brandKey, productId, {
+  force = false,
+  getClientFn,
+  detectEntitiesFn = detectEntities,
+  isolateEntityFn = isolateEntity,
+  downloadImageAsBase64Fn = downloadImageAsBase64,
+  uploadImageFn = uploadImage,
+} = {}) {
   const brand = findBrand(brandKey)
   if (!brand) {
     const err = new Error(`Unknown brand "${brandKey}"`)
@@ -216,7 +256,7 @@ export async function extractProductImage(brandKey, productId) {
     throw err
   }
 
-  const products = await getAllProducts()
+  const products = await getAllProducts({ getClientFn })
   const product = products.find((p) => p['Brand'] === brand.name && p['Product ID'] === String(productId))
   if (!product) {
     const err = new Error(`No product "${productId}" found for brand "${brandKey}"`)
@@ -224,37 +264,64 @@ export async function extractProductImage(brandKey, productId) {
     throw err
   }
 
+  if (!force) {
+    const existing = parseStoredReferences(product['Extracted References JSON'])
+    if (existing.length > 0) {
+      return { references: existing }
+    }
+  }
+
   const rawImageUrl = (product['Image URL'] || '').split('\n')[0].trim()
   if (!rawImageUrl) {
     throw new Error(`Product "${productId}" has no raw image to extract a reference from.`)
   }
 
-  const { base64, mimeType } = await downloadImageAsBase64(rawImageUrl)
+  const { base64, mimeType } = await downloadImageAsBase64Fn(rawImageUrl)
 
-  const detection = await detectEntities(base64, mimeType)
+  const detection = await detectEntitiesFn(base64, mimeType)
   const extractedAt = new Date().toISOString()
   const references = []
+  const failures = []
 
   const totalEntities = detection.entities.length
 
+  // AA-2: each entity's isolateEntity() call is a real, separately-paid
+  // image_generation charge. Isolating the try/catch per-entity (rather
+  // than letting one failure abort the whole loop) means entity 5 of 8
+  // throwing doesn't discard entities 1-4's already-paid, already-uploaded
+  // results — a retry would otherwise re-pay for them from scratch. The
+  // sheet write happens once, after the loop, with whatever succeeded.
   for (let i = 0; i < detection.entities.length; i += 1) {
     const entity = detection.entities[i]
-    const prompt = buildProductIsolationPrompt(entity, totalEntities)
-    const resultBase64 = await isolateEntity(base64, mimeType, prompt)
-    const link = await uploadImage(resultBase64, {
-      rootFolderName: 'AdGen Product References',
-      subfolder: brandKey,
-      fileName: `${productId}-${sanitizeForFilename(entity.type)}-${i}.png`,
-    })
-    const reference = { type: storedTypeFor(entity), label: entity.label, imageUrl: link, extractedAt }
-    // Part V: additive — a phrase entity still carries its exact
-    // transcription alongside its new imageUrl, since Step 3's 후킹 카피
-    // chips reuse the plain text independently of the image.
-    if (entity.text) reference.text = entity.text
-    references.push(reference)
+    try {
+      const prompt = buildProductIsolationPrompt(entity, totalEntities)
+      const resultBase64 = await isolateEntityFn(base64, mimeType, prompt)
+      const link = await uploadImageFn(resultBase64, {
+        rootFolderName: 'AdGen Product References',
+        subfolder: brandKey,
+        fileName: `${productId}-${sanitizeForFilename(entity.type)}-${i}.png`,
+      })
+      const reference = { type: storedTypeFor(entity), label: entity.label, imageUrl: link, extractedAt }
+      // Part V: additive — a phrase entity still carries its exact
+      // transcription alongside its new imageUrl, since Step 3's 후킹 카피
+      // chips reuse the plain text independently of the image.
+      if (entity.text) reference.text = entity.text
+      references.push(reference)
+    } catch (err) {
+      failures.push({ type: entity.type, label: entity.label, error: err.message })
+      console.warn(
+        `Entity isolation failed (product ${productId}, entity ${i + 1}/${totalEntities} "${entity.label}" [${entity.type}]): ${err.message}`
+      )
+    }
   }
 
-  await updateProductField(String(productId), 'Extracted References JSON', JSON.stringify(references))
+  await updateProductField(String(productId), 'Extracted References JSON', JSON.stringify(references), { getClientFn })
 
-  return { references }
+  if (failures.length > 0) {
+    console.warn(
+      `extractProductImage finished with partial failures for product ${productId}: ${references.length} succeeded, ${failures.length} failed.`
+    )
+  }
+
+  return { references, failures }
 }

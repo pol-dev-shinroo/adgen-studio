@@ -110,9 +110,16 @@ export function updateAdField(adArchiveId, field, value) {
 // reference-sheet call, Part O's cheap text-only copy-extraction call, plus
 // an optional cheap detection call some future revision might add) — only
 // ever fired from an explicit user click, never automatically. Resolves to
-// { imageUrl, extractedAt, price, promotion, adHooks }.
-export function extractAdReferenceImage(adArchiveId) {
-  return request(`/api/ads/${encodeURIComponent(adArchiveId)}/extract-reference`, { method: 'POST' })
+// { imageUrl, extractedAt, price, promotion, adHooks }. AA-1: force:true
+// skips the backend's idempotency check and always re-runs the real
+// pipeline even if a result is already stored; omit/false lets the backend
+// return the existing stored result for free when there is one.
+export function extractAdReferenceImage(adArchiveId, { force = false } = {}) {
+  return request(`/api/ads/${encodeURIComponent(adArchiveId)}/extract-reference`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force }),
+  })
 }
 
 // items: [{ adArchiveId, action: 'delete'|'revert', previousValues? }]
@@ -157,10 +164,16 @@ export function resetPineconeNamespace(brand) {
 }
 
 // Costs a real gpt-image-2 call server-side — only ever fired from an
-// explicit user click (extract/재추출 button), never automatically.
-export function extractProductImage(brand, productId) {
+// explicit user click (extract/다시 추출 button), never automatically.
+// AA-1: force:true skips the backend's idempotency check and always
+// re-runs the real pipeline even if references are already stored;
+// omit/false lets the backend return the existing stored result for free
+// when there is one.
+export function extractProductImage(brand, productId, { force = false } = {}) {
   return request(`/api/products/${encodeURIComponent(brand)}/${encodeURIComponent(productId)}/extract-image`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force }),
   })
 }
 

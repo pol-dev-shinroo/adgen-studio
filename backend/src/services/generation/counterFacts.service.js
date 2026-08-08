@@ -4,8 +4,26 @@ import { embedText } from './embeddings.service.js'
 import { queryFewShot } from './pinecone.service.js'
 import { createCachedClient } from '../cachedApiClient.js'
 
-const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new OpenAI({ apiKey }))
+// AA-6: maxRetries retries connection errors + 408/409/429/5xx with the
+// SDK's own built-in exponential backoff (never other 4xx, e.g.
+// content-policy rejections) — simpler than wrapping every real call site
+// by hand, and applies to every call this client makes automatically.
+const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new OpenAI({ apiKey, maxRetries: 2 }))
 
+// AA-5: tried gpt-4o-mini for real (same real-comparison discipline as
+// productImageExtraction.service.js's DETECTION_MODEL below) — same
+// SYSTEM_PROMPT, same real retrieved Pinecone facts (4 matches), same
+// competitor-text input, only the chat model varied. Result: given the
+// exact same 4 retrieved facts, gpt-5.5 synthesized all 5 relevant
+// categories (가격/할인, 핵심 USP, 권위/신뢰, 효과효능, 광고 후킹 카피)
+// while gpt-4o-mini only produced 2 (가격/할인, 핵심 USP), silently
+// dropping the other 3 despite having the same source data available — a
+// real, material completeness regression in this step's actual output,
+// not just a formatting/JSON-validity difference. Downstream copywriting
+// only has as much brand material to work with as this step hands it, so
+// a real regression here is a real regression against the whole pipeline.
+// Keeping gpt-5.5, per this task's own explicit allowance for that
+// outcome — not chasing savings at the cost of a real quality regression.
 const MODEL = 'gpt-5.5'
 const TOP_K = 5
 

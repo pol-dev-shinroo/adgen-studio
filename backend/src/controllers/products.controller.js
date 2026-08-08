@@ -119,8 +119,9 @@ export async function postExtractProductImage(req, res, next) {
   }
 
   const { brand, productId } = req.params
+  const force = req.body?.force === true
   try {
-    const result = await extractProductImage(brand, productId)
+    const result = await extractProductImage(brand, productId, { force })
     res.json(result)
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })

@@ -34,3 +34,25 @@ export function googleIsRetryable(err) {
   }
   return err.retryable === true
 }
+
+// AA-6: @pinecone-database/pinecone (v3) has no client-side maxRetries
+// option (checked the installed package — only test-helpers mention that
+// name) and its error classes don't preserve the HTTP status as a
+// property, only bake it into .name/.message (checked
+// dist/errors/http.js's mapHttpStatusError + handling.js) — so this
+// parses what's actually available instead of guessing. Retryable:
+// PineconeConnectionError (network-level failure before any response),
+// PineconeInternalServerError (500), and PineconeUnmappedHttpError only
+// when its message reports 429/502/503/504 (the SDK doesn't define named
+// classes for these, so unmapped is where they land). Never retryable:
+// PineconeBadRequestError (400/403 — malformed request/plan limits),
+// PineconeAuthorizationError (401), PineconeNotFoundError (404),
+// PineconeConflictError (409), PineconeNotImplementedError (501) — none
+// of those are transient.
+export function pineconeIsRetryable(err) {
+  if (err?.name === 'PineconeConnectionError' || err?.name === 'PineconeInternalServerError') return true
+  if (err?.name === 'PineconeUnmappedHttpError') {
+    return /Status: (429|502|503|504)\b/.test(err.message || '')
+  }
+  return false
+}

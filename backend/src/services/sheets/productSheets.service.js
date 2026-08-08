@@ -7,7 +7,7 @@ import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.
 // what's still just "one client's data", and this app already has a
 // tab-name-vs-spreadsheet-ID split (SHEET_TAB_NAME) for the ad tab.
 const PRODUCT_TAB_NAME = '제품'
-const LAST_COLUMN = 'R' // 18 columns (12 sync + 2 extraction + 3 override + 1 extracted-references), A..R
+const LAST_COLUMN = 'S' // 19 columns (12 sync + 2 extraction + 3 override + 1 extracted-references + 1 content-hash [AA-4]), A..S
 const SYNC_LAST_COLUMN = columnLetter(SYNC_COLUMNS.length - 1) // 'L' — resync writes never touch the extraction/override columns past this
 
 const tabRange = makeTabRange(PRODUCT_TAB_NAME)

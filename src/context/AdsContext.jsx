@@ -191,20 +191,32 @@ export function AdsProvider({ children }) {
   // merges the raw (unconverted) response into the row's raw sheet shape
   // and re-runs adaptAd on it, so the Drive-webViewLink-to-thumbnail-URL
   // conversion adaptAd.js applies isn't duplicated here.
-  const extractAdReference = useCallback(async (adId) => {
+  const extractAdReference = useCallback(async (adId, { force = false } = {}) => {
     setExtractingIds((prev) => new Set(prev).add(adId))
     try {
-      const result = await extractAdReferenceApi(adId)
-      setAds((prev) => prev.map((a) => (
-        a.id !== adId ? a : adaptAd({
-          ...a.raw,
-          'Extracted Reference JSON': JSON.stringify({ imageUrl: result.imageUrl, extractedAt: result.extractedAt }),
-          'Extracted Copy JSON': JSON.stringify({
+      const result = await extractAdReferenceApi(adId, { force })
+      // AA-3: either leg (reference-sheet image or copy candidates) can
+      // fail independently now — only merge in whichever the backend
+      // actually saved, rather than overwriting a previously-good field
+      // with nulls just because its sibling call failed this run.
+      setAds((prev) => prev.map((a) => {
+        if (a.id !== adId) return a
+        const patch = {}
+        if (result.imageUrl) {
+          patch['Extracted Reference JSON'] = JSON.stringify({ imageUrl: result.imageUrl, extractedAt: result.extractedAt })
+        }
+        if (result.price !== null || result.promotion !== null || result.adHooks?.length > 0) {
+          patch['Extracted Copy JSON'] = JSON.stringify({
             price: result.price, promotion: result.promotion, adHooks: result.adHooks,
-          }),
-        })
-      )))
-      showToast('참조 이미지 및 카피 추출이 완료됐습니다')
+          })
+        }
+        return adaptAd({ ...a.raw, ...patch })
+      }))
+      if (result.failures?.length > 0) {
+        showToast(`참조 이미지/카피 추출 완료 — 일부 실패 (${result.failures.length}건)`)
+      } else {
+        showToast('참조 이미지 및 카피 추출이 완료됐습니다')
+      }
     } catch (err) {
       console.error('Ad reference extraction failed:', err)
       showToast(`추출 실패: ${err.message}`)

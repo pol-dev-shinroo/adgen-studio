@@ -231,9 +231,12 @@ export async function updateAdField(adArchiveId, columnName, value) {
 // extraction action without scanning column A twice. Mirrors
 // productSheets.service.js's updateProductFields exactly. fieldsObj:
 // { [columnName]: value }; columns aren't assumed contiguous.
-export async function updateAdFields(adArchiveId, fieldsObj) {
+// AA-3: getClientFn is injected (defaulting to the real getClient) purely
+// so extractAdReferenceImage's partial-failure persistence is unit-testable
+// against a fake Sheets client — same DI convention as elsewhere.
+export async function updateAdFields(adArchiveId, fieldsObj, { getClientFn = getClient } = {}) {
   await ensureAdSheetHeader()
-  const sheets = getClient()
+  const sheets = getClientFn()
 
   const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
@@ -348,9 +351,12 @@ export async function deleteAdRows(adArchiveIds) {
 
 // Reads every archived ad row and converts each to an object keyed by
 // AD_COLUMNS (same shape mapAd() produces), for the frontend feed.
-export async function getAllAds() {
+// AA-1: getClientFn is injected (defaulting to the real getClient) purely
+// so extractAdReferenceImage's idempotency-skip check can be unit-tested
+// against a fake Sheets client — same DI convention as upsertAdRows.
+export async function getAllAds({ getClientFn = getClient } = {}) {
   await ensureAdSheetHeader()
-  const sheets = getClient()
+  const sheets = getClientFn()
   const res = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
     range: tabRange(`A:${LAST_COLUMN}`),
