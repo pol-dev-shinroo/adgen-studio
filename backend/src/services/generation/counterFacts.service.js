@@ -79,10 +79,15 @@ Output ONLY a valid JSON object matching the exact structure below:
 // namespace just means retrievedFacts is [], and the system prompt's own
 // "do not invent" constraint makes the model return an empty counter_facts
 // array rather than hallucinating, so no special-casing is needed.
-export async function findCounterFacts(brandKey, extractedTexts) {
+// CC-4: getClientFn/embedTextFn/queryFewShotFn are injected (defaulting to
+// the real implementations) purely so this is unit-testable without a real
+// OpenAI/Pinecone call — same DI convention used elsewhere in this codebase.
+export async function findCounterFacts(brandKey, extractedTexts, {
+  getClientFn = getClient, embedTextFn = embedText, queryFewShotFn = queryFewShot,
+} = {}) {
   const lookupText = extractedTexts.map((t) => t.text).filter(Boolean).join('\n')
-  const embedding = await embedText(lookupText || '(no competitor text found)')
-  const matches = await queryFewShot(brandKey, embedding, TOP_K)
+  const embedding = await embedTextFn(lookupText || '(no competitor text found)')
+  const matches = await queryFewShotFn(brandKey, embedding, TOP_K)
 
   const retrievedFacts = matches
     .map((m) => {
@@ -102,7 +107,7 @@ ${JSON.stringify(retrievedFacts)}
 
 Summarize the relevant counter-data and output ONLY a valid JSON object according to the system constraints.`
 
-  const response = await getClient().responses.create({
+  const response = await getClientFn().responses.create({
     model: MODEL,
     text: { format: { type: 'json_object' } },
     input: [

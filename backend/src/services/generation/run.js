@@ -30,11 +30,21 @@ const RECENT_ITEMS_LIMIT = 20
 // every selected product reuses it rather than re-paying for those three
 // calls per product. Only the render step itself (and the one-time-per-
 // product reference-image download) repeats per product.
-export async function startGeneration(input) {
+//
+// CC-1: deps lets a test inject fakes for every real external call
+// (prepareInputs's own Sheets reads, image download/upload, vision/
+// research/copywriting/render, the generated-row write) — same convention
+// as prepareInputs.js's own getAllProductsFn/getAllAdsFn and
+// productSync.service.js's startSync(brandKey, deps). Threaded through the
+// jobStore.startJob closure to runJob for the same reason
+// productSync.service.js's does: runJob is reached indirectly via a
+// fire-and-forget callback, not awaited directly here.
+export async function startGeneration(input, deps = {}) {
   const {
     refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl,
   } = input
-  const { brandDef, products, refAds } = await prepareInputs({ refAdIds, brand })
+  const { prepareInputsFn = prepareInputs } = deps
+  const { brandDef, products, refAds } = await prepareInputsFn({ refAdIds, brand }, deps)
 
   const totalRenders = computeTotalRenders(products, refAds, formats, quantity)
 
@@ -63,7 +73,8 @@ export async function startGeneration(input) {
     },
     (job) => runJob(
       job,
-      { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl }
+      { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl },
+      deps
     ),
     (job, err) => {
       job.status = 'failed'
@@ -79,7 +90,16 @@ export function getJob(jobId) {
 
 async function runJob(
   job,
-  { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl }
+  { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl },
+  {
+    downloadImageAsBase64Fn = downloadImageAsBase64,
+    analyzeReferenceAdFn = analyzeReferenceAd,
+    findCounterFactsFn = findCounterFacts,
+    writeReplacementCopyFn = writeReplacementCopy,
+    renderFinalImageFn = renderFinalImage,
+    uploadGeneratedImageFn = uploadGeneratedImage,
+    appendGeneratedRowFn = appendGeneratedRow,
+  } = {}
 ) {
   const progress = job.progress
   const summary = job.summary
@@ -100,7 +120,7 @@ async function runJob(
   let styleReferenceImageBase64 = null
   if (referenceSheetImageUrl) {
     try {
-      styleReferenceImageBase64 = (await downloadImageAsBase64(referenceSheetImageUrl)).base64
+      styleReferenceImageBase64 = (await downloadImageAsBase64Fn(referenceSheetImageUrl)).base64
     } catch (err) {
       console.warn(`Style-reference sheet download failed, proceeding without it: ${err.message}`)
     }
@@ -122,20 +142,20 @@ async function runJob(
 
     try {
       progress.phase = 'analyzing'
-      const { base64: referenceImageBase64 } = await downloadImageAsBase64(imageLink)
-      const analysis = await analyzeReferenceAd(referenceImageBase64)
+      const { base64: referenceImageBase64 } = await downloadImageAsBase64Fn(imageLink)
+      const analysis = await analyzeReferenceAdFn(referenceImageBase64)
 
       progress.phase = 'researching'
       // Real, user-picked copy from Step 3's ad-selection panel skips the
       // Pinecone/embedding lookup entirely when present — not just a
       // different source of facts, a cheaper path too.
-      const counter_facts = overrideFacts ?? (await findCounterFacts(brandDef.key, analysis.identified_texts)).counter_facts
+      const counter_facts = overrideFacts ?? (await findCounterFactsFn(brandDef.key, analysis.identified_texts)).counter_facts
 
       progress.phase = 'writing'
       // Part U-2: same shared styleIntensity slider renderFinalImage
       // already receives below — same "competitor original vs our own
       // material" axis, applied to copy instead of image.
-      const { replacements } = await writeReplacementCopy(analysis.identified_texts, counter_facts, styleIntensity)
+      const { replacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, styleIntensity)
 
       perAdContext.push({
         adId, imageLink, referenceImageBase64, productInstances: analysis.product_instances, replacements,
@@ -153,7 +173,7 @@ async function runJob(
     // quantity) render for that product — not once per render.
     let productImageBase64
     try {
-      const downloaded = await downloadImageAsBase64(productEntry.extractedImageUrl)
+      const downloaded = await downloadImageAsBase64Fn(productEntry.extractedImageUrl)
       productImageBase64 = downloaded.base64
     } catch (err) {
       summary.failed += perAdContext.length * formats.length * quantity
@@ -172,7 +192,7 @@ async function runJob(
           progress.phase = `rendering (${renderIndex}/${progress.totalRenders})`
 
           try {
-            const resultBase64 = await renderFinalImage({
+            const resultBase64 = await renderFinalImageFn({
               referenceImageBase64: ctx.referenceImageBase64,
               productImageBase64,
               styleReferenceImageBase64,
@@ -185,12 +205,12 @@ async function runJob(
 
             progress.phase = 'saving'
             const generationId = randomUUID()
-            const imageUrl = await uploadGeneratedImage(resultBase64, {
+            const imageUrl = await uploadGeneratedImageFn(resultBase64, {
               brandKey: brandDef.key,
               fileName: `${generationId}.png`,
             })
 
-            await appendGeneratedRow(mapGeneratedAd({
+            await appendGeneratedRowFn(mapGeneratedAd({
               generationId,
               brand: brandDef.name,
               referenceAdId: ctx.adId,

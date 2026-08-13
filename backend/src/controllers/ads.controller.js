@@ -6,9 +6,12 @@ import { extractAdReferenceImage } from '../services/generation/adImageExtractio
 // sheet is scraper-owned and should only change via a new collection run.
 const EDITABLE_FIELDS = new Set(['Search Keyword'])
 
-export async function getAds(req, res, next) {
+// CC-2: deps lets a test inject fakes for every real service call — same
+// convention as run.js's runJob, an optional trailing parameter Express
+// never supplies itself.
+export async function getAds(req, res, next, { getAllAdsFn = getAllAds } = {}) {
   try {
-    const ads = await getAllAds()
+    const ads = await getAllAdsFn()
     res.json(ads)
   } catch (err) {
     next(err)
@@ -22,11 +25,13 @@ export async function getAds(req, res, next) {
 // { imageUrl, extractedAt, price, promotion, adHooks }. Real money per
 // call — only ever triggered by an explicit user action, never by a
 // resync/batch operation.
-export async function postExtractAdReferenceImage(req, res, next) {
+export async function postExtractAdReferenceImage(
+  req, res, next, { extractAdReferenceImageFn = extractAdReferenceImage } = {}
+) {
   const { adArchiveId } = req.params
   const force = req.body?.force === true
   try {
-    const result = await extractAdReferenceImage(adArchiveId, { force })
+    const result = await extractAdReferenceImageFn(adArchiveId, { force })
     res.json(result)
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })
@@ -34,7 +39,7 @@ export async function postExtractAdReferenceImage(req, res, next) {
   }
 }
 
-export async function patchAdField(req, res, next) {
+export async function patchAdField(req, res, next, { updateAdFieldFn = updateAdField } = {}) {
   const { adArchiveId } = req.params
   const { field, value } = req.body ?? {}
 
@@ -46,7 +51,7 @@ export async function patchAdField(req, res, next) {
   }
 
   try {
-    await updateAdField(adArchiveId, field, value.trim())
+    await updateAdFieldFn(adArchiveId, field, value.trim())
     res.json({ ok: true })
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })
@@ -66,7 +71,11 @@ export async function patchAdField(req, res, next) {
 // stay in Drive as harmless orphans even after the sheet row reverts to
 // pointing at the old (still-valid) Archived Image Links. Full media
 // rollback would mean diffing old vs new file lists — out of scope here.
-export async function discardAds(req, res) {
+export async function discardAds(
+  req, res, {
+    deleteAdMediaFn = deleteAdMedia, deleteAdRowsFn = deleteAdRows, revertAdRowFn = revertAdRow,
+  } = {}
+) {
   const { keyword, items } = req.body ?? {}
   if (typeof keyword !== 'string' || !keyword.trim()) {
     return res.status(400).json({ error: '"keyword" must be a non-empty string' })
@@ -91,7 +100,7 @@ export async function discardAds(req, res) {
 
   for (const item of deleteItems) {
     try {
-      driveFilesTrashed += await deleteAdMedia(keyword.trim(), String(item.adArchiveId))
+      driveFilesTrashed += await deleteAdMediaFn(keyword.trim(), String(item.adArchiveId))
     } catch (err) {
       failures.push({ adArchiveId: item.adArchiveId, stage: 'drive', error: err.message })
     }
@@ -100,7 +109,7 @@ export async function discardAds(req, res) {
   let deleted = 0
   if (deleteItems.length > 0) {
     try {
-      const result = await deleteAdRows(deleteItems.map((i) => i.adArchiveId))
+      const result = await deleteAdRowsFn(deleteItems.map((i) => i.adArchiveId))
       deleted = result.deleted
       for (const adArchiveId of result.notFoundIds) {
         failures.push({ adArchiveId, stage: 'sheet', error: 'Row not found' })
@@ -113,7 +122,7 @@ export async function discardAds(req, res) {
   let reverted = 0
   for (const item of revertItems) {
     try {
-      await revertAdRow(item.adArchiveId, item.previousValues)
+      await revertAdRowFn(item.adArchiveId, item.previousValues)
       reverted += 1
     } catch (err) {
       failures.push({ adArchiveId: item.adArchiveId, stage: 'revert', error: err.message })

@@ -22,11 +22,20 @@ const tabRange = makeTabRange(config.sheetTabName)
 // process. A genuinely empty sheet (0 rows, including no header) is left
 // alone here — upsertAdRows already handles that case itself by
 // prepending a full header via appends.unshift([...AD_COLUMNS]).
+// CC-3: getClientFn is injected (defaulting to the real getClient) purely
+// so updateAdField/updateAdFields/getAllAds are unit-testable without this
+// internal helper making a real Sheets call of its own — same DI
+// convention as upsertAdRows. The ensureHeaderPromise cache below is
+// process-wide (by design — "only ever does real work once per process"),
+// so in a test file that exercises multiple fake clients, only the FIRST
+// caller's getClientFn actually runs; that's fine since this function's
+// only effect is a side-effect header-migration write, never anything the
+// caller reads back.
 let ensureHeaderPromise = null
-function ensureAdSheetHeader() {
+function ensureAdSheetHeader({ getClientFn = getClient } = {}) {
   if (!ensureHeaderPromise) {
     ensureHeaderPromise = (async () => {
-      const sheets = getClient()
+      const sheets = getClientFn()
       const headerRes = await callSheets(() => sheets.spreadsheets.values.get({
         spreadsheetId: config.sheetId,
         range: tabRange(`A1:${LAST_COLUMN}1`),
@@ -51,10 +60,10 @@ function ensureAdSheetHeader() {
 // requests, which address sheets by gid, not by name. Fetched once and
 // cached, same pattern as drive.service.js's root folder ID.
 let sheetGidPromise = null
-function getSheetGid() {
+function getSheetGid({ getClientFn = getClient } = {}) {
   if (!sheetGidPromise) {
     sheetGidPromise = (async () => {
-      const sheets = getClient()
+      const sheets = getClientFn()
       const meta = await callSheets(() => sheets.spreadsheets.get({ spreadsheetId: config.sheetId }))
       const tab = meta.data.sheets.find((s) => s.properties.title === config.sheetTabName)
       if (!tab) throw new Error(`Tab "${config.sheetTabName}" not found in spreadsheet.`)
@@ -194,9 +203,9 @@ export async function upsertAdRows(mappedAds, { getClientFn = getClient } = {}) 
 // Updates a single cell for the row matching adArchiveId, found the same
 // way upsertAdRows matches rows (scan column A). Throws with `.notFound =
 // true` if no row has that Ad Archive ID.
-export async function updateAdField(adArchiveId, columnName, value) {
-  await ensureAdSheetHeader()
-  const sheets = getClient()
+export async function updateAdField(adArchiveId, columnName, value, { getClientFn = getClient } = {}) {
+  await ensureAdSheetHeader({ getClientFn })
+  const sheets = getClientFn()
   const columnIndex = AD_COLUMNS.indexOf(columnName)
   if (columnIndex === -1) {
     throw new Error(`Unknown column "${columnName}"`)
@@ -235,7 +244,7 @@ export async function updateAdField(adArchiveId, columnName, value) {
 // so extractAdReferenceImage's partial-failure persistence is unit-testable
 // against a fake Sheets client — same DI convention as elsewhere.
 export async function updateAdFields(adArchiveId, fieldsObj, { getClientFn = getClient } = {}) {
-  await ensureAdSheetHeader()
+  await ensureAdSheetHeader({ getClientFn })
   const sheets = getClientFn()
 
   const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
@@ -274,8 +283,8 @@ export async function updateAdFields(adArchiveId, fieldsObj, { getClientFn = get
 // status entry from upsertAdRows), found the same way updateAdField finds
 // a row. Same mechanism as updateAdField, just the full A:LAST_COLUMN
 // range instead of one cell.
-export async function revertAdRow(adArchiveId, previousValues) {
-  const sheets = getClient()
+export async function revertAdRow(adArchiveId, previousValues, { getClientFn = getClient } = {}) {
+  const sheets = getClientFn()
 
   const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
@@ -303,9 +312,9 @@ export async function revertAdRow(adArchiveId, previousValues) {
 // (scan column A). Row numbers are sorted descending before building the
 // batch so deleting a later row never shifts the index of an earlier one
 // still queued for deletion in the same request.
-export async function deleteAdRows(adArchiveIds) {
-  const sheets = getClient()
-  const gid = await getSheetGid()
+export async function deleteAdRows(adArchiveIds, { getClientFn = getClient } = {}) {
+  const sheets = getClientFn()
+  const gid = await getSheetGid({ getClientFn })
 
   const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
@@ -355,7 +364,7 @@ export async function deleteAdRows(adArchiveIds) {
 // so extractAdReferenceImage's idempotency-skip check can be unit-tested
 // against a fake Sheets client — same DI convention as upsertAdRows.
 export async function getAllAds({ getClientFn = getClient } = {}) {
-  await ensureAdSheetHeader()
+  await ensureAdSheetHeader({ getClientFn })
   const sheets = getClientFn()
   const res = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,

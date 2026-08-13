@@ -21,14 +21,24 @@ function sessionCookieOptions() {
   }
 }
 
-export async function postLogin(req, res, next) {
+// CC-2: deps lets a test inject fakes for every real service call, same
+// convention as the rest of this codebase (e.g. run.js's runJob) — an
+// optional trailing parameter Express never supplies itself (it always
+// calls handlers with exactly (req, res, next)), defaulting to the real
+// service functions.
+export async function postLogin(req, res, next, deps = {}) {
+  const {
+    verifyCredentialsFn = verifyCredentials,
+    touchLastLoginFn = touchLastLogin,
+    signSessionTokenFn = signSessionToken,
+  } = deps
   try {
     const { email, password } = req.body ?? {}
     if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
       return res.status(400).json({ error: '이메일과 비밀번호를 입력해주세요.' })
     }
 
-    const user = await verifyCredentials(email, password)
+    const user = await verifyCredentialsFn(email, password)
     if (!user) {
       // Deliberately the same message whether the email doesn't exist or
       // the password was wrong — distinguishing the two would let an
@@ -36,8 +46,8 @@ export async function postLogin(req, res, next) {
       return res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' })
     }
 
-    await touchLastLogin(user.id)
-    const token = signSessionToken(user)
+    await touchLastLoginFn(user.id)
+    const token = signSessionTokenFn(user)
     res.cookie(SESSION_COOKIE_NAME, token, { ...sessionCookieOptions(), maxAge: SESSION_MAX_AGE_MS })
     res.json({ user })
   } catch (err) {
@@ -61,14 +71,14 @@ export function getMe(req, res) {
 // Admin-only (requireAdmin runs before this in auth.routes.js) — this is
 // 회원가입's actual backend. req.user.id (the creating admin) is threaded
 // through as Created By.
-export async function postCreateUser(req, res, next) {
+export async function postCreateUser(req, res, next, { createUserFn = createUser } = {}) {
   try {
     const { email, password, passwordConfirm } = req.body ?? {}
     if (passwordConfirm !== undefined && password !== passwordConfirm) {
       return res.status(400).json({ error: '비밀번호가 일치하지 않습니다.' })
     }
 
-    const user = await createUser(email, password, req.user.id)
+    const user = await createUserFn(email, password, req.user.id)
     res.status(201).json({ user })
   } catch (err) {
     if (err.badRequest) return res.status(400).json({ error: err.message })
@@ -79,9 +89,9 @@ export async function postCreateUser(req, res, next) {
 
 // Admin-only — the 사용자 관리 list's data source. Never includes password
 // hashes (toSafeUser strips them before this even leaves auth.service.js).
-export async function getUsers(req, res, next) {
+export async function getUsers(req, res, next, { getAllUsersFn = getAllUsers } = {}) {
   try {
-    const users = await getAllUsers()
+    const users = await getAllUsersFn()
     res.json({ users })
   } catch (err) {
     next(err)

@@ -1,7 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { AD_COLUMNS, SYNC_COLUMNS } from '../src/mappers/ad.mapper.js'
-import { upsertAdRows } from '../src/services/sheets/sheets.service.js'
+import { config } from '../src/config/index.js'
+import {
+  upsertAdRows, updateAdField, updateAdFields, revertAdRow, deleteAdRows, getAllAds,
+} from '../src/services/sheets/sheets.service.js'
 
 // Regression coverage for Part N-2: a resync used to write the FULL
 // A..LAST_COLUMN range for an existing row, which — once LAST_COLUMN grew
@@ -150,4 +153,190 @@ test('upsertAdRows still writes brand-new rows at full width, both extraction-ow
     captured.append.values[0].length, AD_COLUMNS.length,
     'a brand-new row has no extraction data to protect, so it can write the full width'
   )
+})
+
+// CC-3: updateAdField/updateAdFields/revertAdRow/deleteAdRows/getAllAds
+// coverage. A genuinely stateful in-memory fake (same convention
+// productSync.service.test.js's makeFakeProductSheets uses) — update/
+// batchUpdate mutate `rows` in place, so a write-then-read sequence within
+// one call (updateAdField's own row lookup, or a test asserting on the
+// post-write state) actually reflects it. Also answers the header-check
+// range (A1:X1, from ensureAdSheetHeader) with a complete header and the
+// top-level spreadsheets.get gid lookup (from deleteAdRows's getSheetGid)
+// with a fixed gid, so neither of those internal helpers ever needs a real
+// call either.
+function makeFakeAdSheetsClient(initialRows, captured = {}) {
+  let rows = initialRows.map((r) => AD_COLUMNS.map((c) => r[c] ?? ''))
+
+  return {
+    get rows() { return rows },
+    spreadsheets: {
+      get: async () => ({ data: { sheets: [{ properties: { title: config.sheetTabName, sheetId: 999 } }] } }),
+      // Row deletion (deleteAdRows) — top-level spreadsheets.batchUpdate,
+      // distinct from spreadsheets.values.batchUpdate below. startIndex is
+      // 0-based against the FULL sheet including the header row, so the
+      // matching data-array index is startIndex - 1.
+      batchUpdate: async ({ requestBody }) => {
+        captured.deleteDimension = requestBody
+        const dataIndexesToDelete = new Set(
+          requestBody.requests.map((r) => r.deleteDimension.range.startIndex - 1)
+        )
+        rows = rows.filter((_, i) => !dataIndexesToDelete.has(i))
+        return { data: {} }
+      },
+      values: {
+        get: async ({ range }) => {
+          if (range.includes('A1:X1')) return { data: { values: [[...AD_COLUMNS]] } }
+          if (range.includes('A:A')) {
+            return { data: { values: [['Ad Archive ID'], ...rows.map((r) => [r[0]])] } }
+          }
+          return { data: { values: [[...AD_COLUMNS], ...rows.map((r) => [...r])] } }
+        },
+        // Single-cell (updateAdField) or full-row (revertAdRow) writes,
+        // both via values.update — distinguished by payload width.
+        update: async ({ range, requestBody }) => {
+          captured.update = [...(captured.update || []), { range, requestBody }]
+          const match = range.match(/([A-Z]+)(\d+):[A-Z]+\d+/)
+          const rowIndex = Number(match[2]) - 2 // -1 for the header row, -1 for 0-based indexing
+          const colIndex = match[1].charCodeAt(0) - 65
+          requestBody.values[0].forEach((v, i) => { rows[rowIndex][colIndex + i] = v })
+          return { data: {} }
+        },
+        // Multi-field writes (updateAdFields) — one {range, values} entry
+        // per field, each still a single cell.
+        batchUpdate: async ({ requestBody }) => {
+          captured.valuesBatchUpdate = [...(captured.valuesBatchUpdate || []), requestBody]
+          for (const { range, values } of requestBody.data) {
+            const match = range.match(/([A-Z]+)(\d+):[A-Z]+\d+/)
+            const rowIndex = Number(match[2]) - 2
+            const colIndex = match[1].charCodeAt(0) - 65
+            rows[rowIndex][colIndex] = values[0][0]
+          }
+          return { data: {} }
+        },
+      },
+    },
+  }
+}
+
+test('updateAdField: real write updates exactly the one target cell', async () => {
+  const captured = {}
+  const fake = makeFakeAdSheetsClient([{ 'Ad Archive ID': AD_ID, 'Search Keyword': '이전이름' }], captured)
+
+  await updateAdField(AD_ID, 'Search Keyword', '새이름', { getClientFn: () => fake })
+
+  assert.equal(fake.rows[0][AD_COLUMNS.indexOf('Search Keyword')], '새이름')
+  assert.equal(captured.update.length, 1)
+})
+
+test('updateAdField: throws with .notFound=true for an unknown Ad Archive ID', async () => {
+  const fake = makeFakeAdSheetsClient([{ 'Ad Archive ID': AD_ID }])
+  await assert.rejects(
+    () => updateAdField('does-not-exist', 'Search Keyword', 'x', { getClientFn: () => fake }),
+    (err) => {
+      assert.equal(err.notFound, true)
+      return true
+    }
+  )
+})
+
+test('updateAdFields: real write updates multiple columns in one batch', async () => {
+  const captured = {}
+  const fake = makeFakeAdSheetsClient([{ 'Ad Archive ID': AD_ID }], captured)
+
+  await updateAdFields(
+    AD_ID,
+    { 'Extracted Reference JSON': REAL_EXTRACTED_REFERENCE, 'Extracted Copy JSON': REAL_EXTRACTED_COPY },
+    { getClientFn: () => fake }
+  )
+
+  assert.equal(fake.rows[0][AD_COLUMNS.indexOf('Extracted Reference JSON')], REAL_EXTRACTED_REFERENCE)
+  assert.equal(fake.rows[0][AD_COLUMNS.indexOf('Extracted Copy JSON')], REAL_EXTRACTED_COPY)
+  assert.equal(captured.valuesBatchUpdate.length, 1)
+  assert.equal(captured.valuesBatchUpdate[0].data.length, 2, 'both fields written in one batchUpdate call')
+})
+
+test('updateAdFields: throws with .notFound=true for an unknown Ad Archive ID', async () => {
+  const fake = makeFakeAdSheetsClient([{ 'Ad Archive ID': AD_ID }])
+  await assert.rejects(
+    () => updateAdFields('does-not-exist', { 'Extracted Reference JSON': 'x' }, { getClientFn: () => fake }),
+    (err) => {
+      assert.equal(err.notFound, true)
+      return true
+    }
+  )
+})
+
+test('revertAdRow: real write restores the full row to previousValues', async () => {
+  const fake = makeFakeAdSheetsClient([buildExistingRow().reduce((obj, v, i) => ({ ...obj, [AD_COLUMNS[i]]: v }), {})])
+  const previousValues = AD_COLUMNS.map((c) => (c === 'Status' ? '이전상태' : buildExistingRow()[AD_COLUMNS.indexOf(c)]))
+
+  await revertAdRow(AD_ID, previousValues, { getClientFn: () => fake })
+
+  assert.equal(fake.rows[0][AD_COLUMNS.indexOf('Status')], '이전상태')
+  // The real extraction columns must round-trip through the revert
+  // unchanged too — previousValues is the FULL row, not a partial one.
+  assert.equal(fake.rows[0][AD_COLUMNS.indexOf('Extracted Reference JSON')], REAL_EXTRACTED_REFERENCE)
+})
+
+test('revertAdRow: throws with .notFound=true for an unknown Ad Archive ID', async () => {
+  const fake = makeFakeAdSheetsClient([{ 'Ad Archive ID': AD_ID }])
+  await assert.rejects(
+    () => revertAdRow('does-not-exist', AD_COLUMNS.map(() => ''), { getClientFn: () => fake }),
+    (err) => {
+      assert.equal(err.notFound, true)
+      return true
+    }
+  )
+})
+
+test('deleteAdRows: real deletion removes exactly the matched rows and reports notFoundIds for the rest', async () => {
+  const fake = makeFakeAdSheetsClient([
+    { 'Ad Archive ID': 'keep-me' },
+    { 'Ad Archive ID': 'delete-me-1' },
+    { 'Ad Archive ID': 'delete-me-2' },
+  ])
+
+  const result = await deleteAdRows(['delete-me-1', 'delete-me-2', 'never-existed'], { getClientFn: () => fake })
+
+  assert.equal(result.deleted, 2)
+  assert.deepEqual(result.notFoundIds, ['never-existed'])
+  assert.equal(fake.rows.length, 1, 'exactly the 2 matched rows are actually gone from the sheet')
+  assert.equal(fake.rows[0][0], 'keep-me')
+})
+
+test('deleteAdRows: deletes both a middle and a later row correctly (descending sort prevents an index-shift bug)', async () => {
+  const fake = makeFakeAdSheetsClient([
+    { 'Ad Archive ID': 'row-1' },
+    { 'Ad Archive ID': 'row-2-delete' },
+    { 'Ad Archive ID': 'row-3' },
+    { 'Ad Archive ID': 'row-4-delete' },
+  ])
+
+  const result = await deleteAdRows(['row-2-delete', 'row-4-delete'], { getClientFn: () => fake })
+
+  assert.equal(result.deleted, 2)
+  assert.deepEqual(fake.rows.map((r) => r[0]), ['row-1', 'row-3'])
+})
+
+test('deleteAdRows: no matches at all returns deleted:0 and every ID as not found', async () => {
+  const fake = makeFakeAdSheetsClient([{ 'Ad Archive ID': 'keep-me' }])
+  const result = await deleteAdRows(['nope-1', 'nope-2'], { getClientFn: () => fake })
+  assert.deepEqual(result, { deleted: 0, notFoundIds: ['nope-1', 'nope-2'] })
+})
+
+test('getAllAds: real read maps every row into an AD_COLUMNS-shaped object', async () => {
+  const fake = makeFakeAdSheetsClient([
+    { 'Ad Archive ID': AD_ID, 'Brand': '테스트브랜드', 'Status': '게재중' },
+  ])
+
+  const ads = await getAllAds({ getClientFn: () => fake })
+
+  assert.equal(ads.length, 1)
+  assert.equal(ads[0]['Ad Archive ID'], AD_ID)
+  assert.equal(ads[0]['Brand'], '테스트브랜드')
+  assert.equal(ads[0]['Status'], '게재중')
+  // Every AD_COLUMNS key is present, blank-defaulted, not just the ones
+  // that happened to have a real value.
+  assert.equal('Search Keyword' in ads[0], true)
 })

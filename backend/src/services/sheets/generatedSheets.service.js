@@ -15,11 +15,14 @@ const tabRange = makeTabRange(GENERATED_TAB_NAME)
 // is kept for the same reason it was worth adding there: a future column
 // addition to GENERATED_AD_COLUMNS should extend the header in place rather
 // than require a manual migration script.
+// CC-4: getClientFn is injected (defaulting to the real getClient) purely so
+// every exported function below is unit-testable against a fake Sheets
+// client, same DI convention as sheets.service.js/productSheets.service.js.
 let ensureTabPromise = null
-function ensureGeneratedTab() {
+function ensureGeneratedTab({ getClientFn = getClient } = {}) {
   if (!ensureTabPromise) {
     ensureTabPromise = (async () => {
-      const sheets = getClient()
+      const sheets = getClientFn()
       const meta = await callSheets(() => sheets.spreadsheets.get({ spreadsheetId: config.sheetId }))
       const exists = meta.data.sheets.some((s) => s.properties.title === GENERATED_TAB_NAME)
 
@@ -60,9 +63,9 @@ function ensureGeneratedTab() {
 // One row per rendered image, appended as each finishes rendering (not
 // batched) — generation.service.js's job loop calls this once per
 // format x quantity combination as results come in.
-export async function appendGeneratedRow(mappedGeneratedAd) {
-  await ensureGeneratedTab()
-  const sheets = getClient()
+export async function appendGeneratedRow(mappedGeneratedAd, { getClientFn = getClient } = {}) {
+  await ensureGeneratedTab({ getClientFn })
+  const sheets = getClientFn()
   await callSheets(() => sheets.spreadsheets.values.append({
     spreadsheetId: config.sheetId,
     range: tabRange(`A:${LAST_COLUMN}`),
@@ -72,9 +75,9 @@ export async function appendGeneratedRow(mappedGeneratedAd) {
   }))
 }
 
-export async function getAllGeneratedResults() {
-  await ensureGeneratedTab()
-  const sheets = getClient()
+export async function getAllGeneratedResults({ getClientFn = getClient } = {}) {
+  await ensureGeneratedTab({ getClientFn })
+  const sheets = getClientFn()
   const res = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
     range: tabRange(`A:${LAST_COLUMN}`),
@@ -88,9 +91,9 @@ export async function getAllGeneratedResults() {
 // Updates just the Status cell for one row, found by Generation ID — same
 // mechanism as sheets.service.js's updateAdField/productSheets.service.js's
 // updateProductField.
-export async function updateGeneratedStatus(generationId, status) {
-  await ensureGeneratedTab()
-  const sheets = getClient()
+export async function updateGeneratedStatus(generationId, status, { getClientFn = getClient } = {}) {
+  await ensureGeneratedTab({ getClientFn })
+  const sheets = getClientFn()
 
   const idColumn = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,

@@ -17,11 +17,14 @@ const tabRange = makeTabRange(TOKEN_TAB_NAME)
 // Lazy-create + header-migration-safe, same pattern as productSheets
 // .service.js's ensureProductTab / generatedSheets.service.js's
 // ensureGeneratedTab.
+// CC-4: getClientFn is injected (defaulting to the real getClient) purely
+// so getTokenEntry/saveTokenEntry are unit-testable against a fake Sheets
+// client — same DI convention as sheets.service.js's ensureAdSheetHeader.
 let ensureTabPromise = null
-function ensureTokenTab() {
+function ensureTokenTab({ getClientFn = getClient } = {}) {
   if (!ensureTabPromise) {
     ensureTabPromise = (async () => {
-      const sheets = getClient()
+      const sheets = getClientFn()
       const meta = await callSheets(() => sheets.spreadsheets.get({ spreadsheetId: config.sheetId }))
       const exists = meta.data.sheets.some((s) => s.properties.title === TOKEN_TAB_NAME)
 
@@ -70,9 +73,9 @@ function rowToEntry(cells) {
 
 // Returns { accessToken, refreshToken, expiresAt, refreshExpiresAt } or
 // null if this brand has never completed the auth flow.
-export async function getTokenEntry(brandKey) {
-  await ensureTokenTab()
-  const sheets = getClient()
+export async function getTokenEntry(brandKey, { getClientFn = getClient } = {}) {
+  await ensureTokenTab({ getClientFn })
+  const sheets = getClientFn()
   const res = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
     range: tabRange(`A:${LAST_COLUMN}`),
@@ -84,9 +87,9 @@ export async function getTokenEntry(brandKey) {
 
 // Upserts by Brand Key: an existing row is overwritten in place, a new
 // brand's first auth appends a row. Only one row per brand key ever exists.
-export async function saveTokenEntry(brandKey, entry) {
-  await ensureTokenTab()
-  const sheets = getClient()
+export async function saveTokenEntry(brandKey, entry, { getClientFn = getClient } = {}) {
+  await ensureTokenTab({ getClientFn })
+  const sheets = getClientFn()
   const res = await callSheets(() => sheets.spreadsheets.values.get({
     spreadsheetId: config.sheetId,
     range: tabRange(`A:${LAST_COLUMN}`),

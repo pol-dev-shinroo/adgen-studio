@@ -4,7 +4,10 @@ const DEFAULT_RESULTS_LIMIT = 200
 const MIN_RESULTS_LIMIT = 10
 const MAX_RESULTS_LIMIT = 200 // hard ceiling — the actor call is synchronous over HTTP and risks timing out above this
 
-export function postCollect(req, res) {
+// CC-2: deps lets a test inject fakes for every real service call — same
+// convention as run.js's runJob, an optional trailing parameter Express
+// never supplies itself.
+export function postCollect(req, res, { startCollectionFn = startCollection } = {}) {
   const { keywords, resultsLimit } = req.body ?? {}
   if (!Array.isArray(keywords)) {
     return res.status(400).json({ error: '"keywords" must be an array of strings' })
@@ -29,12 +32,12 @@ export function postCollect(req, res) {
     limit = n
   }
 
-  const jobId = startCollection(cleaned, limit)
+  const jobId = startCollectionFn(cleaned, limit)
   res.status(202).json({ jobId })
 }
 
-export function getJobStatus(req, res) {
-  const job = getJob(req.params.jobId)
+export function getJobStatus(req, res, { getJobFn = getJob } = {}) {
+  const job = getJobFn(req.params.jobId)
   if (!job) return res.status(404).json({ error: 'Unknown jobId' })
 
   res.json({

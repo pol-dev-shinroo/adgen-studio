@@ -14,7 +14,10 @@ function findBrand(brandKey) {
 // rather than editing Price/Promotion Info/Ad Hook Copy in place.
 const EDITABLE_OVERRIDE_FIELDS = new Set(['Price Override', 'Promotion Info Override', 'Ad Hook Copy Override'])
 
-export function postProductSync(req, res) {
+// CC-2: deps lets a test inject fakes for every real service call — same
+// convention as run.js's runJob, an optional trailing parameter Express
+// never supplies itself.
+export function postProductSync(req, res, { startSyncFn = startSync } = {}) {
   if (!config.productSyncConfigured) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
@@ -26,12 +29,12 @@ export function postProductSync(req, res) {
     })
   }
 
-  const jobId = startSync(brand)
+  const jobId = startSyncFn(brand)
   res.status(202).json({ jobId })
 }
 
-export function getProductSyncStatus(req, res) {
-  const job = getJob(req.params.jobId)
+export function getProductSyncStatus(req, res, { getJobFn = getJob } = {}) {
+  const job = getJobFn(req.params.jobId)
   if (!job) return res.status(404).json({ error: 'Unknown jobId' })
 
   res.json({
@@ -47,10 +50,10 @@ export function getProductSyncStatus(req, res) {
   })
 }
 
-export async function getProducts(req, res, next) {
+export async function getProducts(req, res, next, { getAllProductsFn = getAllProducts } = {}) {
   try {
     const { brand } = req.query
-    let products = await getAllProducts()
+    let products = await getAllProductsFn()
 
     if (brand !== undefined) {
       const brandDef = findBrand(String(brand))
@@ -72,13 +75,18 @@ export async function getProducts(req, res, next) {
 // is configured, since the whole point of this endpoint is describing that
 // state, not gatekeeping behind it (unlike postProductSync, which needs the
 // real integration to actually do anything).
-export async function getProductStatus(req, res, next) {
+export async function getProductStatus(
+  req, res, next,
+  {
+    getAllProductsFn = getAllProducts, isAuthorizedFn = isAuthorized, getNamespaceStatsFn = getNamespaceStats,
+  } = {}
+) {
   try {
     if (!config.productSyncConfigured) {
       return res.json({ brands: [], productSyncConfigured: false })
     }
 
-    const products = await getAllProducts()
+    const products = await getAllProductsFn()
 
     const brands = await Promise.all(config.brands.map(async (b) => {
       const brandProducts = products.filter((p) => p['Brand'] === b.name)
@@ -87,8 +95,8 @@ export async function getProductStatus(req, res, next) {
         return v && (!max || v > max) ? v : max
       }, null)
       const [authorized, pinecone] = await Promise.all([
-        isAuthorized(b.key),
-        getNamespaceStats(b.key),
+        isAuthorizedFn(b.key),
+        getNamespaceStatsFn(b.key),
       ])
 
       return {
@@ -113,7 +121,9 @@ export async function getProductStatus(req, res, next) {
 // Real money per call, so this is deliberately not something a resync or
 // batch operation ever triggers on its own — only an explicit user action
 // in 상품관리.
-export async function postExtractProductImage(req, res, next) {
+export async function postExtractProductImage(
+  req, res, next, { extractProductImageFn = extractProductImage } = {}
+) {
   if (!config.productSyncConfigured) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
@@ -121,7 +131,7 @@ export async function postExtractProductImage(req, res, next) {
   const { brand, productId } = req.params
   const force = req.body?.force === true
   try {
-    const result = await extractProductImage(brand, productId, { force })
+    const result = await extractProductImageFn(brand, productId, { force })
     res.json(result)
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })
@@ -135,7 +145,7 @@ export async function postExtractProductImage(req, res, next) {
 // the one running the backend) lands on Cafe24CallbackPage.jsx, which POSTs
 // the code straight here. Failures are all effectively "this code didn't
 // work" (expired, already used, wrong brand's secret) — 400, not 500.
-export async function postCafe24Exchange(req, res) {
+export async function postCafe24Exchange(req, res, { exchangeCodeForTokensFn = exchangeCodeForTokens } = {}) {
   if (!config.productSyncConfigured) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
@@ -151,7 +161,7 @@ export async function postCafe24Exchange(req, res) {
   }
 
   try {
-    await exchangeCodeForTokens(brand.key, code.trim(), config.cafe24RedirectUri)
+    await exchangeCodeForTokensFn(brand.key, code.trim(), config.cafe24RedirectUri)
     res.json({ ok: true })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -161,7 +171,10 @@ export async function postCafe24Exchange(req, res) {
 // Saves user-entered overrides for Price/Promotion Info/Ad Hook Copy —
 // never touches the synced columns themselves. Body: only the fields the
 // user actually changed, e.g. {"Price Override": "45000"}.
-export async function patchProductFields(req, res, next) {
+export async function patchProductFields(
+  req, res, next,
+  { getAllProductsFn = getAllProducts, updateProductFieldsFn = updateProductFields } = {}
+) {
   if (!config.productSyncConfigured) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
@@ -189,13 +202,13 @@ export async function patchProductFields(req, res, next) {
   }
 
   try {
-    const products = await getAllProducts()
+    const products = await getAllProductsFn()
     const product = products.find((p) => p['Brand'] === brandDef.name && p['Product ID'] === String(productId))
     if (!product) {
       return res.status(404).json({ error: `No product "${productId}" found for brand "${brand}"` })
     }
 
-    await updateProductFields(productId, fields)
+    await updateProductFieldsFn(productId, fields)
     res.json({ ok: true })
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })
@@ -207,7 +220,7 @@ export async function patchProductFields(req, res, next) {
 // way postProductSync is (503 if unconfigured, 404 for an unknown brand);
 // the actual confirmation friction lives in the frontend's type-the-brand-
 // name prompt, not here.
-export async function deleteNamespace(req, res, next) {
+export async function deleteNamespace(req, res, next, { resetNamespaceFn = resetNamespace } = {}) {
   if (!config.productSyncConfigured) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
@@ -218,7 +231,7 @@ export async function deleteNamespace(req, res, next) {
   }
 
   try {
-    await resetNamespace(brand.key)
+    await resetNamespaceFn(brand.key)
     res.json({ ok: true })
   } catch (err) {
     next(err)

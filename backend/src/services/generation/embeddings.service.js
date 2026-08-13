@@ -10,8 +10,11 @@ const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new 
 
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 
-export async function embedText(text) {
-  const res = await getClient().embeddings.create({
+// CC-4: getClientFn is injected (defaulting to the real getClient) purely so
+// this is unit-testable without a real OpenAI call — same DI convention used
+// elsewhere in this codebase.
+export async function embedText(text, { getClientFn = getClient } = {}) {
+  const res = await getClientFn().embeddings.create({
     model: EMBEDDING_MODEL,
     input: text,
   })

@@ -26,8 +26,8 @@ function escapeQuery(value) {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 }
 
-async function findOrCreateFolder(name, parentId) {
-  const drive = getClient()
+async function findOrCreateFolder(name, parentId, { getClientFn = getClient } = {}) {
+  const drive = getClientFn()
   const parentClause = parentId ? ` and '${escapeQuery(parentId)}' in parents` : ''
   const found = await callDrive(() => drive.files.list({
     q: `name = '${escapeQuery(name)}' and mimeType = '${FOLDER_MIME}' and trashed = false${parentClause}`,
@@ -44,20 +44,20 @@ async function findOrCreateFolder(name, parentId) {
 }
 
 const rootFolderIdByName = new Map() // rootFolderName -> Promise<id>
-function getRootFolderId(rootFolderName) {
+function getRootFolderId(rootFolderName, deps) {
   if (!rootFolderIdByName.has(rootFolderName)) {
-    rootFolderIdByName.set(rootFolderName, findOrCreateFolder(rootFolderName, null))
+    rootFolderIdByName.set(rootFolderName, findOrCreateFolder(rootFolderName, null, deps))
   }
   return rootFolderIdByName.get(rootFolderName)
 }
 
 const subfolderIdByKey = new Map() // `${rootFolderName}/${subfolder}` -> Promise<id>
-function getSubfolderId(rootFolderName, subfolder) {
+function getSubfolderId(rootFolderName, subfolder, deps) {
   const key = `${rootFolderName}/${subfolder}`
   if (!subfolderIdByKey.has(key)) {
     subfolderIdByKey.set(key, (async () => {
-      const rootId = await getRootFolderId(rootFolderName)
-      return findOrCreateFolder(subfolder, rootId)
+      const rootId = await getRootFolderId(rootFolderName, deps)
+      return findOrCreateFolder(subfolder, rootId, deps)
     })())
   }
   return subfolderIdByKey.get(key)
@@ -71,8 +71,8 @@ async function downloadFromUrl(url) {
   return { base64: buffer.toString('base64'), mimeType }
 }
 
-async function downloadFromDrive(fileId) {
-  const drive = getClient()
+async function downloadFromDrive(fileId, { getClientFn = getClient } = {}) {
+  const drive = getClientFn()
   // Two calls (metadata for mimeType, alt:'media' for bytes) rather than
   // one — files.get with alt:'media' doesn't reliably surface content-type
   // through googleapis' response wrapper.
@@ -89,9 +89,12 @@ async function downloadFromDrive(fileId) {
 // lossy, resized rendition) — or a plain public URL (Cafe24 product
 // photos, or this service's own previously-extracted/generated images),
 // fetched directly. Both paths return { base64, mimeType }.
-export async function downloadImageAsBase64(source) {
+// CC-4: getClientFn is injected (defaulting to the real getClient) purely
+// so the Drive-download branch is unit-testable against a fake Drive
+// client, same DI convention as drive.service.js/sheets.service.js.
+export async function downloadImageAsBase64(source, deps = {}) {
   const driveFileId = source.match(DRIVE_FILE_ID_PATTERN)?.[1]
-  return driveFileId ? downloadFromDrive(driveFileId) : downloadFromUrl(source)
+  return driveFileId ? downloadFromDrive(driveFileId, deps) : downloadFromUrl(source)
 }
 
 // Shared low-level upload: writes a base64 PNG to
@@ -103,9 +106,10 @@ export async function downloadImageAsBase64(source) {
 // "AdGen Product References") share this exact mechanics instead of each
 // hand-rolling their own — the two features genuinely need different root
 // folders, but there's no reason the upload code itself should differ.
-export async function uploadImage(base64Png, { rootFolderName, subfolder, fileName }) {
-  const drive = getClient()
-  const folderId = await getSubfolderId(rootFolderName, subfolder)
+export async function uploadImage(base64Png, { rootFolderName, subfolder, fileName }, deps = {}) {
+  const { getClientFn = getClient } = deps
+  const drive = getClientFn()
+  const folderId = await getSubfolderId(rootFolderName, subfolder, deps)
   const buffer = Buffer.from(base64Png, 'base64')
 
   const created = await callDrive(() => drive.files.create({
@@ -125,6 +129,6 @@ export async function uploadImage(base64Png, { rootFolderName, subfolder, fileNa
   return created.data.webViewLink
 }
 
-export async function uploadGeneratedImage(base64Png, { brandKey, fileName }) {
-  return uploadImage(base64Png, { rootFolderName: 'AdGen Generated Ads', subfolder: brandKey, fileName })
+export async function uploadGeneratedImage(base64Png, { brandKey, fileName }, deps = {}) {
+  return uploadImage(base64Png, { rootFolderName: 'AdGen Generated Ads', subfolder: brandKey, fileName }, deps)
 }

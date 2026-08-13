@@ -24,7 +24,7 @@ function requireBrand(brandKey) {
   return brand
 }
 
-async function saveTokens(brandKey, tokenResponse) {
+async function saveTokens(brandKey, tokenResponse, { saveTokenEntryFn = saveTokenEntry } = {}) {
   const entry = {
     accessToken: tokenResponse.access_token,
     refreshToken: tokenResponse.refresh_token,
@@ -33,7 +33,7 @@ async function saveTokens(brandKey, tokenResponse) {
       ? new Date(tokenResponse.refresh_token_expires_at).getTime()
       : null,
   }
-  await saveTokenEntry(brandKey, entry)
+  await saveTokenEntryFn(brandKey, entry)
   return entry
 }
 
@@ -63,9 +63,16 @@ async function requestToken(brand, bodyParams) {
 
 // Returns a valid access token for the brand, refreshing (and persisting
 // the rotated pair) if the cached one is missing or close to expiry.
-export async function getAccessToken(brandKey) {
+// CC-4: getTokenEntryFn/requestTokenFn/saveTokenEntryFn are injected
+// (defaulting to the real implementations) purely so the refresh/expiry
+// DECISION here — the actually risky part if it's ever wrong — is
+// unit-testable without a real Sheets read or a real Cafe24 network call.
+export async function getAccessToken(
+  brandKey,
+  { getTokenEntryFn = getTokenEntry, requestTokenFn = requestToken, saveTokenEntryFn = saveTokenEntry } = {}
+) {
   const brand = requireBrand(brandKey)
-  const entry = await getTokenEntry(brandKey)
+  const entry = await getTokenEntryFn(brandKey)
 
   if (!entry) {
     throw new Error(
@@ -78,11 +85,11 @@ export async function getAccessToken(brandKey) {
     return entry.accessToken
   }
 
-  const refreshed = await requestToken(brand, {
+  const refreshed = await requestTokenFn(brand, {
     grant_type: 'refresh_token',
     refresh_token: entry.refreshToken,
   })
-  const saved = await saveTokens(brandKey, refreshed)
+  const saved = await saveTokens(brandKey, refreshed, { saveTokenEntryFn })
   return saved.accessToken
 }
 
@@ -90,8 +97,8 @@ export async function getAccessToken(brandKey) {
 // auth flow, without triggering a network token refresh (unlike
 // getAccessToken, which is meant to be called right before an actual API
 // request).
-export async function isAuthorized(brandKey) {
-  const entry = await getTokenEntry(brandKey)
+export async function isAuthorized(brandKey, { getTokenEntryFn = getTokenEntry } = {}) {
+  const entry = await getTokenEntryFn(brandKey)
   return Boolean(entry)
 }
 
@@ -109,12 +116,14 @@ export function getAuthorizeUrl(brandKey, redirectUri) {
   return `https://${brand.mallId}.cafe24api.com${AUTHORIZE_ENDPOINT_PATH}?${params.toString()}`
 }
 
-export async function exchangeCodeForTokens(brandKey, code, redirectUri) {
+export async function exchangeCodeForTokens(
+  brandKey, code, redirectUri, { requestTokenFn = requestToken, saveTokenEntryFn = saveTokenEntry } = {}
+) {
   const brand = requireBrand(brandKey)
-  const tokenResponse = await requestToken(brand, {
+  const tokenResponse = await requestTokenFn(brand, {
     grant_type: 'authorization_code',
     code,
     redirect_uri: redirectUri,
   })
-  return saveTokens(brandKey, tokenResponse)
+  return saveTokens(brandKey, tokenResponse, { saveTokenEntryFn })
 }

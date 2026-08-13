@@ -6,7 +6,10 @@ import { sizeForFormat } from '../utils/formatSize.js'
 
 const VALID_STATUSES = new Set(['미승인', '승인'])
 
-export async function postGenerate(req, res, next) {
+// CC-2: deps lets a test inject fakes for every real service call — same
+// convention as run.js's runJob, an optional trailing parameter Express
+// never supplies itself.
+export async function postGenerate(req, res, next, { startGenerationFn = startGeneration } = {}) {
   if (!config.productSyncConfigured) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
@@ -34,7 +37,7 @@ export async function postGenerate(req, res, next) {
   }
 
   try {
-    const jobId = await startGeneration({
+    const jobId = await startGenerationFn({
       refBrand: refBrand ?? '',
       refAdIds,
       brand,
@@ -66,8 +69,8 @@ export async function postGenerate(req, res, next) {
   }
 }
 
-export function getGenerationStatus(req, res) {
-  const job = getJob(req.params.jobId)
+export function getGenerationStatus(req, res, { getJobFn = getJob } = {}) {
+  const job = getJobFn(req.params.jobId)
   if (!job) return res.status(404).json({ error: 'Unknown jobId' })
 
   res.json({
@@ -84,9 +87,9 @@ export function getGenerationStatus(req, res) {
   })
 }
 
-export async function getGeneratedResults(req, res, next) {
+export async function getGeneratedResults(req, res, next, { getAllGeneratedResultsFn = getAllGeneratedResults } = {}) {
   try {
-    const results = await getAllGeneratedResults()
+    const results = await getAllGeneratedResultsFn()
     res.json({ results })
   } catch (err) {
     next(err)
@@ -98,8 +101,8 @@ export async function getGeneratedResults(req, res, next) {
 // rather than writing the 404 response itself, so both callers can each
 // decide their own response shape (JSON error vs. an image request that
 // still wants a JSON 404 body).
-async function findGeneratedResultById(id) {
-  const results = await getAllGeneratedResults()
+async function findGeneratedResultById(id, { getAllGeneratedResultsFn = getAllGeneratedResults } = {}) {
+  const results = await getAllGeneratedResultsFn()
   const result = results.find((r) => String(r['Generation ID'] ?? '').trim() === String(id).trim())
   if (!result) {
     const err = new Error(`No result found for Generation ID "${id}"`)
@@ -122,9 +125,11 @@ async function findGeneratedResultById(id) {
 // can size its Figma frame to match exactly. `replacements` defaults to []
 // for rows written before the 'Replacements JSON' column existed — an
 // older result is still a valid (if copy-panel-less) export, not an error.
-export async function getGeneratedResultFigmaExport(req, res, next) {
+export async function getGeneratedResultFigmaExport(
+  req, res, next, { getAllGeneratedResultsFn = getAllGeneratedResults } = {}
+) {
   try {
-    const result = await findGeneratedResultById(req.params.id)
+    const result = await findGeneratedResultById(req.params.id, { getAllGeneratedResultsFn })
 
     let replacements = []
     try {
@@ -155,10 +160,13 @@ export async function getGeneratedResultFigmaExport(req, res, next) {
 // hit. Downloads the original full-resolution file (not a resized render)
 // since that's what downloadFromDrive fetches — fine for this one-off
 // per-import path, no need to add resizing here.
-export async function getGeneratedResultFigmaExportImage(req, res, next) {
+export async function getGeneratedResultFigmaExportImage(
+  req, res, next,
+  { getAllGeneratedResultsFn = getAllGeneratedResults, downloadImageAsBase64Fn = downloadImageAsBase64 } = {}
+) {
   try {
-    const result = await findGeneratedResultById(req.params.id)
-    const { base64, mimeType } = await downloadImageAsBase64(result['Image URL'])
+    const result = await findGeneratedResultById(req.params.id, { getAllGeneratedResultsFn })
+    const { base64, mimeType } = await downloadImageAsBase64Fn(result['Image URL'])
     res.set('Content-Type', mimeType)
     res.send(Buffer.from(base64, 'base64'))
   } catch (err) {
@@ -167,7 +175,7 @@ export async function getGeneratedResultFigmaExportImage(req, res, next) {
   }
 }
 
-export async function patchGeneratedStatus(req, res, next) {
+export async function patchGeneratedStatus(req, res, next, { updateGeneratedStatusFn = updateGeneratedStatus } = {}) {
   const { id } = req.params
   const { status } = req.body ?? {}
 
@@ -176,7 +184,7 @@ export async function patchGeneratedStatus(req, res, next) {
   }
 
   try {
-    await updateGeneratedStatus(id, status)
+    await updateGeneratedStatusFn(id, status)
     res.json({ ok: true })
   } catch (err) {
     if (err.notFound) return res.status(404).json({ error: err.message })

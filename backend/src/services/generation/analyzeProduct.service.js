@@ -78,12 +78,17 @@ function buildUserPrompt(rawProduct, lookupText, fewShotExamples) {
 // injected so this stays unit-testable without a live Pinecone index; the
 // few-shot lookup is a quality nice-to-have, so any failure (or an empty
 // namespace) is swallowed and analysis proceeds without examples.
-export async function analyzeProduct(brandKey, rawProduct, pineconeService) {
+// CC-4: getClientFn/embedTextFn are injected (defaulting to the real
+// implementations) purely so this is unit-testable without a real OpenAI
+// call — same DI convention used elsewhere in this codebase.
+export async function analyzeProduct(brandKey, rawProduct, pineconeService, {
+  getClientFn = getClient, embedTextFn = embedText,
+} = {}) {
   const lookupText = buildLookupText(rawProduct)
 
   let fewShotExamples = []
   try {
-    const embedding = await embedText(lookupText)
+    const embedding = await embedTextFn(lookupText)
     const matches = await pineconeService.queryFewShot(brandKey, embedding, 2)
     fewShotExamples = matches
       .map((m) => {
@@ -98,7 +103,7 @@ export async function analyzeProduct(brandKey, rawProduct, pineconeService) {
     fewShotExamples = []
   }
 
-  const completion = await getClient().chat.completions.create({
+  const completion = await getClientFn().chat.completions.create({
     model: CHAT_MODEL,
     response_format: { type: 'json_object' },
     temperature: 0.4,

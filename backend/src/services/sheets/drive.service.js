@@ -39,8 +39,8 @@ function escapeQuery(value) {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 }
 
-async function findOrCreateFolder(name, parentId) {
-  const drive = getClient()
+async function findOrCreateFolder(name, parentId, { getClientFn = getClient } = {}) {
+  const drive = getClientFn()
   const parentClause = parentId ? ` and '${escapeQuery(parentId)}' in parents` : ''
   const found = await callDrive(() => drive.files.list({
     q: `name = '${escapeQuery(name)}' and mimeType = '${FOLDER_MIME}' and trashed = false${parentClause}`,
@@ -60,11 +60,11 @@ async function findOrCreateFolder(name, parentId) {
   return created.data.id
 }
 
-function getRootFolderId() {
+function getRootFolderId(deps) {
   if (!rootFolderIdPromise) {
     rootFolderIdPromise = config.driveFolderId
       ? Promise.resolve(config.driveFolderId)
-      : findOrCreateFolder(ROOT_FOLDER_NAME, null)
+      : findOrCreateFolder(ROOT_FOLDER_NAME, null, deps)
   }
   return rootFolderIdPromise
 }
@@ -76,13 +76,14 @@ function getRootFolderId() {
 // Note: grouping by keyword (not by the ad's actual Facebook Page name)
 // means ads from different real advertisers that both matched the same
 // search term land in the same folder — an accepted tradeoff, not a bug.
-function getKeywordFolder(keyword) {
+function getKeywordFolder(keyword, deps) {
   const name = (keyword || '').trim() || '(unknown keyword)'
   if (!keywordFolderPromises.has(name)) {
     keywordFolderPromises.set(name, (async () => {
-      const drive = getClient()
-      const rootId = await getRootFolderId()
-      const id = await findOrCreateFolder(name, rootId)
+      const { getClientFn = getClient } = deps || {}
+      const drive = getClientFn()
+      const rootId = await getRootFolderId(deps)
+      const id = await findOrCreateFolder(name, rootId, deps)
 
       const fileNames = new Set()
       let pageToken
@@ -103,8 +104,8 @@ function getKeywordFolder(keyword) {
   return keywordFolderPromises.get(name)
 }
 
-async function findExistingByBaseName(folderId, baseName) {
-  const drive = getClient()
+async function findExistingByBaseName(folderId, baseName, { getClientFn = getClient } = {}) {
+  const drive = getClientFn()
   const res = await callDrive(() => drive.files.list({
     q: `'${escapeQuery(folderId)}' in parents and name contains '${escapeQuery(baseName)}.' and trashed = false`,
     fields: 'files(id, name, webViewLink)',
@@ -120,14 +121,18 @@ async function findExistingByBaseName(folderId, baseName) {
  * file's webViewLink. If a file with that base name already exists in the
  * keyword folder, the existing link is returned and nothing is downloaded.
  */
-export async function uploadFromUrl(fileUrl, { keyword, adArchiveId, index }) {
-  const drive = getClient()
-  const folder = await getKeywordFolder(keyword)
+// CC-4: getClientFn is injected (defaulting to the real getClient) purely so
+// this is unit-testable against a fake Drive client — same DI convention
+// used elsewhere in this codebase.
+export async function uploadFromUrl(fileUrl, { keyword, adArchiveId, index }, deps = {}) {
+  const { getClientFn = getClient } = deps
+  const drive = getClientFn()
+  const folder = await getKeywordFolder(keyword, deps)
   const baseName = `${adArchiveId}_${index}`
 
   const cached = [...folder.fileNames].find((n) => n.startsWith(`${baseName}.`))
   if (cached) {
-    const link = await findExistingByBaseName(folder.id, baseName)
+    const link = await findExistingByBaseName(folder.id, baseName, deps)
     if (link) return { link, reused: true }
   }
 
@@ -182,9 +187,10 @@ export async function uploadFromUrl(fileUrl, { keyword, adArchiveId, index }) {
 // substring search on the ID prefix followed by an exact-prefix filter
 // (Drive's "contains" is a plain substring match, not anchored) finds all
 // of them regardless of how many images/thumbnail it had.
-export async function deleteAdMedia(keyword, adArchiveId) {
-  const drive = getClient()
-  const folder = await getKeywordFolder(keyword)
+export async function deleteAdMedia(keyword, adArchiveId, deps = {}) {
+  const { getClientFn = getClient } = deps
+  const drive = getClientFn()
+  const folder = await getKeywordFolder(keyword, deps)
   const prefix = `${adArchiveId}_`
 
   const res = await callDrive(() => drive.files.list({

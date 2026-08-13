@@ -58,8 +58,11 @@ const USER_PROMPT = 'Analyze the provided advertisement image according to the s
 // output. Returns { identified_texts: [...], product_instances: [...] } —
 // plural on both, matching how the render step needs to handle multiple
 // text replacements and multiple product instances in one image.
-export async function analyzeReferenceAd(imageBase64) {
-  const response = await getClient().responses.create({
+// CC-4: getClientFn is injected (defaulting to the real getClient) purely so
+// this is unit-testable without a real OpenAI call — same DI convention used
+// elsewhere in this codebase.
+export async function analyzeReferenceAd(imageBase64, { getClientFn = getClient } = {}) {
+  const response = await getClientFn().responses.create({
     model: MODEL,
     text: { format: { type: 'json_object' } },
     input: [

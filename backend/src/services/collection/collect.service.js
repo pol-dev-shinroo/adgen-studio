@@ -10,7 +10,12 @@ const jobStore = createJobStore()
 const MEDIA_CONCURRENCY = 3 // parallel downloads per ad
 const RECENT_ITEMS_LIMIT = 20
 
-export function startCollection(keywords, resultsLimit) {
+// CC-4: runFacebookAdsScraperFn/uploadFromUrlFn/upsertAdRowsFn are injected
+// (defaulting to the real implementations) purely so this job (including
+// its new/updated/unchanged classification, threaded through from
+// upsertAdRows) is unit-testable without a real Apify/Drive/Sheets call —
+// same DI convention as productSync.service.js's startSync(brandKey, deps).
+export function startCollection(keywords, resultsLimit, deps = {}) {
   return jobStore.startJob(
     {
       status: 'running',
@@ -42,7 +47,7 @@ export function startCollection(keywords, resultsLimit) {
         statuses: [],
       },
     },
-    runJob,
+    (job) => runJob(job, deps),
     (job, err) => {
       job.status = 'failed'
       job.error = err.code === 'RATE_LIMITED'
@@ -60,9 +65,9 @@ export function getJob(jobId) {
 
 // Downloads one media URL into Drive; a failure logs and returns null so a
 // single dead CDN link never fails the whole collection job.
-async function archiveOne(url, meta, counters) {
+async function archiveOne(url, meta, counters, { uploadFromUrlFn = uploadFromUrl } = {}) {
   try {
-    const { link, reused } = await uploadFromUrl(url, meta)
+    const { link, reused } = await uploadFromUrlFn(url, meta)
     counters[reused ? 'mediaReused' : 'mediaUploaded'] += 1
     return link
   } catch (err) {
@@ -72,24 +77,28 @@ async function archiveOne(url, meta, counters) {
   }
 }
 
-async function archiveAdMedia(ad, counters) {
+async function archiveAdMedia(ad, counters, deps) {
   const keyword = ad['Search Keyword']
   const adArchiveId = ad['Ad Archive ID']
   if (!adArchiveId) return
 
   const imageUrls = ad['Image Links'] ? ad['Image Links'].split('\n').filter(Boolean) : []
   const imageLinks = await mapWithConcurrency(imageUrls, MEDIA_CONCURRENCY, (url, i) =>
-    archiveOne(url, { keyword, adArchiveId, index: i }, counters)
+    archiveOne(url, { keyword, adArchiveId, index: i }, counters, deps)
   )
   ad['Archived Image Links'] = imageLinks.filter(Boolean).join('\n')
 
   if (ad['Video Thumbnail']) {
-    const link = await archiveOne(ad['Video Thumbnail'], { keyword, adArchiveId, index: 'thumb' }, counters)
+    const link = await archiveOne(ad['Video Thumbnail'], { keyword, adArchiveId, index: 'thumb' }, counters, deps)
     ad['Archived Thumbnail'] = link ?? ''
   }
 }
 
-async function runJob(job) {
+async function runJob(job, {
+  runFacebookAdsScraperFn = runFacebookAdsScraper,
+  uploadFromUrlFn = uploadFromUrl,
+  upsertAdRowsFn = upsertAdRows,
+} = {}) {
   const { resultsLimit } = job
 
   for (let i = 0; i < job.keywords.length; i++) {
@@ -101,7 +110,7 @@ async function runJob(job) {
     progress.adsProcessed = 0
     progress.phase = 'scraping'
 
-    const items = await runFacebookAdsScraper(keyword, { resultsLimit })
+    const items = await runFacebookAdsScraperFn(keyword, { resultsLimit })
     const scrapedAt = new Date().toISOString()
     const mappedAll = items.map((item) => mapAd(item, { keyword, scrapedAt }))
 
@@ -121,7 +130,7 @@ async function runJob(job) {
     progress.phase = 'archiving'
 
     for (const ad of mapped) {
-      await archiveAdMedia(ad, job.summary)
+      await archiveAdMedia(ad, job.summary, { uploadFromUrlFn })
       progress.adsProcessed += 1
       progress.recentItems.unshift({
         adArchiveId: ad['Ad Archive ID'],
@@ -135,7 +144,7 @@ async function runJob(job) {
 
     progress.phase = 'saving'
     const { appended, updated, unchanged, statuses } = mapped.length > 0
-      ? await upsertAdRows(mapped)
+      ? await upsertAdRowsFn(mapped)
       : { appended: 0, updated: 0, unchanged: 0, statuses: [] }
 
     // The recentItems entries were provisionally 'processing' during the

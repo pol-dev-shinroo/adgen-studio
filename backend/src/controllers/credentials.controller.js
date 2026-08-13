@@ -6,11 +6,16 @@ import { getUserById } from '../services/auth/auth.service.js'
 // Resolves each row's "Updated By User ID" to a real email for display —
 // the vault itself only stores the ID, same normalization auth.controller.js
 // already does for Created By elsewhere.
-export async function getCredentials(req, res, next) {
+// CC-2: deps lets a test inject fakes for every real service call — same
+// convention as run.js's runJob, an optional trailing parameter Express
+// never supplies itself.
+export async function getCredentials(
+  req, res, next, { listCredentialStatusFn = listCredentialStatus, getUserByIdFn = getUserById } = {}
+) {
   try {
-    const statuses = await listCredentialStatus()
+    const statuses = await listCredentialStatusFn()
     const updaterIds = [...new Set(statuses.map((s) => s.updatedByUserId).filter(Boolean))]
-    const updaters = await Promise.all(updaterIds.map((id) => getUserById(id)))
+    const updaters = await Promise.all(updaterIds.map((id) => getUserByIdFn(id)))
     const emailById = new Map(updaterIds.map((id, i) => [id, updaters[i]?.email || null]))
 
     res.json({
@@ -29,7 +34,7 @@ export async function getCredentials(req, res, next) {
 
 // Sets one credential's real value. Never echoes the plaintext back — the
 // caller re-fetches GET /api/credentials to see the new masked value.
-export async function putCredential(req, res, next) {
+export async function putCredential(req, res, next, { setCredentialFn = setCredential } = {}) {
   try {
     const { key } = req.params
     if (!MIGRATABLE_CREDENTIAL_KEYS.includes(key)) {
@@ -41,7 +46,7 @@ export async function putCredential(req, res, next) {
       return res.status(400).json({ error: '값을 입력해주세요.' })
     }
 
-    await setCredential(key, value.trim(), req.user.id)
+    await setCredentialFn(key, value.trim(), req.user.id)
     res.status(204).end()
   } catch (err) {
     next(err)
