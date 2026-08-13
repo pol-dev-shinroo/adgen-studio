@@ -6,9 +6,13 @@ import ProductCard from './ProductCard.jsx'
 import ProductDetailModal from './ProductDetailModal.jsx'
 
 export default function ProductBrowser() {
-  const { products, brands, productsLoading } = useProducts()
-  const [query, setQuery] = useState('')
-  const [brandFilter, setBrandFilter] = useState('전체')
+  // BB-5: query/brandFilter lifted into ProductsContext (see its own
+  // comment) so leaving 상품 관리 and coming back doesn't lose the filter.
+  const {
+    products, brands, productsLoading,
+    productSearchQuery: query, setProductSearchQuery: setQuery,
+    productBrandFilter: brandFilter, setProductBrandFilter: setBrandFilter,
+  } = useProducts()
   const [detailProduct, setDetailProduct] = useState(null)
 
   const colorByBrand = useMemo(

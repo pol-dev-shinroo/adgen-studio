@@ -10,12 +10,15 @@ import Spinner from '../common/Spinner.jsx'
 const BRAND_COLORS = { healthykiki: '#5b5bd6', kikibeauty: '#d6a15b' }
 
 export default function BrandConnectionCard({ brandStatus }) {
-  const { sync, activeJob, resetNamespace } = useProducts()
+  const { sync, getSyncJob, resetNamespace } = useProducts()
   const [confirmText, setConfirmText] = useState('')
   const [isResetting, setIsResetting] = useState(false)
   const { key, name, configured, authorized, productCount, lastSyncedAt, pinecone } = brandStatus
 
-  const isSyncing = activeJob?.brandKey === key
+  // BB-3: this brand's own sync job, independent of any other brand's —
+  // starting healthykiki's sync no longer disables kikibeauty's button.
+  const syncJob = getSyncJob(key)
+  const isSyncing = !!syncJob
   const canReset = confirmText.trim() === name
 
   const handleReset = async () => {
@@ -50,7 +53,7 @@ export default function BrandConnectionCard({ brandStatus }) {
             </div>
           </div>
         </div>
-        <button type="button" className="btn pri sm" onClick={() => sync(key)} disabled={!!activeJob}>
+        <button type="button" className="btn pri sm" onClick={() => sync(key)} disabled={isSyncing}>
           {isSyncing && <Spinner size="sm" />} {isSyncing ? '동기화 중...' : '지금 동기화'}
         </button>
       </div>
@@ -60,7 +63,7 @@ export default function BrandConnectionCard({ brandStatus }) {
         <div className="d">Pinecone 벡터 {pinecone.vectorCount ?? '—'}개</div>
       </div>
 
-      {isSyncing && <SyncProgress job={activeJob} />}
+      {isSyncing && <SyncProgress job={syncJob} />}
 
       <details className="advanced">
         <summary>고급</summary>

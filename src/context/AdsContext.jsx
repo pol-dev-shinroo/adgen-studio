@@ -16,6 +16,14 @@ export function AdsProvider({ children }) {
   const [brandFilter, setBrandFilter] = useState('전체')
   const [mediaFilter, setMediaFilterState] = useState('all') // 'all' | 'image' | 'video'
   const [recentOnly, setRecentOnly] = useState(false)
+  // BB-5: lifted from FeedScreen.jsx/SearchBar.jsx's own local useState —
+  // App.jsx unmounts FeedScreen entirely on nav-away, so state that lives
+  // there resets every time (Feed -> Studio -> back to Feed lost the tab
+  // and the in-progress search box), unlike brandFilter/mediaFilter/
+  // recentOnly above, which already lived here and correctly persisted.
+  const [feedTab, setFeedTab] = useState('archive') // 'archive' | 'collected'
+  const [collectQuery, setCollectQuery] = useState('')
+  const [collectLimit, setCollectLimit] = useState(50)
   const [collected, setCollected] = useState([]) // new/updated only — unchanged ads aren't shown as review cards
   const [collectedUnchangedCount, setCollectedUnchangedCount] = useState(0)
   const [lastQuery, setLastQuery] = useState('')
@@ -246,6 +254,7 @@ export function AdsProvider({ children }) {
       ads, brands, brandFilter, setBrandFilter,
       mediaFilter, toggleMediaFilter,
       recentOnly, toggleRecentOnly,
+      feedTab, setFeedTab, collectQuery, setCollectQuery, collectLimit, setCollectLimit,
       collected, collectedUnchangedCount, lastQuery, collect, renameBrand, activeJob, discardAds,
       adsLoading, extractAdReference, extractingIds,
     }}>

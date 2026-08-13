@@ -67,7 +67,26 @@ function groupByBrand(products) {
 export function ProductsProvider({ children }) {
   const { showToast } = useNavigation()
   const [products, setProducts] = useState([])
-  const { activeJob, run } = useJobPolling({ pollIntervalMs: 1200 }) // job: { brandKey, status, progress, summary, ... } | null
+  // BB-3: one useJobPolling slot PER brand (BRAND_DEFS is a fixed,
+  // module-level 2-entry list, so calling the hook a fixed number of times
+  // — never in a loop over a value that could change length — is safe)
+  // instead of one shared slot for every brand. Before this, starting a
+  // sync for one brand's `run()` would overwrite the single activeJob state
+  // a second brand's `run()` was also writing to, and the button that
+  // starts ANY sync was disabled by `!!activeJob` regardless of which
+  // brand — so two brands could never actually sync in parallel even
+  // though the backend already runs each startSync call as its own
+  // independent job (confirmed: jobStore.js's Map has no per-brand lock).
+  const healthykikiJobPolling = useJobPolling({ pollIntervalMs: 1200 })
+  const kikibeautyJobPolling = useJobPolling({ pollIntervalMs: 1200 })
+  const jobPollingByBrand = { healthykiki: healthykikiJobPolling, kikibeauty: kikibeautyJobPolling }
+  // brandKey -> job | null — each brand's own progress, independent of the
+  // others. getSyncJob(brandKey) below is what components actually consume.
+  const syncJobs = {
+    healthykiki: healthykikiJobPolling.activeJob,
+    kikibeauty: kikibeautyJobPolling.activeJob,
+  }
+  const getSyncJob = (brandKey) => syncJobs[brandKey] ?? null
   const [status, setStatus] = useState({ brands: [], productSyncConfigured: false })
   // Product IDs currently mid-extraction — a Set rather than one boolean
   // since 상품관리 and Step 3 could both show the same product's button.
@@ -75,6 +94,12 @@ export function ProductsProvider({ children }) {
   // Scoped strictly to the mount-time fetch below, not later re-fetches
   // after a sync job finishes — those are already covered by SyncProgress.
   const [productsLoading, setProductsLoading] = useState(true)
+  // BB-5: lifted from ProductBrowser.jsx's own local useState — App.jsx
+  // unmounts 상품 관리 entirely on nav-away, so a search/filter typed there
+  // was lost on Feed -> Studio -> back to 상품 관리, same class of bug
+  // AdsContext's feedTab/collectQuery/collectLimit fix.
+  const [productSearchQuery, setProductSearchQuery] = useState('')
+  const [productBrandFilter, setProductBrandFilter] = useState('전체')
 
   const loadStatus = useCallback(() => {
     return getProductStatus()
@@ -108,7 +133,9 @@ export function ProductsProvider({ children }) {
   // until done/failed, then re-fetches the full product list. Mirrors
   // AdsContext's collect() job-polling shape (both now share useJobPolling).
   const sync = useCallback((brandKey) => {
-    run({
+    const polling = jobPollingByBrand[brandKey]
+    if (!polling) return
+    polling.run({
       initialJob: {
         brandKey,
         status: 'running',
@@ -116,8 +143,10 @@ export function ProductsProvider({ children }) {
       },
       start: async () => (await startProductSync(brandKey)).jobId,
       // brandKey isn't part of the job status response itself, so it's
-      // merged back in on every poll — StepMyBrand/BrandConnectionCard key
-      // off activeJob.brandKey to know which brand's sync is running.
+      // merged back in on every poll — mostly redundant now that each
+      // brand has its own polling slot (getSyncJob(brandKey) already knows
+      // which brand it's looking at), but kept since SyncProgress/other
+      // consumers still read job.brandKey directly off the job object.
       getStatus: async (jobId) => ({ ...(await getProductSyncStatus(jobId)), brandKey }),
       onFailed: (job) => {
         showToast(`동기화 실패: ${job.error || '알 수 없는 오류'}`)
@@ -141,7 +170,7 @@ export function ProductsProvider({ children }) {
         showToast(`동기화 중 오류가 발생했습니다: ${err.message}`)
       },
     })
-  }, [showToast, loadStatus, run])
+  }, [showToast, loadStatus, healthykikiJobPolling.run, kikibeautyJobPolling.run])
 
   // DESTRUCTIVE — wipes a brand's entire Pinecone namespace. The actual
   // confirmation friction (typing the brand name) lives in the UI; this is
@@ -217,8 +246,9 @@ export function ProductsProvider({ children }) {
   return (
     <ProductsContext.Provider
       value={{
-        products, brands, sync, activeJob, status, resetNamespace,
+        products, brands, sync, getSyncJob, status, resetNamespace,
         extractImage, extractingIds, updateProductFields, productsLoading,
+        productSearchQuery, setProductSearchQuery, productBrandFilter, setProductBrandFilter,
       }}
     >
       {children}

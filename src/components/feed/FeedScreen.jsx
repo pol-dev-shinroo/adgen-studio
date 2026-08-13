@@ -10,8 +10,7 @@ import AdDetailModal from './AdDetailModal.jsx'
 import { useAds } from '../../context/AdsContext.jsx'
 
 export default function FeedScreen() {
-  const { ads, collected, activeJob } = useAds()
-  const [tab, setTab] = useState('archive')
+  const { ads, collected, activeJob, feedTab, setFeedTab } = useAds()
   const [selectedAd, setSelectedAd] = useState(null)
 
   // activeJob is set synchronously the moment "실시간 수집" is clicked (see
@@ -19,8 +18,8 @@ export default function FeedScreen() {
   // `collected` to be populated at the very end — makes the tab change
   // happen in the same render as the click.
   useEffect(() => {
-    if (activeJob) setTab('collected')
-  }, [activeJob])
+    if (activeJob) setFeedTab('collected')
+  }, [activeJob, setFeedTab])
 
   return (
     <section>
@@ -31,8 +30,8 @@ export default function FeedScreen() {
         </div>
       </div>
       <SearchBar />
-      <FeedTabs tab={tab} onChange={setTab} archiveCount={ads.length} collectedCount={collected.length} />
-      {tab === 'archive' ? (
+      <FeedTabs tab={feedTab} onChange={setFeedTab} archiveCount={ads.length} collectedCount={collected.length} />
+      {feedTab === 'archive' ? (
         <div>
           <BrandFilterBar />
           <AdGrid onOpenDetail={setSelectedAd} />

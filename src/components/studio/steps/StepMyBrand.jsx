@@ -14,22 +14,22 @@ import ProductReferencePanel from './ProductReferencePanel.jsx'
 const CARD_PICKER_MAX = 8
 
 export default function StepMyBrand() {
-  const { myBrands, toggleMyBrand, selections, toggleProductSelection } = useStudio()
-  const { sync, activeJob } = useProducts()
+  const { myBrands, selectMyBrand, selections, toggleProductSelection } = useStudio()
+  const { sync, getSyncJob } = useProducts()
   const activeBrands = myBrands.filter((b) => b.active)
 
   return (
     <>
-      <div className="sect">내 브랜드 선택 <span className="hint">— 다중선택 가능</span></div>
+      <div className="sect">내 브랜드 선택 <span className="hint">— 1개 선택</span></div>
       <div>
         {myBrands.map((b, i) => (
-          <div key={b.name} className={`brand-item ${b.active ? 'on' : ''}`} onClick={() => toggleMyBrand(i)}>
+          <div key={b.name} className={`brand-item ${b.active ? 'on' : ''}`} onClick={() => selectMyBrand(i)}>
             <div className="dot" style={{ background: b.color }}>{b.name[0]}</div>
             <div>
               <div className="nm">{b.name}</div>
               <div className="ds">{b.desc}</div>
             </div>
-            <div className="ck">✓</div>
+            <div className="radio" />
           </div>
         ))}
       </div>
@@ -45,7 +45,11 @@ export default function StepMyBrand() {
         const sel = selections[b.name]
         const productNames = Object.keys(b.products)
         const selectedProducts = (sel?.products || []).filter((n) => b.products[n])
-        const isSyncing = activeJob?.brandKey === b.key
+        // BB-3: this brand's own sync job — independent of any other
+        // brand's, so switching to 키키뷰티 mid-헬시키키-sync no longer
+        // shows/blocks on the wrong brand's job.
+        const syncJob = getSyncJob(b.key)
+        const isSyncing = !!syncJob
         const syncedAtLabel = formatDateTime(b.lastSynced, { fallback: null, dateStyle: 'medium', timeStyle: 'short' })
 
         return (
@@ -57,14 +61,14 @@ export default function StepMyBrand() {
                 type="button"
                 className="sync-btn"
                 onClick={() => sync(b.key)}
-                disabled={!!activeJob}
+                disabled={isSyncing}
               >
                 {isSyncing && <Spinner size="sm" />} {isSyncing ? '동기화 중...' : '제품 동기화'}
               </button>
               {!isSyncing && syncedAtLabel && <span className="sync-meta">마지막 동기화: {syncedAtLabel}</span>}
             </div>
 
-            {isSyncing && <SyncProgress job={activeJob} />}
+            {isSyncing && <SyncProgress job={syncJob} />}
 
             {productNames.length === 0 ? (
               <p className="sub">동기화된 제품이 없습니다 — 위 버튼으로 동기화하세요.</p>

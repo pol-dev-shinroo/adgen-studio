@@ -21,7 +21,14 @@ export function StudioProvider({ children }) {
   const [step, setStepRaw] = useState(1)
   const [refBrand, setRefBrandState] = useState(null)
   const [refAdIds, setRefAdIds] = useState([])
-  const [activeBrandKeys, setActiveBrandKeys] = useState(() => new Set([DEFAULT_ACTIVE_BRAND_KEY]))
+  // BB-2: single-select, not multi — StepMyBrand.jsx used to advertise
+  // "다중선택 가능" and let a user fully configure several brands' products/
+  // references, but goNext only ever generated for the first active one,
+  // silently discarding the rest. Made honest by making this genuinely
+  // single-select (a real string, not a Set) instead of adding real
+  // multi-brand generation, which would need its own job-polling slot per
+  // brand in GalleryContext — a bigger change than this UI ever needed.
+  const [activeBrandKey, setActiveBrandKey] = useState(DEFAULT_ACTIVE_BRAND_KEY)
   // Only holds a brand's selection once the user explicitly toggles a
   // product; otherwise it falls back to defaultSelectionFor below. Holds an
   // array now (multiple products can be selected per brand) rather than a
@@ -48,7 +55,7 @@ export function StudioProvider({ children }) {
   const [styleIntensity, setStyleIntensity] = useState(60)
   const [instructions, setInstructions] = useState('')
 
-  const myBrands = productBrands.map((b) => ({ ...b, active: activeBrandKeys.has(b.key) }))
+  const myBrands = productBrands.map((b) => ({ ...b, active: b.key === activeBrandKey }))
 
   const selections = {}
   myBrands.filter((b) => b.active).forEach((b) => {
@@ -56,6 +63,20 @@ export function StudioProvider({ children }) {
     const validNames = (override?.products || []).filter((n) => b.products[n])
     selections[b.name] = validNames.length > 0 ? { products: validNames } : defaultSelectionFor(b)
   })
+
+  // BB-4: real up-front render-count preview, shown on Step 4 before the
+  // user commits — mirrors goNext's own totalRenders math exactly
+  // (productIds.length * refAdIds.length * formats.length * quantity) so
+  // what's shown here never drifts from what actually gets billed. Without
+  // this, only the per-product multiplier was ever surfaced (Step 3's own
+  // "N개 제품 × 선택한 포맷/수량에 따라..." hint) — the refAdIds multiplier
+  // picked back in Step 2 was easy to forget about by Step 4.
+  const activeBrand = myBrands.find((b) => b.active)
+  const activeBrandProductCount = activeBrand
+    ? (selections[activeBrand.name]?.products || []).filter((n) => activeBrand.products[n]).length
+    : 0
+  const quantityNumber = Number(String(quantity).replace(/\D/g, '')) || 1
+  const totalRenders = activeBrandProductCount * refAdIds.length * formats.length * quantityNumber
 
   // Derived per active brand, the same way `selections` derives from
   // productOverrides above — reactive to both the raw override state and to
@@ -104,25 +125,28 @@ export function StudioProvider({ children }) {
     }
   })
 
+  // BB-1: re-clicking the already-active brand card (e.g. a user jumping
+  // back to Step 1 via the wizard's step pills just to double-check it) is
+  // a no-op — it must NOT reset refAdIds, or every ad picked in Step 2 gets
+  // silently wiped with no warning.
   const pickRefBrand = useCallback((brand) => {
+    if (brand === refBrand) return
     setRefBrandState(brand)
     setRefAdIds([])
-  }, [])
+  }, [refBrand])
 
   const toggleRefAd = useCallback((id) => {
     setRefAdIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }, [])
 
-  const toggleMyBrand = useCallback((index) => {
+  // BB-2: single-select — picks brand `index` as the one active brand.
+  // Re-clicking the already-active brand is a no-op (nothing to reset here
+  // today, but matches pickRefBrand's same-value-is-a-no-op convention).
+  const selectMyBrand = useCallback((index) => {
     const key = productBrands[index]?.key
-    if (!key) return
-    setActiveBrandKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }, [productBrands])
+    if (!key || key === activeBrandKey) return
+    setActiveBrandKey(key)
+  }, [productBrands, activeBrandKey])
 
   // Toggles one product in/out of a brand's selection, never letting it go
   // empty — a brand must always have at least one product chosen once it's
@@ -213,6 +237,19 @@ export function StudioProvider({ children }) {
     showToast(`'${brand}' 광고가 레퍼런스로 선택됐습니다`)
   }, [go, showToast])
 
+  // BB-6: bulk version, jumped to from AdGrid.jsx's multi-select toolbar —
+  // reuses CollectedResults.jsx's existing select-mode/전체 선택 UI pattern
+  // rather than a new one. All adIds must already share one brand (AdGrid
+  // validates this before calling in) since Step 1/2 are inherently
+  // single-reference-brand.
+  const prefillFromAds = useCallback((brand, adIds) => {
+    setRefBrandState(brand)
+    setRefAdIds(adIds)
+    setStepRaw(2)
+    go('studio')
+    showToast(`'${brand}' 광고 ${adIds.length}개가 레퍼런스로 선택됐습니다`)
+  }, [go, showToast])
+
   const goPrev = useCallback(() => {
     setStepRaw((s) => Math.max(1, s - 1))
   }, [])
@@ -227,27 +264,17 @@ export function StudioProvider({ children }) {
       return
     }
 
-    const activeBrands = myBrands.filter((b) => b.active)
-    if (activeBrands.length === 0) {
+    // BB-2: myBrands.active is now genuinely single-select (see
+    // activeBrandKey above), so this is always exactly one brand — no more
+    // "N brands selected but only generating for the first" surprise.
+    const b = myBrands.find((br) => br.active)
+    if (!b) {
       showToast('생성할 브랜드를 먼저 선택하세요')
       return
     }
     if (formats.length === 0) {
       showToast('포맷을 1개 이상 선택하세요')
       return
-    }
-
-    // The backend's generation job is single-brand-per-request (like every
-    // other job in this app — sync/collect/extract are all one-job-at-a-
-    // time too), and the shared useJobPolling slot in GalleryContext can
-    // only track one active job's progress at once. Multi-brand-active is
-    // still a valid selection for Step 3 (it drives per-brand product
-    // config), but generation itself only ever runs for the first active
-    // brand — a real product decision for a later session if simultaneous
-    // multi-brand generation turns out to matter in practice.
-    const b = activeBrands[0]
-    if (activeBrands.length > 1) {
-      showToast(`${activeBrands.length}개 브랜드가 선택됐지만, 생성은 '${b.name}'에 대해서만 실행됩니다`)
     }
 
     const sel = selections[b.name]
@@ -349,15 +376,16 @@ export function StudioProvider({ children }) {
         step, setStep, goNext, goPrev,
         refBrand, pickRefBrand,
         refAdIds, toggleRefAd,
-        myBrands, toggleMyBrand,
+        myBrands, selectMyBrand,
         selections, toggleProductSelection,
         productRefSelections, toggleImageKeySelected, toggleAllImageKeysSelected,
         selectProductRefPrice, selectProductRefPromotion, toggleProductRefHookSelection,
         formats, toggleFormat,
         quantity, setQuantity,
+        totalRenders, activeBrandProductCount,
         styleIntensity, setStyleIntensity,
         instructions, setInstructions,
-        prefillFromAd,
+        prefillFromAd, prefillFromAds,
       }}
     >
       {children}

@@ -36,8 +36,8 @@
 .brand-item .dot{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
 .brand-item .nm{font-weight:700}
 .brand-item .ds{font-size:12px;color:var(--sub)}
-.brand-item .ck{margin-left:auto;width:20px;height:20px;border-radius:6px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px}
-.brand-item.on .ck{background:var(--brand);border-color:var(--brand)}
+.brand-item .radio{margin-left:auto;width:18px;height:18px;border-radius:50%;border:2px solid var(--line)}
+.brand-item.on .radio{border:5.5px solid var(--brand)}
 .prodcfg{border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:12px}
 .prodcfg .bt{font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px}
 .prodcfg .bt .dot{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px}
