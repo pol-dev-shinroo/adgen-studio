@@ -12,6 +12,11 @@
 .sub-sect{font-weight:700;font-size:13px;color:var(--ink)}
 .sub-sect .hint{color:var(--sub);font-weight:500;font-size:12px}
 .refrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+/* Part DD: the "선택됨" section (StepReferenceAds.jsx) needs to read as
+   visually distinct from the "선택 가능" grid below it, since cards now
+   animate between the two — a subtle tint + top accent, not a heavy
+   border, so it doesn't compete with each card's own .refpick.on ring. */
+.refrow-selected{background:var(--brand-soft);border-radius:10px;padding:12px;margin-bottom:16px}
 .refpick{cursor:pointer;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;transition:border-color .15s,box-shadow .15s}
 .refpick.on{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-soft)}
 .refpick .thumb{height:140px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#fff;padding:8px}
@@ -71,6 +76,13 @@
 .prod-refs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:14px}
 
 .optrow{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+/* Part DD: one block per selected reference ad in StepGenerationOptions.jsx
+   (each ad now has its own formats/quantity, not one shared setting) —
+   bordered/spaced like .prodcfg above, so each ad's controls read as a
+   clearly separate unit rather than blurring together in one long list. */
+.ad-option-block{border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.ad-option-header{display:flex;align-items:center;gap:10px;font-weight:800;margin-bottom:12px}
+.ad-option-thumb{width:40px;height:40px;border-radius:8px;flex-shrink:0}
 .footer{display:flex;justify-content:space-between;padding:16px 20px;border-top:1px solid var(--line)}
 .range{display:flex;align-items:center;gap:10px}
 input[type=range]{accent-color:var(--brand)}

@@ -1,32 +1,58 @@
+import { useAds } from '../../../context/AdsContext.jsx'
 import { useStudio } from '../../../context/StudioContext.jsx'
+import Thumb from '../../common/Thumb.jsx'
 import Chip from '../../common/Chip.jsx'
 
 const FORMATS = ['1:1 피드', '4:5 피드', '9:16 스토리']
 const QUANTITIES = ['1장', '2장', '4장']
 
 export default function StepGenerationOptions() {
+  const { ads } = useAds()
   const {
-    formats, toggleFormat,
-    quantity, setQuantity,
+    refAdIds, refAdConfigs, toggleAdFormat, setAdQuantity,
     styleIntensity, setStyleIntensity,
     instructions, setInstructions,
   } = useStudio()
 
   return (
     <>
-      <div className="sect">포맷</div>
-      <div className="optrow">
-        {FORMATS.map((f) => (
-          <Chip key={f} active={formats.includes(f)} onClick={() => toggleFormat(f)}>{f}</Chip>
-        ))}
+      {/* Part DD: replaces the old single shared "포맷"/"생성 수량" chip rows
+          — each selected reference ad now gets its own formats/quantity
+          (e.g. AD A -> 1 image, AD B -> 2 images), so this renders one block
+          per ad instead of one block for the whole job. Ad lookup mirrors
+          StepReferenceAds.jsx's own `ads.filter(a => a.brand === refBrand)`
+          pattern — here just finding one ad by id for its thumbnail/AD
+          label, not filtering the whole list. */}
+      <div className="sect">
+        레퍼런스 광고별 생성 옵션{' '}
+        <span className="hint">— 광고소재마다 포맷과 수량을 따로 설정할 수 있습니다</span>
       </div>
+      {refAdIds.map((adId) => {
+        const ad = ads.find((a) => a.id === adId)
+        const cfg = refAdConfigs[adId] || { formats: [], quantity: '1장' }
+        return (
+          <div key={adId} className="ad-option-block">
+            <div className="ad-option-header">
+              {ad && <Thumb gradient={ad.gradient} image={ad.image} className="ad-option-thumb" />}
+              <span>AD {String(adId).slice(-4)}</span>
+            </div>
 
-      <div className="sect">생성 수량 (포맷당)</div>
-      <div className="optrow">
-        {QUANTITIES.map((q) => (
-          <Chip key={q} active={quantity === q} onClick={() => setQuantity(q)}>{q}</Chip>
-        ))}
-      </div>
+            <div className="sub-sect">포맷</div>
+            <div className="optrow">
+              {FORMATS.map((f) => (
+                <Chip key={f} active={cfg.formats.includes(f)} onClick={() => toggleAdFormat(adId, f)}>{f}</Chip>
+              ))}
+            </div>
+
+            <div className="sub-sect">생성 수량 (포맷당)</div>
+            <div className="optrow">
+              {QUANTITIES.map((q) => (
+                <Chip key={q} active={cfg.quantity === q} onClick={() => setAdQuantity(adId, q)}>{q}</Chip>
+              ))}
+            </div>
+          </div>
+        )
+      })}
 
       {/* Part U-2: this slider isn't general artistic license — it's a dial
           between two sources of creative material. Low keeps the
@@ -36,7 +62,9 @@ export default function StepGenerationOptions() {
           3's selected 참조 이미지(모델/배지 등)와 선택한 카피
           (가격·프로모션·후킹). Copy rewritten to describe that real axis
           in plain terms rather than the old composition/lighting framing,
-          which never actually matched what the slider does. */}
+          which never actually matched what the slider does. Stays global/
+          shared across every ad and product in the job — Part DD only
+          asked for per-ad format/quantity, not per-ad style intensity. */}
       <div className="sect">
         스타일 반영 강도{' '}
         <span className="hint">

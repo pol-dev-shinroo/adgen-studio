@@ -61,10 +61,16 @@ export function resolveProductReferenceImageUrl(product, overrideImageUrl) {
   return firstProductReferenceImageUrl(product)
 }
 
-// Pure — no reason this needs the real job/products/ads plumbing to verify,
-// so it's split out and exported on its own.
-export function computeTotalRenders(products, refAds, formats, quantity) {
-  return products.length * refAds.length * formats.length * quantity
+// Part DD: formats/quantity used to be one global setting shared across
+// every selected reference ad (products.length * refAds.length *
+// formats.length * quantity); now each reference ad carries its own
+// formats/quantity (refAdConfigs: [{ adId, formats, quantity }]), so the
+// total is products.length times the SUM of each ad's own formats.length *
+// quantity, not a single shared multiplier. Pure — no reason this needs the
+// real job/products/ads plumbing to verify, so it's split out and exported
+// on its own.
+export function computeTotalRenders(products, refAdConfigs) {
+  return products.length * refAdConfigs.reduce((sum, cfg) => sum + cfg.formats.length * cfg.quantity, 0)
 }
 
 // Part P: converts Step 3's ad-selection panel's { price, promotion,

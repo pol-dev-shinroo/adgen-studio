@@ -13,16 +13,25 @@ import { computeTotalRenders, counterFactsFromAdCopyOverride, firstLink } from '
 const jobStore = createJobStore()
 const RECENT_ITEMS_LIMIT = 20
 
-// Input: { refBrand, refAdIds, brand:{key,productIds}, formats, quantity,
-// styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl }.
-// formats: array of format strings (see renderImage.service.js's
-// FORMAT_SIZE keys). quantity: plain integer (frontend converts its
-// '2장'-style chip value before calling this). productIds: array — Step 3
-// allows selecting more than one of a brand's own products, each producing
-// its own full render pass. referenceSheetImageUrl (Part Q): string | null
-// — URL of one of our own brand's Part N/O composed reference sheets, used
-// as a third, supplementary style-reference image in every render this job
-// produces; null preserves the exact pre-Part-Q two-image render.
+// Input: { refBrand, refAdConfigs, brand:{key,productIds}, styleIntensity,
+// instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType }.
+// Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
+// each entry is { adId, formats: string[], quantity: number }, since the
+// client's real need is per-reference-ad format/quantity (e.g. ad A -> 1
+// image, ad B -> 2 images, possibly different formats), not one shared
+// setting applied uniformly across every selected ad. formats: array of
+// format strings (see renderImage.service.js's FORMAT_SIZE keys). quantity:
+// plain integer (frontend converts its '2장'-style chip value before
+// calling this). productIds: array — Step 3 allows selecting more than one
+// of a brand's own products, each producing its own full render pass.
+// referenceSheetImageUrl (Part Q): string | null — URL of one of our own
+// brand's Part N/O composed reference sheets, used as a third, supplementary
+// style-reference image in every render this job produces; null preserves
+// the exact pre-Part-Q two-image render. styleReferenceType (Part DD):
+// string | null — the extracted-reference `type` (e.g. 'model', 'badge')
+// the referenceSheetImageUrl was sourced from, threaded through so
+// renderImage.service.js can tell a model-face reference apart from a
+// badge/logo one (see its own styleInstructionFor comment).
 //
 // Runs the expensive per-reference-ad stages (vision analysis, counter-fact
 // research, copywriting) exactly once per selected reference ad and caches
@@ -41,12 +50,15 @@ const RECENT_ITEMS_LIMIT = 20
 // fire-and-forget callback, not awaited directly here.
 export async function startGeneration(input, deps = {}) {
   const {
-    refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl,
+    refBrand, refAdConfigs, brand, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
   } = input
   const { prepareInputsFn = prepareInputs } = deps
+  // prepareInputs only ever needs the plain ID list to fetch ad rows, never
+  // per-ad config — refAdConfigs itself is kept for the render loop below.
+  const refAdIds = refAdConfigs.map((c) => String(c.adId))
   const { brandDef, products, refAds } = await prepareInputsFn({ refAdIds, brand }, deps)
 
-  const totalRenders = computeTotalRenders(products, refAds, formats, quantity)
+  const totalRenders = computeTotalRenders(products, refAdConfigs)
 
   return jobStore.startJob(
     {
@@ -73,7 +85,10 @@ export async function startGeneration(input, deps = {}) {
     },
     (job) => runJob(
       job,
-      { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl },
+      {
+        refAds, products, brandDef, refAdConfigs, styleIntensity, instructions, adCopyOverride,
+        referenceSheetImageUrl, styleReferenceType, refBrand,
+      },
       deps
     ),
     (job, err) => {
@@ -88,9 +103,22 @@ export function getJob(jobId) {
   return jobStore.getJob(jobId)
 }
 
+// Part DD: looks up a reference ad's own formats/quantity config by adId —
+// every perAdContext entry (and every refAds entry) originated from
+// refAdConfigs in the first place, so a miss here should never really
+// happen; treated as "0 renders" rather than throwing, so a hypothetical
+// mismatch degrades to skipping that ad's renders instead of crashing the
+// whole job.
+function configFor(refAdConfigs, adId) {
+  return refAdConfigs.find((c) => String(c.adId) === String(adId))
+}
+
 async function runJob(
   job,
-  { refAds, products, brandDef, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl },
+  {
+    refAds, products, brandDef, refAdConfigs, styleIntensity, instructions, adCopyOverride,
+    referenceSheetImageUrl, styleReferenceType, refBrand,
+  },
   {
     downloadImageAsBase64Fn = downloadImageAsBase64,
     analyzeReferenceAdFn = analyzeReferenceAd,
@@ -133,9 +161,12 @@ async function runJob(
   for (const ad of refAds) {
     const adId = ad['Ad Archive ID']
     const imageLink = firstLink(ad['Archived Image Links']) || ad['Archived Thumbnail'] || firstLink(ad['Image Links'])
+    // Part DD: only this one ad's own config applies here — formats/
+    // quantity are no longer a single shared value across every ad.
+    const cfg = configFor(refAdConfigs, adId)
 
     if (!imageLink) {
-      summary.failed += products.length * formats.length * quantity
+      summary.failed += products.length * (cfg?.formats.length ?? 0) * (cfg?.quantity ?? 0)
       summary.failures.push({ adId, error: 'No image available for this reference ad' })
       continue
     }
@@ -161,11 +192,20 @@ async function runJob(
         adId, imageLink, referenceImageBase64, productInstances: analysis.product_instances, replacements,
       })
     } catch (err) {
-      summary.failed += products.length * formats.length * quantity
+      summary.failed += products.length * (cfg?.formats.length ?? 0) * (cfg?.quantity ?? 0)
       summary.failures.push({ adId, error: err.message })
       console.warn(`Reference-ad analysis failed (ad ${adId}): ${err.message}`)
     }
   }
+
+  // Part DD: sums every already-built perAdContext entry's own config, same
+  // math as computeTotalRenders — every ad still in perAdContext at this
+  // point has a real refAdConfigs entry (the ones that didn't already got
+  // filtered out/failed above).
+  const totalRendersAcrossAds = perAdContext.reduce((sum, ctx) => {
+    const c = configFor(refAdConfigs, ctx.adId)
+    return sum + (c ? c.formats.length * c.quantity : 0)
+  }, 0)
 
   let renderIndex = 0
   for (const productEntry of products) {
@@ -176,7 +216,7 @@ async function runJob(
       const downloaded = await downloadImageAsBase64Fn(productEntry.extractedImageUrl)
       productImageBase64 = downloaded.base64
     } catch (err) {
-      summary.failed += perAdContext.length * formats.length * quantity
+      summary.failed += totalRendersAcrossAds
       summary.failures.push({
         productId: productEntry.productId,
         error: `Failed to download product reference image: ${err.message}`,
@@ -186,8 +226,10 @@ async function runJob(
     }
 
     for (const ctx of perAdContext) {
-      for (const format of formats) {
-        for (let i = 0; i < quantity; i++) {
+      const cfg = configFor(refAdConfigs, ctx.adId)
+      if (!cfg) continue // shouldn't happen — every perAdContext entry originated from refAdConfigs
+      for (const format of cfg.formats) {
+        for (let i = 0; i < cfg.quantity; i++) {
           renderIndex += 1
           progress.phase = `rendering (${renderIndex}/${progress.totalRenders})`
 
@@ -196,6 +238,7 @@ async function runJob(
               referenceImageBase64: ctx.referenceImageBase64,
               productImageBase64,
               styleReferenceImageBase64,
+              styleReferenceType,
               productInstances: ctx.productInstances,
               replacements: ctx.replacements,
               format,
@@ -213,6 +256,10 @@ async function runJob(
             await appendGeneratedRowFn(mapGeneratedAd({
               generationId,
               brand: brandDef.name,
+              // Part DD: the competitor brand this render referenced —
+              // already known at the job level (job.refBrand), just never
+              // threaded down into the per-render row before now.
+              refBrand,
               referenceAdId: ctx.adId,
               format,
               styleIntensity,

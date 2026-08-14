@@ -50,8 +50,13 @@ export function StudioProvider({ children }) {
   // selectedAdHooks: chosen from whatever the currently-selected products
   // actually offer (also derived below).
   const [productRefOverrides, setProductRefOverrides] = useState({})
-  const [formats, setFormats] = useState(DEFAULT_FORMATS)
-  const [quantity, setQuantity] = useState('2장')
+  // Part DD: replaces the old standalone formats/quantity — each selected
+  // reference ad now gets its OWN formats/quantity (e.g. ad A -> 1 image,
+  // ad B -> 2 images, possibly different formats), not one shared setting
+  // applied uniformly across every selected ad. Keyed by adId; seeded with
+  // a sane default the moment toggleRefAd adds that ad, deleted the moment
+  // it's removed — never left orphaned once its ad is no longer selected.
+  const [refAdConfigs, setRefAdConfigs] = useState({})
   const [styleIntensity, setStyleIntensity] = useState(60)
   const [instructions, setInstructions] = useState('')
 
@@ -65,18 +70,26 @@ export function StudioProvider({ children }) {
   })
 
   // BB-4: real up-front render-count preview, shown on Step 4 before the
-  // user commits — mirrors goNext's own totalRenders math exactly
-  // (productIds.length * refAdIds.length * formats.length * quantity) so
-  // what's shown here never drifts from what actually gets billed. Without
-  // this, only the per-product multiplier was ever surfaced (Step 3's own
-  // "N개 제품 × 선택한 포맷/수량에 따라..." hint) — the refAdIds multiplier
-  // picked back in Step 2 was easy to forget about by Step 4.
+  // user commits — mirrors goNext's own totalRenders math exactly so what's
+  // shown here never drifts from what actually gets billed. Without this,
+  // only the per-product multiplier was ever surfaced (Step 3's own "N개
+  // 제품 × 선택한 포맷/수량에 따라..." hint) — the refAdIds multiplier picked
+  // back in Step 2 was easy to forget about by Step 4.
+  //
+  // Part DD: each selected ad now carries its own formats/quantity (no more
+  // single shared multiplier), so this sums formats.length x quantity PER
+  // ad rather than multiplying by one shared figure — same math as the
+  // backend's computeTotalRenders(products, refAdConfigs) in helpers.js, so
+  // the two can never drift apart either.
   const activeBrand = myBrands.find((b) => b.active)
   const activeBrandProductCount = activeBrand
     ? (selections[activeBrand.name]?.products || []).filter((n) => activeBrand.products[n]).length
     : 0
-  const quantityNumber = Number(String(quantity).replace(/\D/g, '')) || 1
-  const totalRenders = activeBrandProductCount * refAdIds.length * formats.length * quantityNumber
+  const totalRenders = activeBrandProductCount * refAdIds.reduce((sum, adId) => {
+    const cfg = refAdConfigs[adId]
+    const qtyNumber = cfg ? Number(String(cfg.quantity).replace(/\D/g, '')) || 1 : 0
+    return sum + (cfg ? cfg.formats.length * qtyNumber : 0)
+  }, 0)
 
   // Derived per active brand, the same way `selections` derives from
   // productOverrides above — reactive to both the raw override state and to
@@ -135,8 +148,21 @@ export function StudioProvider({ children }) {
     setRefAdIds([])
   }, [refBrand])
 
+  // Part DD: keeps refAdConfigs in lockstep with refAdIds — a newly-selected
+  // ad is seeded with a sane default (mirrors the old global DEFAULT_FORMATS/
+  // '1장' default) so StepGenerationOptions always has something to render
+  // for it; a deselected ad's entry is deleted outright rather than left
+  // orphaned (it would otherwise keep counting toward totalRenders/the
+  // goNext payload for an ad that's no longer even selected).
   const toggleRefAd = useCallback((id) => {
     setRefAdIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+    setRefAdConfigs((prev) => {
+      if (prev[id]) {
+        const { [id]: _removed, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [id]: { formats: DEFAULT_FORMATS, quantity: '1장' } }
+    })
   }, [])
 
   // BB-2: single-select — picks brand `index` as the one active brand.
@@ -215,8 +241,25 @@ export function StudioProvider({ children }) {
     })
   }, [])
 
-  const toggleFormat = useCallback((fmt) => {
-    setFormats((prev) => (prev.includes(fmt) ? prev.filter((f) => f !== fmt) : [...prev, fmt]))
+  // Part DD: per-ad replacements for the old global toggleFormat/setQuantity
+  // — both are no-ops if `adId` somehow isn't in refAdConfigs yet (e.g. a
+  // stray call before toggleRefAd has seeded it), same defensive posture as
+  // toggleProductSelection's own brand-not-found guard above.
+  const toggleAdFormat = useCallback((adId, fmt) => {
+    setRefAdConfigs((prev) => {
+      const cfg = prev[adId]
+      if (!cfg) return prev
+      const nextFormats = cfg.formats.includes(fmt) ? cfg.formats.filter((f) => f !== fmt) : [...cfg.formats, fmt]
+      return { ...prev, [adId]: { ...cfg, formats: nextFormats } }
+    })
+  }, [])
+
+  const setAdQuantity = useCallback((adId, qty) => {
+    setRefAdConfigs((prev) => {
+      const cfg = prev[adId]
+      if (!cfg) return prev
+      return { ...prev, [adId]: { ...cfg, quantity: qty } }
+    })
   }, [])
 
   const setStep = useCallback((n) => {
@@ -272,8 +315,14 @@ export function StudioProvider({ children }) {
       showToast('생성할 브랜드를 먼저 선택하세요')
       return
     }
-    if (formats.length === 0) {
-      showToast('포맷을 1개 이상 선택하세요')
+    // Part DD: replaces the old single `formats.length === 0` check — every
+    // selected ad now needs its OWN non-empty formats list, so a single
+    // shared check no longer covers it. Names the specific ad so the user
+    // knows which one still needs a format picked, same specificity as the
+    // missingExtraction toast below.
+    const adMissingFormat = refAdIds.find((adId) => (refAdConfigs[adId]?.formats.length ?? 0) === 0)
+    if (adMissingFormat) {
+      showToast(`AD ${adMissingFormat}의 포맷을 1개 이상 선택하세요`)
       return
     }
 
@@ -299,8 +348,6 @@ export function StudioProvider({ children }) {
       )
       return
     }
-
-    const qty = Number(String(quantity).replace(/\D/g, '')) || 1
 
     // Part P (re-sourced in Part S): real, user-picked copy from the
     // product-reference panel (the SAME brand `b` the rest of this payload
@@ -342,22 +389,37 @@ export function StudioProvider({ children }) {
 
     const styleReferenceItem = checkedItems.find((item) => item.ref.type !== 'product')
     const referenceSheetImageUrl = styleReferenceItem?.ref.imageUrl || null
+    // Part DD: which extracted-reference `type` the style reference came
+    // from (e.g. 'model', 'badge') — lets renderImage.service.js tell a
+    // face-swap-eligible model reference apart from a badge/logo one at
+    // maximum style intensity. null whenever no style reference is set,
+    // same optionality as referenceSheetImageUrl itself.
+    const styleReferenceType = styleReferenceItem?.ref.type || null
 
     const brandPayload = { key: b.key, productIds: selectedProducts.map(({ product }) => product.productId) }
     if (Object.keys(productImageOverrides).length > 0) {
       brandPayload.productImageOverrides = productImageOverrides
     }
 
+    // Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity
+    // — each entry carries its own ad's formats/quantity, converting the
+    // chip-string quantity ('2장') to a plain integer the same way the old
+    // single `qty` conversion did.
+    const refAdConfigsPayload = refAdIds.map((adId) => ({
+      adId,
+      formats: refAdConfigs[adId].formats,
+      quantity: Number(String(refAdConfigs[adId].quantity).replace(/\D/g, '')) || 1,
+    }))
+
     startGeneration({
       refBrand,
-      refAdIds,
+      refAdConfigs: refAdConfigsPayload,
       brand: brandPayload,
-      formats,
-      quantity: qty,
       styleIntensity,
       instructions,
       adCopyOverride,
       referenceSheetImageUrl,
+      styleReferenceType,
     })
 
     showToast('생성 잡이 시작됐습니다 — 결과 갤러리에서 진행 상황을 확인하세요')
@@ -366,7 +428,7 @@ export function StudioProvider({ children }) {
     // in this file, rather than the old mock's artificial setTimeout delay.
     go('gallery')
   }, [
-    step, refAdIds, myBrands, formats, selections, productRefSelections, refBrand, quantity, styleIntensity,
+    step, refAdIds, myBrands, refAdConfigs, selections, productRefSelections, refBrand, styleIntensity,
     instructions, startGeneration, showToast, go,
   ])
 
@@ -380,8 +442,7 @@ export function StudioProvider({ children }) {
         selections, toggleProductSelection,
         productRefSelections, toggleImageKeySelected, toggleAllImageKeysSelected,
         selectProductRefPrice, selectProductRefPromotion, toggleProductRefHookSelection,
-        formats, toggleFormat,
-        quantity, setQuantity,
+        refAdConfigs, toggleAdFormat, setAdQuantity,
         totalRenders, activeBrandProductCount,
         styleIntensity, setStyleIntensity,
         instructions, setInstructions,

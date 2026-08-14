@@ -5,7 +5,7 @@ import { getClient, callSheets, makeTabRange, columnLetter } from './sheetsBase.
 // New tab, same sheet as the ad-collection/product tabs — same
 // one-spreadsheet-many-tabs convention as productSheets.service.js.
 const GENERATED_TAB_NAME = '생성결과'
-const LAST_COLUMN = 'N' // 14 columns (Part V added the 3 reference-URL columns), A..N
+const LAST_COLUMN = 'O' // 15 columns (Part DD added 'Ref Brand'), A..O
 
 const tabRange = makeTabRange(GENERATED_TAB_NAME)
 

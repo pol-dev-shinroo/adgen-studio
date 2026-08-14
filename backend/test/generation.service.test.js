@@ -47,9 +47,36 @@ const deps = {
   getAllAdsFn: async () => ADS,
 }
 
-test('computeTotalRenders multiplies products x refAds x formats x quantity', () => {
-  assert.equal(computeTotalRenders([{}, {}], [{}, {}, {}], ['1:1', '4:5'], 3), 2 * 3 * 2 * 3)
-  assert.equal(computeTotalRenders([{}], [{}], ['1:1'], 1), 1)
+// Part DD: refAdConfigs replaces the old flat refAds/formats/quantity —
+// each ad now carries its own formats/quantity, so the total is
+// products.length times the SUM of each ad's own formats.length x
+// quantity, not one shared multiplier applied uniformly to every ad.
+test('computeTotalRenders multiplies products x the sum of each ad\'s own formats.length x quantity', () => {
+  assert.equal(
+    computeTotalRenders(
+      [{}, {}],
+      [{ adId: 'a', formats: ['1:1', '4:5'], quantity: 3 }, { adId: 'b', formats: ['1:1'], quantity: 2 }]
+    ),
+    2 * (2 * 3 + 1 * 2)
+  )
+  assert.equal(computeTotalRenders([{}], [{ adId: 'a', formats: ['1:1'], quantity: 1 }]), 1)
+})
+
+// Part DD-4: the client's own worked example — one product, one reference
+// ad with one format and quantity 1, must total exactly 1.
+test('computeTotalRenders: one product x one ad (1 format, quantity 1) equals exactly 1', () => {
+  assert.equal(computeTotalRenders([{}], [{ adId: 'x', formats: ['1:1 피드'], quantity: 1 }]), 1)
+})
+
+test('computeTotalRenders: each reference ad can have genuinely different formats/quantity from the others', () => {
+  // ad A: 1 format x 1 quantity = 1; ad B: 2 formats x 2 quantity = 4 -> 5 total, x 1 product.
+  assert.equal(
+    computeTotalRenders(
+      [{}],
+      [{ adId: 'A', formats: ['1:1 피드'], quantity: 1 }, { adId: 'B', formats: ['1:1 피드', '4:5 피드'], quantity: 2 }]
+    ),
+    5
+  )
 })
 
 test('prepareInputs resolves multiple productIds against the brand-filtered product list', async () => {

@@ -219,3 +219,101 @@ test('renderFinalImage HIGH (>66) with no style reference falls back to the orig
   assert.doesNotMatch(text, /third image/i)
   assert.doesNotMatch(text, /Actively prefer our own reference material/)
 })
+
+// Part DD: full face replacement at the slider's true maximum (100, not
+// just "in the 67-99 HIGH range") when a real model-type style reference is
+// selected — a qualitatively different instruction from HIGH's "lean
+// toward our own styling."
+
+test('renderFinalImage MAXIMUM (100) with a model-type style reference triggers a full face-swap instruction', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    styleReferenceType: 'model',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 100,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: MAXIMUM/)
+  assert.match(text, /Completely replace the face/)
+  assert.match(text, /full face swap, not a styling influence/)
+  assert.match(text, /Keep the original ad's body pose, hand position, clothing, framing, lighting, and background exactly as they are/)
+  assert.doesNotMatch(text, /Style intensity: HIGH/)
+})
+
+test('renderFinalImage MAXIMUM (100) with a NON-model style reference (e.g. a badge) falls through to ordinary HIGH wording', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    styleReferenceType: 'badge',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 100,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: HIGH/)
+  assert.match(text, /Actively prefer our own reference material/)
+  assert.doesNotMatch(text, /Style intensity: MAXIMUM/)
+  assert.doesNotMatch(text, /face swap/i)
+})
+
+test('renderFinalImage at 99 (not the true maximum) with a model-type style reference still falls through to ordinary HIGH wording', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    styleReferenceType: 'model',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 99,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  // Note: "used for a face swap" legitimately still appears in the
+  // product-swap framing sentence at any intensity once styleReferenceType
+  // is 'model' (it always needs to clarify the third image's role) — the
+  // MAXIMUM-tier-specific instruction ("Completely replace the face...")
+  // is the actual thing that must NOT appear below the true maximum.
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: HIGH/)
+  assert.doesNotMatch(text, /Style intensity: MAXIMUM/)
+  assert.doesNotMatch(text, /Completely replace the face/)
+  assert.doesNotMatch(text, /full face swap, not a styling influence/)
+})
+
+test('renderFinalImage MAXIMUM + model reference: the product-swap framing sentence distinguishes the product image from the face-reference image', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    styleReferenceType: 'model',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 100,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /used for a face swap/)
+  assert.match(text, /NOT another product image/)
+  assert.match(text, /Do not confuse the second image \(product\) with the third image \(face reference\)/)
+})

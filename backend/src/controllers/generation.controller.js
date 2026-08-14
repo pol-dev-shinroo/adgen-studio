@@ -9,27 +9,40 @@ const VALID_STATUSES = new Set(['미승인', '승인'])
 // CC-2: deps lets a test inject fakes for every real service call — same
 // convention as run.js's runJob, an optional trailing parameter Express
 // never supplies itself.
+// Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
+// each entry carries its OWN formats/quantity, since the client's real need
+// is per-reference-ad format/quantity (e.g. ad A -> 1 image, ad B -> 2
+// images), not one shared setting applied uniformly across every selected
+// ad. Validated per-entry (not just "is it an array") so a malformed single
+// entry gets a specific, actionable error naming that ad, same "don't trust
+// the frontend as the only gate" convention every other validation here
+// already follows.
 export async function postGenerate(req, res, next, { startGenerationFn = startGeneration } = {}) {
   if (!config.productSyncConfigured) {
     return res.status(503).json({ error: 'Product sync is not configured on this server.' })
   }
 
   const {
-    refBrand, refAdIds, brand, formats, quantity, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl,
+    refBrand, refAdConfigs, brand, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
   } = req.body ?? {}
 
-  if (!Array.isArray(refAdIds) || refAdIds.length === 0) {
-    return res.status(400).json({ error: '"refAdIds" must be a non-empty array' })
+  if (!Array.isArray(refAdConfigs) || refAdConfigs.length === 0) {
+    return res.status(400).json({ error: '"refAdConfigs" must be a non-empty array' })
+  }
+  for (const cfg of refAdConfigs) {
+    if (!cfg || (typeof cfg.adId !== 'string' && typeof cfg.adId !== 'number')) {
+      return res.status(400).json({ error: 'each refAdConfigs entry must include "adId"' })
+    }
+    if (!Array.isArray(cfg.formats) || cfg.formats.length === 0) {
+      return res.status(400).json({ error: `refAdConfigs entry for ad "${cfg.adId}" must include a non-empty "formats" array` })
+    }
+    const q = Number(cfg.quantity)
+    if (!Number.isInteger(q) || q < 1 || q > 10) {
+      return res.status(400).json({ error: `refAdConfigs entry for ad "${cfg.adId}" must include "quantity" as an integer between 1 and 10` })
+    }
   }
   if (!brand || typeof brand.key !== 'string' || !Array.isArray(brand.productIds) || brand.productIds.length === 0) {
     return res.status(400).json({ error: '"brand" must include "key" and a non-empty "productIds" array' })
-  }
-  if (!Array.isArray(formats) || formats.length === 0) {
-    return res.status(400).json({ error: '"formats" must be a non-empty array' })
-  }
-  const qty = Number(quantity)
-  if (!Number.isInteger(qty) || qty < 1 || qty > 10) {
-    return res.status(400).json({ error: '"quantity" must be an integer between 1 and 10' })
   }
   const intensity = Number(styleIntensity)
   if (!Number.isInteger(intensity) || intensity < 0 || intensity > 100) {
@@ -39,10 +52,8 @@ export async function postGenerate(req, res, next, { startGenerationFn = startGe
   try {
     const jobId = await startGenerationFn({
       refBrand: refBrand ?? '',
-      refAdIds,
+      refAdConfigs,
       brand,
-      formats,
-      quantity: qty,
       styleIntensity: intensity,
       instructions: typeof instructions === 'string' ? instructions : '',
       // Part P: { price, promotion, adHooks } from Step 3's ad-selection
@@ -61,6 +72,11 @@ export async function postGenerate(req, res, next, { startGenerationFn = startGe
       referenceSheetImageUrl: typeof referenceSheetImageUrl === 'string' && referenceSheetImageUrl.trim()
         ? referenceSheetImageUrl.trim()
         : null,
+      // Part DD: which extracted-reference `type` referenceSheetImageUrl
+      // came from ('model', 'badge', ...) — loosely validated the same way,
+      // renderImage.service.js treats anything other than exactly 'model'
+      // as "not a face-swap reference" rather than failing the job.
+      styleReferenceType: typeof styleReferenceType === 'string' ? styleReferenceType : null,
     })
     res.status(202).json({ jobId })
   } catch (err) {

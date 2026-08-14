@@ -28,6 +28,7 @@ export interface GeneratedAdRow {
   'Reference Ad Image URL': string
   'Product Reference Image URL': string
   'Style Reference Image URL': string
+  'Ref Brand': string
 }
 
 export const GENERATED_AD_COLUMNS: (keyof GeneratedAdRow)[] = [
@@ -57,6 +58,12 @@ export const GENERATED_AD_COLUMNS: (keyof GeneratedAdRow)[] = [
   'Reference Ad Image URL',
   'Product Reference Image URL',
   'Style Reference Image URL',
+  // Part DD: the competitor brand this render's reference ad belonged to
+  // (job.refBrand — already known at generation time, just never persisted
+  // per-row before now) — lets the Gallery tag/filter results by which
+  // competitor was referenced, independent of `Brand` (our own brand).
+  // Appended, not inserted, same convention as every column above it.
+  'Ref Brand',
 ]
 
 export interface MapGeneratedAdInput {
@@ -73,12 +80,13 @@ export interface MapGeneratedAdInput {
   referenceAdImageUrl?: string
   productReferenceImageUrl?: string
   styleReferenceImageUrl?: string
+  refBrand?: string
 }
 
 export function mapGeneratedAd({
   generationId, brand, referenceAdId, format, styleIntensity, instructions, imageUrl, productId, replacements,
   createdAt = new Date().toISOString(),
-  referenceAdImageUrl, productReferenceImageUrl, styleReferenceImageUrl,
+  referenceAdImageUrl, productReferenceImageUrl, styleReferenceImageUrl, refBrand,
 }: MapGeneratedAdInput): GeneratedAdRow {
   return {
     'Generation ID': String(generationId ?? ''),
@@ -99,6 +107,9 @@ export function mapGeneratedAd({
     // Blank when no style reference was selected for this render — Part
     // Q/T's referenceSheetImageUrl was already optional at the job level.
     'Style Reference Image URL': styleReferenceImageUrl || '',
+    // Part DD: blank for rows that predate this column, same "older row
+    // missing a newer column" fallback every other optional field here uses.
+    'Ref Brand': refBrand || '',
   }
 }
 

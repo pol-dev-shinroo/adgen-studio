@@ -30,12 +30,19 @@ export default function GalleryScreen() {
   const { results, activeJob, lastSummary, lastError, retryResult, resultsLoading } = useGallery()
   const { showToast } = useNavigation()
   const [filter, setFilter] = useState('전체')
+  // Part DD: a second, independent filter dimension — which competitor
+  // brand a result's reference ad came from — combined with the existing
+  // brand/승인됨 filter via AND, not replacing it. Two users' real
+  // questions ("show me our 헬시키키 results" vs "show me results that
+  // referenced 안티칼") are genuinely separate axes, not one list.
+  const [refBrandFilter, setRefBrandFilter] = useState('전체')
 
   const brands = [...new Set(results.map((r) => r.brand).filter(Boolean))]
+  const refBrands = [...new Set(results.map((r) => r.refBrand).filter(Boolean))]
   const visible = results.filter((r) => {
-    if (filter === '전체') return true
-    if (filter === '승인됨') return !!r.approved
-    return r.brand === filter
+    const matchesMain = filter === '전체' ? true : filter === '승인됨' ? !!r.approved : r.brand === filter
+    const matchesRefBrand = refBrandFilter === '전체' ? true : r.refBrand === refBrandFilter
+    return matchesMain && matchesRefBrand
   })
 
   return (
@@ -92,7 +99,13 @@ export default function GalleryScreen() {
         </div>
       )}
 
-      <GalleryFilters filter={filter} setFilter={setFilter} brands={brands} />
+      <GalleryFilters filter={filter} setFilter={setFilter} brands={brands} label="우리 브랜드" />
+      {refBrands.length > 0 && (
+        <GalleryFilters
+          filter={refBrandFilter} setFilter={setRefBrandFilter} brands={refBrands}
+          label="참고한 경쟁사" hideApproved
+        />
+      )}
 
       {resultsLoading && results.length === 0 ? (
         <PageLoader />

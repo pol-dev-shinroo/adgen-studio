@@ -32,9 +32,15 @@ function renderGallery(triggerInput) {
   )
 }
 
+// Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
+// this object is opaque payload data as far as GalleryContext/this test
+// suite are concerned (only the mocked fetch below ever "reads" it, and
+// only by method/URL, never by body shape), but kept in the real current
+// shape anyway so this fixture doesn't mislead a future reader.
 const baseInput = {
-  refBrand: '경쟁사', refAdIds: ['1'], brand: { key: 'healthykiki', productIds: ['1'] },
-  formats: ['1:1 피드'], quantity: 1, styleIntensity: 60, instructions: '', adCopyOverride: null, referenceSheetImageUrl: null,
+  refBrand: '경쟁사', refAdConfigs: [{ adId: '1', formats: ['1:1 피드'], quantity: 1 }],
+  brand: { key: 'healthykiki', productIds: ['1'] },
+  styleIntensity: 60, instructions: '', adCopyOverride: null, referenceSheetImageUrl: null, styleReferenceType: null,
 }
 
 beforeEach(() => {

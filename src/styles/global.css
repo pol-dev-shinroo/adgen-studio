@@ -61,7 +61,11 @@ h1{font-size:20px;font-weight:800;letter-spacing:-.3px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:16px}
-.filters{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.filters{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+/* Part DD: distinguishes GalleryScreen's two independent filter rows
+   ("우리 브랜드" vs "참고한 경쟁사") so they don't read as one combined list
+   of chips — a small muted label prefix, not a heavy visual divider. */
+.filters-label{font-size:12px;font-weight:700;color:var(--sub);margin-right:2px}
 
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 20px;border-radius:10px;font-weight:600;font-size:13px;opacity:0;transition:.3s;pointer-events:none;max-width:80%;text-align:center}
 #toast.show{opacity:1}

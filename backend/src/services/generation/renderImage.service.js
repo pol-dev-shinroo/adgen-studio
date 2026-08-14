@@ -41,7 +41,27 @@ const MODEL = 'gpt-5.5'
 // framing when it's absent, since there's nothing of "ours" to lean into
 // beyond the mandatory swap, and referencing a third image that doesn't
 // exist would confuse the model.
-function styleInstructionFor(styleIntensity, hasStyleReference) {
+//
+// Part DD: styleReferenceType is the extracted-reference `type` the third
+// image was actually sourced from ('model', 'badge', etc. — see
+// productImageExtraction.service.js's storedTypeFor). Pushing the slider
+// all the way to its true maximum (100, not just "in the 67-99 HIGH range")
+// with a real model-type reference selected means something qualitatively
+// different from HIGH's "lean toward our own styling": a full face
+// replacement. Checked as its own tier, before the LOW/MEDIUM/HIGH chain,
+// since it's a more specific case of "high" — a badge/logo/text reference
+// at max intensity (or a model reference below max intensity) still falls
+// through to the existing HIGH wording unchanged.
+function styleInstructionFor(styleIntensity, hasStyleReference, styleReferenceType) {
+  if (styleIntensity === 100 && hasStyleReference && styleReferenceType === 'model') {
+    return 'Style intensity: MAXIMUM. A third image is our own brand\'s extracted model reference photo. ' +
+      'Completely replace the face of the human model shown in the first image (the original competitor ad) with ' +
+      'the face shown in the third image — a full face swap, not a styling influence. Keep the original ad\'s ' +
+      'body pose, hand position, clothing, framing, lighting, and background exactly as they are; change ONLY the ' +
+      'face/head to match the third image\'s model. If the third image shows the face at a different angle than ' +
+      'the original pose, adapt it naturally to match the original\'s head angle and lighting rather than pasting ' +
+      'it in unchanged.'
+  }
   if (styleIntensity <= 33) {
     const base = 'Style intensity: LOW. Keep the layout, background, composition, color grading, and any depicted ' +
       'human model as close to the original reference ad as possible — apply ONLY the mandatory product swap and ' +
@@ -94,14 +114,27 @@ function replacementInstructionFor(replacements) {
 // result, per Part U-2 — is spelled out separately by styleInstructionFor
 // below). When false, this sentence is byte-for-byte the original
 // two-image wording.
-function productSwapInstructionFor(productInstances, hasStyleReference) {
+//
+// Part DD: styleReferenceType distinguishes a model-type third image (a
+// face-swap source, per styleInstructionFor's MAXIMUM tier) from every
+// other kind (badge/logo/text — a generic styling influence) — this
+// sentence's own wording needs to say so explicitly, or the model has no
+// way to know the second image (our product) and third image (our model's
+// face) play completely different roles despite both being "our own"
+// material.
+function productSwapInstructionFor(productInstances, hasStyleReference, styleReferenceType) {
   const instanceList = productInstances.length
     ? productInstances.map((p, i) => `${i + 1}. ${p.location} — ${p.description}`).join('\n')
     : 'The single instance of the advertised product visible in the scene.'
 
-  const framing = hasStyleReference
-    ? 'The first image is the original reference ad. The second image is our own product\'s reference photo. A third image is also provided — see the separate instruction below for its role.'
-    : 'The first image is the original reference ad. The second image is our own product\'s reference photo.'
+  let framing = 'The first image is the original reference ad. The second image is our own product\'s reference photo.'
+  if (hasStyleReference) {
+    framing += styleReferenceType === 'model'
+      ? ' A third image is also provided — our own brand\'s model reference photo, used for a face swap (see the ' +
+        'separate instruction below), NOT another product image. Do not confuse the second image (product) with ' +
+        'the third image (face reference).'
+      : ' A third image is also provided — see the separate instruction below for its role.'
+  }
 
   return `${framing} Seamlessly replace EVERY instance of the competitor's product shown in the first image with OUR product from the second image, at these instances:\n` +
     `${instanceList}\n\n` +
@@ -119,7 +152,10 @@ function productSwapInstructionFor(productInstances, hasStyleReference) {
 // supplementary input_image, never a second literal product-swap source.
 // Omitted entirely (undefined/null) reproduces the exact pre-Part-Q
 // two-image request byte-for-byte — no third content entry, no extra
-// instruction text, unchanged framing sentence.
+// instruction text, unchanged framing sentence. styleReferenceType (Part
+// DD): the extracted-reference `type` styleReferenceImageBase64 was sourced
+// from ('model', 'badge', ...) — only meaningful when a style reference is
+// actually present; see styleInstructionFor's MAXIMUM tier.
 //
 // getClientFn is injected (defaulting to the real getClient) purely so this
 // can be unit-tested without a real OpenAI call — same DI convention as
@@ -127,15 +163,15 @@ function productSwapInstructionFor(productInstances, hasStyleReference) {
 //
 // Returns raw base64 PNG (no prefix).
 export async function renderFinalImage({
-  referenceImageBase64, productImageBase64, styleReferenceImageBase64, productInstances, replacements,
-  format, styleIntensity, instructions,
+  referenceImageBase64, productImageBase64, styleReferenceImageBase64, styleReferenceType, productInstances,
+  replacements, format, styleIntensity, instructions,
 }, { getClientFn = getClient } = {}) {
   const hasStyleReference = !!styleReferenceImageBase64
 
   const parts = [
     replacementInstructionFor(replacements),
-    productSwapInstructionFor(productInstances, hasStyleReference),
-    styleInstructionFor(styleIntensity, hasStyleReference),
+    productSwapInstructionFor(productInstances, hasStyleReference, styleReferenceType),
+    styleInstructionFor(styleIntensity, hasStyleReference, styleReferenceType),
   ]
   if (instructions?.trim()) parts.push(instructions.trim())
 

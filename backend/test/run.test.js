@@ -17,17 +17,18 @@ async function waitForJob(jobId, { timeoutMs = 2000 } = {}) {
 
 const BRAND_DEF = { key: 'testbrand', name: '테스트브랜드' }
 
+// Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
+// each entry carries its own ad's formats/quantity.
 function baseInput(overrides = {}) {
   return {
     refBrand: '경쟁사',
-    refAdIds: ['ad-1'],
+    refAdConfigs: [{ adId: 'ad-1', formats: ['1:1'], quantity: 1 }],
     brand: { key: 'testbrand', productIds: ['1'] },
-    formats: ['1:1'],
-    quantity: 1,
     styleIntensity: 50,
     instructions: '',
     adCopyOverride: null,
     referenceSheetImageUrl: null,
+    styleReferenceType: null,
     ...overrides,
   }
 }
@@ -82,6 +83,7 @@ test('startGeneration: full success path renders, uploads, and writes exactly on
   assert.equal(appendCalls[0]['Reference Ad ID'], 'ad-1')
   assert.equal(appendCalls[0]['Image URL'], `https://cdn.example.com/${job.summary.resultIds[0]}.png`)
   assert.equal(appendCalls[0]['Status'], '미승인')
+  assert.equal(appendCalls[0]['Ref Brand'], '경쟁사', 'the job-level refBrand must be threaded into every written row')
 })
 
 // CC-1's core requirement: a mid-batch render failure must not discard
@@ -141,7 +143,8 @@ test('startGeneration: a reference ad with no usable image link fails immediatel
   let renderCalls = 0
   const renderFinalImageFn = async () => { renderCalls += 1; return 'RENDERED_BASE64' }
 
-  const jobId = await startGeneration(baseInput(), makeDeps({ prepareInputsFn, renderFinalImageFn, appendCalls }))
+  const input = baseInput({ refAdConfigs: [{ adId: 'ad-2', formats: ['1:1'], quantity: 1 }] })
+  const jobId = await startGeneration(input, makeDeps({ prepareInputsFn, renderFinalImageFn, appendCalls }))
   const job = await waitForJob(jobId)
 
   assert.equal(job.status, 'done')
@@ -157,14 +160,62 @@ test('startGeneration: a reference ad with no usable image link fails immediatel
 
 test('startGeneration: multiple formats/quantity multiply totalRenders and every render is counted correctly', async () => {
   const appendCalls = []
-  const input = baseInput({ formats: ['1:1', '4:5'], quantity: 2 })
+  const input = baseInput({ refAdConfigs: [{ adId: 'ad-1', formats: ['1:1', '4:5'], quantity: 2 }] })
   const jobId = await startGeneration(input, makeDeps({ appendCalls }))
   const job = await waitForJob(jobId)
 
   assert.equal(job.status, 'done')
-  assert.equal(job.progress.totalRenders, 4) // 1 product x 1 refAd x 2 formats x 2 quantity
+  assert.equal(job.progress.totalRenders, 4) // 1 product x (2 formats x 2 quantity for this one ad)
   assert.equal(job.progress.rendersDone, 4)
   assert.equal(job.summary.succeeded, 4)
   assert.equal(job.summary.failed, 0)
   assert.equal(appendCalls.length, 4)
+})
+
+// Part DD: each selected reference ad now carries its own formats/quantity
+// — this is the whole point of the change, so it needs its own dedicated
+// coverage beyond the single-ad cases above.
+test('startGeneration: two reference ads with genuinely different formats/quantity each render exactly their own amount', async () => {
+  const appendCalls = []
+  const prepareInputsFn = async () => ({
+    brandDef: BRAND_DEF,
+    products: [{ productId: '1', extractedImageUrl: 'https://example.com/p1.png' }],
+    refAds: [
+      { 'Ad Archive ID': 'ad-1', 'Archived Image Links': 'https://example.com/ad1.png' },
+      { 'Ad Archive ID': 'ad-2', 'Archived Image Links': 'https://example.com/ad2.png' },
+    ],
+  })
+  // ad-1: 1 format x 1 quantity = 1 render. ad-2: 2 formats x 2 quantity = 4 renders. Total 5.
+  const input = baseInput({
+    refAdConfigs: [
+      { adId: 'ad-1', formats: ['1:1'], quantity: 1 },
+      { adId: 'ad-2', formats: ['1:1', '4:5'], quantity: 2 },
+    ],
+  })
+  const jobId = await startGeneration(input, makeDeps({ prepareInputsFn, appendCalls }))
+  const job = await waitForJob(jobId)
+
+  assert.equal(job.status, 'done')
+  assert.equal(job.progress.totalRenders, 5)
+  assert.equal(job.progress.rendersDone, 5)
+  assert.equal(job.summary.succeeded, 5)
+  assert.equal(appendCalls.length, 5)
+
+  const ad1Rows = appendCalls.filter((r) => r['Reference Ad ID'] === 'ad-1')
+  const ad2Rows = appendCalls.filter((r) => r['Reference Ad ID'] === 'ad-2')
+  assert.equal(ad1Rows.length, 1, 'ad-1 must produce exactly its own 1 render, not ad-2\'s amount')
+  assert.equal(ad2Rows.length, 4, 'ad-2 must produce exactly its own 4 renders, not ad-1\'s amount')
+})
+
+// Part DD: full face replacement at maximum style intensity only when a
+// real model-type style reference is present — threaded from
+// startGeneration's input all the way to renderFinalImageFn.
+test('startGeneration: threads styleReferenceType through to renderFinalImageFn', async () => {
+  let capturedType
+  const renderFinalImageFn = async ({ styleReferenceType }) => { capturedType = styleReferenceType; return 'RENDERED_BASE64' }
+  const input = baseInput({ referenceSheetImageUrl: 'https://example.com/model.png', styleReferenceType: 'model' })
+  const jobId = await startGeneration(input, makeDeps({ renderFinalImageFn }))
+  await waitForJob(jobId)
+
+  assert.equal(capturedType, 'model')
 })

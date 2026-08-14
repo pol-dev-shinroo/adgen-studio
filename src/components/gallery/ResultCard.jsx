@@ -30,6 +30,10 @@ export default function ResultCard({ result }) {
       <div className="body">
         <div className="meta" style={{ color: 'var(--sub)', fontSize: 12 }}>
           {result.brand} · {result.format} · REF AD {result.referenceAdId}
+          {/* Part DD: which competitor brand this render referenced —
+              blank for rows that predate the Ref Brand column, so nothing
+              extra renders for those. */}
+          {result.refBrand ? ` · vs ${result.refBrand}` : ''}
         </div>
         <div className="acts">
           <a

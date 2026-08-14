@@ -21,13 +21,13 @@ function makeNext() {
   return next
 }
 
+// Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
+// each entry carries its own ad's formats/quantity.
 function validGenerateBody(overrides = {}) {
   return {
     refBrand: '안티칼',
-    refAdIds: ['ad-1'],
+    refAdConfigs: [{ adId: 'ad-1', formats: ['1:1'], quantity: 2 }],
     brand: { key: 'healthykiki', productIds: ['1'] },
-    formats: ['1:1'],
-    quantity: 2,
     styleIntensity: 50,
     instructions: '',
     ...overrides,
@@ -42,7 +42,7 @@ test('postGenerate: real success starts a job and returns 202 with jobId', async
     makeNext(),
     { startGenerationFn: async (input) => {
       assert.equal(input.brand.key, 'healthykiki')
-      assert.equal(input.quantity, 2)
+      assert.deepEqual(input.refAdConfigs, [{ adId: 'ad-1', formats: ['1:1'], quantity: 2 }])
       return 'job-1'
     } }
   )
@@ -50,9 +50,9 @@ test('postGenerate: real success starts a job and returns 202 with jobId', async
   assert.deepEqual(res.body, { jobId: 'job-1' })
 })
 
-test('postGenerate: 400 when refAdIds is empty', async () => {
+test('postGenerate: 400 when refAdConfigs is empty', async () => {
   const res = makeRes()
-  await postGenerate({ body: validGenerateBody({ refAdIds: [] }) }, res, makeNext())
+  await postGenerate({ body: validGenerateBody({ refAdConfigs: [] }) }, res, makeNext())
   assert.equal(res.statusCode, 400)
 })
 
@@ -62,19 +62,38 @@ test('postGenerate: 400 when brand.productIds is missing', async () => {
   assert.equal(res.statusCode, 400)
 })
 
-test('postGenerate: 400 when formats is empty', async () => {
+test('postGenerate: 400 when a refAdConfigs entry has no formats, naming that ad', async () => {
   const res = makeRes()
-  await postGenerate({ body: validGenerateBody({ formats: [] }) }, res, makeNext())
+  await postGenerate(
+    { body: validGenerateBody({ refAdConfigs: [{ adId: 'ad-1', formats: [], quantity: 1 }] }) },
+    res, makeNext()
+  )
+  assert.equal(res.statusCode, 400)
+  assert.match(res.body.error, /ad-1/)
+})
+
+test('postGenerate: 400 when a refAdConfigs entry has no adId', async () => {
+  const res = makeRes()
+  await postGenerate(
+    { body: validGenerateBody({ refAdConfigs: [{ formats: ['1:1'], quantity: 1 }] }) },
+    res, makeNext()
+  )
   assert.equal(res.statusCode, 400)
 })
 
-test('postGenerate: 400 for an out-of-range quantity', async () => {
+test('postGenerate: 400 for a refAdConfigs entry with an out-of-range quantity', async () => {
   const res = makeRes()
-  await postGenerate({ body: validGenerateBody({ quantity: 0 }) }, res, makeNext())
+  await postGenerate(
+    { body: validGenerateBody({ refAdConfigs: [{ adId: 'ad-1', formats: ['1:1'], quantity: 0 }] }) },
+    res, makeNext()
+  )
   assert.equal(res.statusCode, 400)
 
   const res2 = makeRes()
-  await postGenerate({ body: validGenerateBody({ quantity: 11 }) }, res2, makeNext())
+  await postGenerate(
+    { body: validGenerateBody({ refAdConfigs: [{ adId: 'ad-1', formats: ['1:1'], quantity: 11 }] }) },
+    res2, makeNext()
+  )
   assert.equal(res2.statusCode, 400)
 })
 

@@ -101,8 +101,42 @@ describe('selectMyBrand', () => {
   })
 })
 
+// Part DD: toggleRefAd now seeds/deletes a refAdConfigs[adId] entry
+// alongside refAdIds — this is the plumbing everything else in this
+// describe block (and totalRenders below) depends on.
+describe('toggleRefAd + refAdConfigs', () => {
+  it('selecting a new ad seeds a default config (2 default formats, 1장 quantity)', () => {
+    const { result } = renderStudio()
+    act(() => result.current.toggleRefAd('ad-1'))
+
+    expect(result.current.refAdConfigs['ad-1']).toEqual({ formats: ['1:1 피드', '4:5 피드'], quantity: '1장' })
+  })
+
+  it('deselecting an ad deletes its config entirely — no orphaned entries', () => {
+    const { result } = renderStudio()
+    act(() => result.current.toggleRefAd('ad-1'))
+    expect(result.current.refAdConfigs['ad-1']).toBeDefined()
+
+    act(() => result.current.toggleRefAd('ad-1'))
+    expect(result.current.refAdConfigs['ad-1']).toBeUndefined()
+  })
+
+  it('toggleAdFormat/setAdQuantity only affect the targeted ad\'s own config', () => {
+    const { result } = renderStudio()
+    act(() => { result.current.toggleRefAd('ad-1'); result.current.toggleRefAd('ad-2') })
+
+    act(() => result.current.toggleAdFormat('ad-1', '1:1 피드'))
+    act(() => result.current.setAdQuantity('ad-2', '4장'))
+
+    expect(result.current.refAdConfigs['ad-1'].formats).toEqual(['4:5 피드'])
+    expect(result.current.refAdConfigs['ad-1'].quantity).toBe('1장')
+    expect(result.current.refAdConfigs['ad-2'].formats).toEqual(['1:1 피드', '4:5 피드'])
+    expect(result.current.refAdConfigs['ad-2'].quantity).toBe('4장')
+  })
+})
+
 describe('totalRenders', () => {
-  it('multiplies selected-product count x refAdIds count x formats count x quantity', () => {
+  it('sums each selected ad\'s own formats.length x quantity, then multiplies by selected-product count', () => {
     mockBrands = [
       makeBrand('healthykiki', '헬시키키', {
         '제품A': makeProduct('1'), '제품B': makeProduct('2'),
@@ -113,20 +147,23 @@ describe('totalRenders', () => {
     act(() => result.current.pickRefBrand('헬시키키'))
     act(() => { result.current.toggleRefAd('ad-1'); result.current.toggleRefAd('ad-2') })
     act(() => result.current.toggleProductSelection('헬시키키', '제품B')) // now both products selected
-    act(() => result.current.setQuantity('3장'))
-    // Default formats has 2 entries ('1:1 피드', '4:5 피드').
+    act(() => result.current.setAdQuantity('ad-1', '3장'))
+    act(() => result.current.setAdQuantity('ad-2', '3장'))
+    // Both ads default to 2 formats each.
 
-    // 2 products x 2 refAds x 2 formats x 3 quantity = 24
+    // 2 products x (ad-1: 2 formats x 3 + ad-2: 2 formats x 3) = 2 x 12 = 24
     expect(result.current.totalRenders).toBe(24)
   })
 
-  it('drops to 0 when formats is emptied out', () => {
+  it('drops to 0 for an ad whose formats get emptied out, without affecting a different ad\'s contribution', () => {
     const { result } = renderStudio()
     act(() => result.current.pickRefBrand('헬시키키'))
-    act(() => result.current.toggleRefAd('ad-1'))
-    act(() => { result.current.toggleFormat('1:1 피드'); result.current.toggleFormat('4:5 피드') })
-    expect(result.current.formats).toEqual([])
-    expect(result.current.totalRenders).toBe(0)
+    act(() => { result.current.toggleRefAd('ad-1'); result.current.toggleRefAd('ad-2') })
+    act(() => { result.current.toggleAdFormat('ad-1', '1:1 피드'); result.current.toggleAdFormat('ad-1', '4:5 피드') })
+    expect(result.current.refAdConfigs['ad-1'].formats).toEqual([])
+
+    // ad-1 contributes 0, ad-2 still contributes its default 2 formats x 1 quantity = 2, x 1 product.
+    expect(result.current.totalRenders).toBe(2)
   })
 
   it('is 0 with no refAdIds picked yet, even with a valid product/brand selection', () => {
@@ -134,6 +171,18 @@ describe('totalRenders', () => {
     act(() => result.current.pickRefBrand('헬시키키'))
     expect(result.current.refAdIds).toEqual([])
     expect(result.current.totalRenders).toBe(0)
+  })
+
+  it('each selected ad can genuinely differ from the others (the whole point of Part DD)', () => {
+    const { result } = renderStudio()
+    act(() => result.current.pickRefBrand('헬시키키'))
+    act(() => { result.current.toggleRefAd('ad-1'); result.current.toggleRefAd('ad-2') })
+    // ad-1: keep only 1 format, quantity 1 -> 1. ad-2: default 2 formats, quantity 2 -> 4.
+    act(() => result.current.toggleAdFormat('ad-1', '4:5 피드'))
+    act(() => result.current.setAdQuantity('ad-1', '1장'))
+    act(() => result.current.setAdQuantity('ad-2', '2장'))
+
+    expect(result.current.totalRenders).toBe(1 * (1 + 4)) // 1 product x (1 + 4)
   })
 })
 
@@ -147,6 +196,21 @@ describe('goNext guard clauses', () => {
     act(() => result.current.goNext()) // blocked: no refAdIds
     expect(result.current.step).toBe(2)
     expect(mockShowToast).toHaveBeenCalledWith('광고소재를 1개 이상 선택하세요')
+  })
+
+  it('blocks final submission when a selected ad\'s formats have been emptied out, naming that ad', () => {
+    const { result } = renderStudio()
+    act(() => result.current.pickRefBrand('헬시키키'))
+    act(() => result.current.toggleRefAd('ad-1'))
+    act(() => { result.current.toggleAdFormat('ad-1', '1:1 피드'); result.current.toggleAdFormat('ad-1', '4:5 피드') })
+    act(() => result.current.goNext())
+    act(() => result.current.goNext())
+    act(() => result.current.goNext())
+    expect(result.current.step).toBe(4)
+
+    act(() => result.current.goNext())
+    expect(mockShowToast).toHaveBeenCalledWith('AD ad-1의 포맷을 1개 이상 선택하세요')
+    expect(mockStartGeneration).not.toHaveBeenCalled()
   })
 
   it('blocks final submission when no brand is active', () => {
@@ -201,11 +265,12 @@ describe('goNext guard clauses', () => {
     expect(mockStartGeneration).not.toHaveBeenCalled()
   })
 
-  it('a fully valid selection actually calls startGeneration and switches to the gallery tab', () => {
+  it('a fully valid selection actually calls startGeneration with a real refAdConfigs payload and switches to the gallery tab', () => {
     const { result } = renderStudio()
 
     act(() => result.current.pickRefBrand('헬시키키'))
     act(() => result.current.toggleRefAd('ad-1'))
+    act(() => result.current.setAdQuantity('ad-1', '2장'))
     act(() => result.current.goNext())
     act(() => result.current.goNext())
     act(() => result.current.goNext())
@@ -213,6 +278,11 @@ describe('goNext guard clauses', () => {
 
     act(() => result.current.goNext())
     expect(mockStartGeneration).toHaveBeenCalledTimes(1)
+    const payload = mockStartGeneration.mock.calls[0][0]
+    expect(payload.refAdConfigs).toEqual([{ adId: 'ad-1', formats: ['1:1 피드', '4:5 피드'], quantity: 2 }])
+    expect(payload.refAdIds).toBeUndefined()
+    expect(payload.formats).toBeUndefined()
+    expect(payload.quantity).toBeUndefined()
     expect(mockGo).toHaveBeenCalledWith('gallery')
   })
 })

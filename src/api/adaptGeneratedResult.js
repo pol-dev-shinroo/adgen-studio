@@ -30,6 +30,11 @@ export function adaptGeneratedResult(row) {
   return {
     id: row['Generation ID'],
     brand: row['Brand'] || '',
+    // Part DD: the competitor brand this render's reference ad belonged
+    // to (distinct from `brand`, our own brand) — blank for rows that
+    // predate this column, same "older row missing a newer column"
+    // fallback every other optional field here already uses.
+    refBrand: row['Ref Brand'] || '',
     referenceAdId: row['Reference Ad ID'] || '',
     format: row['Format'] || '',
     styleIntensity: row['Style Intensity'] || '',

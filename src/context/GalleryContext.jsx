@@ -52,8 +52,11 @@ export function GalleryProvider({ children }) {
     return () => { cancelled = true }
   }, [])
 
-  // input: { refBrand, refAdIds, brand:{key,productIds}, formats, quantity,
-  // styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl }.
+  // input: { refBrand, refAdConfigs, brand:{key,productIds}, styleIntensity,
+  // instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType }.
+  // Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
+  // each entry is { adId, formats, quantity }, since format/quantity now
+  // vary per selected reference ad rather than being one shared setting.
   // adCopyOverride (Part P): { price, promotion, adHooks } | null — real,
   // user-picked copy from Step 3's ad-selection panel, used instead of the
   // backend's Pinecone lookup when present; null preserves the old behavior
@@ -70,6 +73,16 @@ export function GalleryProvider({ children }) {
     setLastSummary(null)
     setLastError(null)
 
+    // Part DD: same per-ad-config sum StudioContext.jsx's own totalRenders
+    // and the backend's computeTotalRenders(products, refAdConfigs) use —
+    // this is only the OPTIMISTIC initial estimate shown before the real
+    // job/status response lands (see run.js's own totalRenders for the
+    // authoritative figure once the job actually starts), but it should
+    // still never drift from the same math.
+    const initialTotalRenders = input.brand.productIds.length * input.refAdConfigs.reduce(
+      (sum, cfg) => sum + cfg.formats.length * cfg.quantity, 0
+    )
+
     run({
       initialJob: {
         status: 'running',
@@ -77,7 +90,7 @@ export function GalleryProvider({ children }) {
         brandKey: input.brand.key,
         progress: {
           phase: 'analyzing',
-          totalRenders: input.brand.productIds.length * input.refAdIds.length * input.formats.length * input.quantity,
+          totalRenders: initialTotalRenders,
           rendersDone: 0,
           recentItems: [],
         },
@@ -132,14 +145,18 @@ export function GalleryProvider({ children }) {
   // lastParams.brand.productIds still holds every product from the
   // original multi-product batch, and spreading it wholesale would re-fan-
   // out the retry across all of them instead of just the one that failed.
+  //
+  // Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
+  // must be explicitly overridden here (not just spread from lastParams),
+  // or the retry would re-fan-out across the ENTIRE original refAdConfigs
+  // array instead of scoping to just the one failed ad/format, same
+  // over-fan-out bug productIds above already guards against.
   const retryResult = useCallback((failedItem) => {
     if (!lastParams) return
     startGeneration({
       ...lastParams,
       brand: { ...lastParams.brand, productIds: [failedItem.productId] },
-      refAdIds: [failedItem.adId],
-      formats: [failedItem.format],
-      quantity: 1,
+      refAdConfigs: [{ adId: failedItem.adId, formats: [failedItem.format], quantity: 1 }],
     })
   }, [lastParams, startGeneration])
 
