@@ -48,7 +48,7 @@ const DETECTION_MODEL = 'gpt-5.5'
 const DETECTION_SYSTEM_PROMPT = `You are an expert Product Photo Analyst. Inspect this product marketing photo and identify every distinct, individually reusable element in it — every one of these will be isolated as its own cropped image asset, so be thorough.
 
 For each element:
-- "type": a short English category label. Use one of these when it genuinely fits: product, human_model, promo_badge, authority_badge, logo, headline_copy, subheadline_copy, promo_phrase — but choose a different label yourself if something present doesn't fit any of these.
+- "type": a short English category label. Use one of these when it genuinely fits: product, human_model, promo_badge, authority_badge, logo, headline_copy, subheadline_copy, promo_phrase, background — but choose a different label yourself if something present doesn't fit any of these.
   - "promo_badge" is specifically a price/discount callout graphic (e.g. "Up to 46%").
   - "authority_badge" is a credential/endorsement graphic instead — an expert's photo+title (e.g. a "피부과 의사" stamp), a certification mark, or an "전문가 추천" stamp. This is a distinct concept from promo_badge, worth its own type.
   - "background" is the backdrop/setting behind the product and model — only worth extracting as its own element if it's a distinct, reusable studio/lifestyle backdrop, not a plain solid color.
@@ -124,6 +124,28 @@ export function parseDetectionResult(rawText) {
 // identical to before Part M). Exported for direct unit testing of the
 // scoping/wording logic.
 export function buildProductIsolationPrompt(entity, totalEntities) {
+  // The 'background' branch below is its own case, not a fall-through to the
+  // generic `the ${label}` wording — the generic branch's own instructions
+  // ("Remove the background... output it centered on a plain solid white
+  // background") are directly self-contradictory when the entity being
+  // isolated IS the background: it would tell the model to both keep and
+  // remove the background in the same prompt, and to replace a background
+  // reference's actual backdrop with white, which defeats the entire point
+  // of extracting one (생성 AI's 배경 대체 dialog needs the real backdrop
+  // pixels, not a white card).
+  if (entity.type === 'background') {
+    const target = totalEntities > 1
+      ? `Isolate ONLY the background/backdrop described as: ${entity.description}. `
+      : `Isolate ONLY the background/backdrop from this photo. `
+    return target +
+      `Remove the product(s), any human model, hands, staging props in the foreground, and marketing ` +
+      `text overlays — keep only the pure backdrop/setting itself. Output it filling the full frame ` +
+      `(not centered on a white card), preserving its true colors, textures, and lighting. Naturally ` +
+      `fill in whatever area the removed foreground objects occupied so the result looks like a ` +
+      `continuous, reusable background plate, not a background with holes cut out of it. Do not add ` +
+      `new objects, text, or decorative elements that weren't part of the original backdrop.`
+  }
+
   const subject = entity.type === 'human_model'
     ? 'the human model (person)'
     : entity.type === 'product'

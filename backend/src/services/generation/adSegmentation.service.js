@@ -16,10 +16,19 @@ const MODEL = 'gpt-5.5'
 // coordinates. This is a new, dedicated call whose whole purpose is a
 // normalized-fraction bounding box per segment, so 생성 AI's chat can drive
 // an on-image highlight overlay as each dialog is asked.
+// The 'background' segment's own box is a nominal placeholder, not something
+// the frontend ever renders directly — AIImagePane.jsx derives the "what is
+// background" highlight by dimming every OTHER (text/product/model)
+// segment's box and leaving the rest of the image at full brightness, which
+// communicates "background = whatever isn't foreground" far more clearly
+// than trying to box-highlight one sample patch of it ever could. So the
+// prompt below just asks for the full-image box for background, rather than
+// spending model effort hunting for "a representative background area" that
+// nothing downstream actually uses.
 const SYSTEM_PROMPT = `You are an expert Ad Layout Analyst. Inspect this advertisement image and break it into distinct visual segments, so each can be individually highlighted and discussed.
 
 Identify:
-1. Exactly ONE "background" segment — the region of the image that is background/backdrop, not overlaid text, not the product, not a human model. Give it a representative bounding box covering a clearly-background area (it does not need to cover the whole image — a representative rectangle is enough for highlighting purposes).
+1. Exactly ONE "background" segment — the region of the image that is background/backdrop, not overlaid text, not the product, not a human model. Its bounding box should always be the full image ({"x":0,"y":0,"width":1,"height":1}) — the actual background area is derived downstream from where the OTHER segments are, not from this box.
 2. Every overlaid marketing text element (banners, discount badges, headlines, speech bubbles, floating text) — same criteria as identifying overlaid copy: ignore any text printed ON the product packaging itself.
 3. Every instance of the advertised product.
 4. A human model, if one is visibly holding, using, or posing with the product. Omit this entirely if no person appears in the image.

@@ -161,6 +161,22 @@ test('buildProductIsolationPrompt works the same for a phrase entity as any othe
   assert.match(prompt, /plain solid white background/)
 })
 
+test('buildProductIsolationPrompt uses a dedicated background-preserving prompt for a background entity, not the generic white-card wording', () => {
+  const prompt = buildProductIsolationPrompt(
+    { type: 'background', label: '배경', description: 'Warm wooden studio backdrop with soft daylight' }, 3
+  )
+
+  assert.match(prompt, /^Isolate ONLY the background\/backdrop described as: Warm wooden studio backdrop with soft daylight\./)
+  // The generic branch's own "Remove the background... plain solid white
+  // background" wording would be self-contradictory here — a background
+  // entity's whole point is to preserve the real backdrop, not swap it for
+  // a white card.
+  assert.doesNotMatch(prompt, /plain solid white background/)
+  assert.doesNotMatch(prompt, /Remove the background/)
+  assert.match(prompt, /Remove the product\(s\), any human model, hands, staging props/)
+  assert.match(prompt, /filling the full frame/)
+})
+
 test('buildProductIsolationPrompt still carries the same white-background/preserve-appearance constraints in every case', () => {
   const scoped = buildProductIsolationPrompt({ type: 'product', description: 'x' }, 2)
   const unscoped = buildProductIsolationPrompt({ type: 'product', description: 'x' }, 1)

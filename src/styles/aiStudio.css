@@ -46,6 +46,23 @@
   padding:3px 8px;border-radius:6px;
   white-space:nowrap;
 }
+/* 배경 mode: the label isn't anchored to a single box anymore (there's no
+   one "background box" being highlighted — see AIImagePane.jsx), so it's
+   pinned to a fixed corner of the frame instead. */
+.ai-image-highlight-label-fixed{
+  top:10px;left:10px;
+}
+/* One of these renders per foreground (text/product/model) segment when a
+   background dialog is active — dims everything that ISN'T background,
+   which reads as "background = whatever's left uncovered" rather than
+   trying to box-highlight background directly. */
+.ai-image-mask-cutout{
+  position:absolute;
+  background:rgba(20,22,40,.6);
+  border:1.5px dashed rgba(255,255,255,.5);
+  border-radius:4px;
+  pointer-events:none;
+}
 
 /* --- Chat pane --- */
 .ai-chat-pane{
@@ -82,7 +99,13 @@
 
 .ai-ad-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-top:10px}
 .ai-ad-card{all:unset;display:flex;flex-direction:column;gap:4px;cursor:pointer;font-size:11px;font-weight:600;color:var(--sub);text-align:center}
-.ai-ad-card .thumb{aspect-ratio:1;border-radius:8px}
+/* Same contract every other screen's Thumb usage relies on (see global.css's
+   own note on this) — Thumb's <img> carries no intrinsic sizing of its own,
+   so without position:relative/overflow:hidden here plus an absolutely
+   positioned, cover-fitted .thumb-img, each image rendered at its natural
+   size and visually overlapped its neighbors in the grid. */
+.ai-ad-card .thumb{aspect-ratio:1;border-radius:8px;position:relative;overflow:hidden;background:var(--bg)}
+.ai-ad-card .thumb .thumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .ai-ad-card:hover .thumb{outline:2px solid var(--brand)}
 
 /* Claude-Code-permission-dialog-style card */
@@ -127,7 +150,10 @@
   all:unset;display:flex;flex-direction:column;gap:4px;cursor:pointer;
   font-size:11px;font-weight:600;color:var(--sub);text-align:center;
 }
-.ai-ref-card .thumb{aspect-ratio:1;border-radius:8px;background:var(--bg)}
+/* Same fix as .ai-ad-card .thumb above — this grid had the identical
+   missing-positioning defect. */
+.ai-ref-card .thumb{aspect-ratio:1;border-radius:8px;background:var(--bg);position:relative;overflow:hidden}
+.ai-ref-card .thumb .thumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .ai-ref-card:hover .thumb, .ai-ref-card.selected .thumb{outline:2px solid var(--brand)}
 
 .ai-decisions-summary{
