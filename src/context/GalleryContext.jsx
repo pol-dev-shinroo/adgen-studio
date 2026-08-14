@@ -26,6 +26,15 @@ export function GalleryProvider({ children }) {
   // after a generation job finishes — those are already covered by
   // GenerationProgress.
   const [resultsLoading, setResultsLoading] = useState(true)
+  // The real, full error text behind a whole-job failure (onFailed's
+  // job.error) or a request-level failure (onError's err.message) —
+  // showToast below still fires for an immediate "something happened"
+  // signal, but Toast.jsx auto-dismisses after 2.8s and is rendered with
+  // pointer-events:none (global.css's #toast rule), so it was never
+  // actually readable or copyable. This persists alongside it so
+  // GalleryScreen can render it in a panel the user can actually read and
+  // copy from, until the next generation attempt clears it.
+  const [lastError, setLastError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -59,6 +68,7 @@ export function GalleryProvider({ children }) {
   const startGeneration = useCallback((input) => {
     setLastParams(input)
     setLastSummary(null)
+    setLastError(null)
 
     run({
       initialJob: {
@@ -76,6 +86,7 @@ export function GalleryProvider({ children }) {
       getStatus: getGenerationStatus,
       onFailed: (job) => {
         setLastSummary(job.summary)
+        setLastError(job.error || '알 수 없는 오류')
         showToast(`생성 실패: ${job.error || '알 수 없는 오류'}`)
       },
       onDone: async (job) => {
@@ -89,6 +100,7 @@ export function GalleryProvider({ children }) {
       },
       onError: (err) => {
         console.error('Generation failed:', err)
+        setLastError(err.message || '알 수 없는 오류')
         showToast(`생성 중 오류가 발생했습니다: ${err.message}`)
       },
     })
@@ -133,7 +145,7 @@ export function GalleryProvider({ children }) {
 
   return (
     <GalleryContext.Provider
-      value={{ results, activeJob, lastSummary, startGeneration, approveResult, retryResult, resultsLoading }}
+      value={{ results, activeJob, lastSummary, lastError, startGeneration, approveResult, retryResult, resultsLoading }}
     >
       {children}
     </GalleryContext.Provider>
