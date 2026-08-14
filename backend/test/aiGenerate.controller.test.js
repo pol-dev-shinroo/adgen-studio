@@ -1,0 +1,256 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { postSegment, postRender, applyTextDecisionOverrides } from '../src/controllers/aiGenerate.controller.js'
+
+function makeRes() {
+  const res = { statusCode: null, body: null }
+  res.status = (code) => { res.statusCode = code; return res }
+  res.json = (body) => { res.body = body; return res }
+  return res
+}
+
+function makeNext() {
+  const calls = []
+  const next = (...args) => calls.push(args)
+  next.calls = calls
+  return next
+}
+
+// --- postSegment ---
+
+test('postSegment: 400 when refAdId is missing', async () => {
+  const res = makeRes()
+  await postSegment({ body: {} }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
+test('postSegment: 404 when no ad matches refAdId', async () => {
+  const res = makeRes()
+  await postSegment(
+    { body: { refAdId: 'missing' } }, res, makeNext(),
+    { getAllAdsFn: async () => [{ 'Ad Archive ID': 'ad-1' }] }
+  )
+  assert.equal(res.statusCode, 404)
+})
+
+test('postSegment: 400 when the matched ad has no image available', async () => {
+  const res = makeRes()
+  await postSegment(
+    { body: { refAdId: 'ad-1' } }, res, makeNext(),
+    { getAllAdsFn: async () => [{ 'Ad Archive ID': 'ad-1' }] }
+  )
+  assert.equal(res.statusCode, 400)
+})
+
+test('postSegment: real success downloads the resolved image and returns segments + imageUrl', async () => {
+  const res = makeRes()
+  await postSegment(
+    { body: { refAdId: 'ad-1' } }, res, makeNext(),
+    {
+      getAllAdsFn: async () => [{ 'Ad Archive ID': 'ad-1', 'Archived Image Links': 'https://example.com/ad.jpg' }],
+      downloadImageAsBase64Fn: async (url) => { assert.equal(url, 'https://example.com/ad.jpg'); return { base64: 'B64' } },
+      segmentReferenceAdFn: async (base64) => { assert.equal(base64, 'B64'); return { segments: [{ id: 'background-0' }] } },
+    }
+  )
+  assert.equal(res.statusCode, null)
+  assert.deepEqual(res.body, { segments: [{ id: 'background-0' }], imageUrl: 'https://example.com/ad.jpg' })
+})
+
+// --- applyTextDecisionOverrides ---
+
+test('applyTextDecisionOverrides overrides new_text when a segment correlates by exact text match', () => {
+  const replacements = [{ location: 'top', original_text: '최대 71% 할인', new_text: 'AI 제안 문구' }]
+  const textSegments = [{ id: 'text-1', text: '최대 71% 할인' }]
+  const result = applyTextDecisionOverrides(replacements, textSegments, {
+    'text-1': { mode: 'custom', value: '직접 입력한 문구' },
+  })
+  assert.equal(result[0].new_text, '직접 입력한 문구')
+  assert.equal(replacements[0].new_text, 'AI 제안 문구', 'must not mutate the input array')
+})
+
+test('applyTextDecisionOverrides leaves the copywriting suggestion alone when correlation fails', () => {
+  const replacements = [{ location: 'top', original_text: '다른 문구', new_text: 'AI 제안' }]
+  const textSegments = [{ id: 'text-1', text: '세그멘테이션이 다르게 읽은 문구' }]
+  const result = applyTextDecisionOverrides(replacements, textSegments, {
+    'text-1': { mode: 'custom', value: '직접 입력' },
+  })
+  assert.equal(result[0].new_text, 'AI 제안')
+})
+
+test('applyTextDecisionOverrides never overrides a mode:"replace" text decision (styling reference, not a content override)', () => {
+  const replacements = [{ location: 'top', original_text: '문구', new_text: 'AI 제안' }]
+  const textSegments = [{ id: 'text-1', text: '문구' }]
+  const result = applyTextDecisionOverrides(replacements, textSegments, {
+    'text-1': { mode: 'replace', value: 'https://example.com/copy-style.png' },
+  })
+  assert.equal(result[0].new_text, 'AI 제안')
+})
+
+// --- postRender ---
+
+function validRenderBody(overrides = {}) {
+  return {
+    refAdId: 'ad-1',
+    refBrand: '경쟁사A',
+    brand: { key: 'healthykiki', productId: '1' },
+    formats: ['1:1 피드'],
+    quantity: 1,
+    decisions: { background: { mode: 'keep', value: null }, texts: {}, model: null, product: { mode: 'keep', value: null } },
+    segments: [],
+    ...overrides,
+  }
+}
+
+function fakeRenderDeps(overrides = {}) {
+  const appendCalls = []
+  return {
+    getAllAdsFn: async () => [{ 'Ad Archive ID': 'ad-1', 'Archived Image Links': 'https://example.com/ad.jpg' }],
+    getAllProductsFn: async () => [{
+      'Brand': '헬시키키', 'Product ID': '1', 'Product Name': '제품A',
+      'Extracted References JSON': JSON.stringify([{ type: 'product', imageUrl: 'https://example.com/product.png' }]),
+    }],
+    downloadImageAsBase64Fn: async (url) => ({ base64: `B64(${url})`, mimeType: 'image/png' }),
+    analyzeReferenceAdFn: async () => ({ identified_texts: [{ location: 'top', text: '원본 문구' }], product_instances: [] }),
+    findCounterFactsFn: async () => ({ counter_facts: [] }),
+    writeReplacementCopyFn: async () => ({ replacements: [{ location: 'top', original_text: '원본 문구', new_text: 'AI 제안' }] }),
+    renderConversationalImageFn: async () => 'RENDERED_B64',
+    uploadGeneratedImageFn: async () => 'https://drive.google.com/file/d/generated/view',
+    appendGeneratedRowFn: async (row) => { appendCalls.push(row) },
+    ...overrides,
+    _appendCalls: appendCalls,
+  }
+}
+
+test('postRender: 400 when refAdId is missing', async () => {
+  const res = makeRes()
+  await postRender({ body: validRenderBody({ refAdId: undefined }) }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
+test('postRender: 400 when formats is empty', async () => {
+  const res = makeRes()
+  await postRender({ body: validRenderBody({ formats: [] }) }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
+test('postRender: 400 when quantity is out of range', async () => {
+  const res = makeRes()
+  await postRender({ body: validRenderBody({ quantity: 0 }) }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
+test('postRender: 400 when decisions is missing', async () => {
+  const res = makeRes()
+  await postRender({ body: validRenderBody({ decisions: undefined }) }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
+test('postRender: 400 when brand.key is unknown', async () => {
+  const res = makeRes()
+  const deps = fakeRenderDeps()
+  await postRender({ body: validRenderBody({ brand: { key: 'not-a-real-brand', productId: '1' } }) }, res, makeNext(), deps)
+  assert.equal(res.statusCode, 400)
+})
+
+test('postRender: 404 when no ad matches refAdId', async () => {
+  const res = makeRes()
+  const deps = fakeRenderDeps({ getAllAdsFn: async () => [] })
+  await postRender({ body: validRenderBody() }, res, makeNext(), deps)
+  assert.equal(res.statusCode, 404)
+})
+
+test('postRender: 400 when the product has no extracted product-type reference', async () => {
+  const res = makeRes()
+  const deps = fakeRenderDeps({
+    getAllProductsFn: async () => [{ 'Brand': '헬시키키', 'Product ID': '1', 'Product Name': '제품A', 'Extracted References JSON': '[]' }],
+  })
+  await postRender({ body: validRenderBody() }, res, makeNext(), deps)
+  assert.equal(res.statusCode, 400)
+  assert.match(res.body.error, /참조 이미지가 추출되지 않았습니다/)
+})
+
+test('postRender: real success renders once, uploads, appends a row with Ref Brand, and responds with a summary', async () => {
+  const res = makeRes()
+  const deps = fakeRenderDeps()
+  await postRender({ body: validRenderBody() }, res, makeNext(), deps)
+
+  assert.equal(res.statusCode, null)
+  assert.equal(res.body.succeeded, 1)
+  assert.equal(res.body.failed, 0)
+  assert.equal(res.body.resultIds.length, 1)
+  assert.equal(res.body.generationId, res.body.resultIds[0])
+
+  assert.equal(deps._appendCalls.length, 1)
+  const row = deps._appendCalls[0]
+  assert.equal(row['Ref Brand'], '경쟁사A')
+  assert.equal(row['Reference Ad ID'], 'ad-1')
+  assert.equal(row['Product ID'], '1')
+  assert.equal(row['Format'], '1:1 피드')
+})
+
+test('postRender: formats x quantity multiplies the number of renders, matching StudioContext\'s own math', async () => {
+  const res = makeRes()
+  const deps = fakeRenderDeps()
+  await postRender(
+    { body: validRenderBody({ formats: ['1:1 피드', '4:5 피드'], quantity: 2 }) }, res, makeNext(), deps
+  )
+  assert.equal(res.body.succeeded, 4)
+  assert.equal(deps._appendCalls.length, 4)
+})
+
+test('postRender: a partial render failure is recorded but does not abort the remaining renders', async () => {
+  const res = makeRes()
+  let call = 0
+  const deps = fakeRenderDeps({
+    renderConversationalImageFn: async () => {
+      call += 1
+      if (call === 1) throw new Error('content policy violation')
+      return 'RENDERED_B64'
+    },
+  })
+  await postRender({ body: validRenderBody({ formats: ['1:1 피드'], quantity: 2 }) }, res, makeNext(), deps)
+
+  assert.equal(res.body.succeeded, 1)
+  assert.equal(res.body.failed, 1)
+  assert.equal(res.body.failures[0].error, 'content policy violation')
+})
+
+test('postRender: total failure (succeeded 0) still responds 200 with a summary, not an error', async () => {
+  const res = makeRes()
+  const deps = fakeRenderDeps({
+    renderConversationalImageFn: async () => { throw new Error('always fails') },
+  })
+  await postRender({ body: validRenderBody() }, res, makeNext(), deps)
+
+  assert.equal(res.statusCode, null)
+  assert.equal(res.body.succeeded, 0)
+  assert.equal(res.body.failed, 1)
+  assert.equal(res.body.generationId, null)
+})
+
+test('postRender: a background/model/copy-style "replace" decision downloads and threads the picked image into materialImages', async () => {
+  const res = makeRes()
+  const downloadedUrls = []
+  const deps = fakeRenderDeps({
+    downloadImageAsBase64Fn: async (url) => { downloadedUrls.push(url); return { base64: `B64(${url})` } },
+    renderConversationalImageFn: async ({ materialImages }) => {
+      assert.equal(materialImages.length, 2)
+      assert.deepEqual(materialImages.map((m) => m.role).sort(), ['background', 'model-face'])
+      return 'RENDERED_B64'
+    },
+  })
+  await postRender({
+    body: validRenderBody({
+      decisions: {
+        background: { mode: 'replace', value: 'https://example.com/bg.png' },
+        texts: {},
+        model: { mode: 'replace', value: 'https://example.com/model.png' },
+        product: { mode: 'keep', value: null },
+      },
+    }),
+  }, res, makeNext(), deps)
+
+  assert.equal(res.body.succeeded, 1)
+  assert.ok(downloadedUrls.includes('https://example.com/bg.png'))
+  assert.ok(downloadedUrls.includes('https://example.com/model.png'))
+})

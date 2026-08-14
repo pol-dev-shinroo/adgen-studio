@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { renderFinalImage } from '../src/services/generation/renderImage.service.js'
+import { renderFinalImage, renderConversationalImage } from '../src/services/generation/renderImage.service.js'
 
 const FORMAT = '1:1 피드'
 
@@ -316,4 +316,110 @@ test('renderFinalImage MAXIMUM + model reference: the product-swap framing sente
   assert.match(text, /used for a face swap/)
   assert.match(text, /NOT another product image/)
   assert.match(text, /Do not confuse the second image \(product\) with the third image \(face reference\)/)
+})
+
+// Part EE §8: renderConversationalImage — 생성 AI's own render function.
+
+test('renderConversationalImage with zero material images sends exactly two input_image entries and a plain two-image framing', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderConversationalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    materialImages: [],
+    productInstances: PRODUCT_INSTANCES,
+    replacements: REPLACEMENTS,
+    format: FORMAT,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const req = getLastRequest()
+  const imageParts = req.input[0].content.filter((c) => c.type === 'input_image')
+  assert.equal(imageParts.length, 2)
+
+  const text = req.input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Image 1 is the original reference ad\. Image 2 is our product's reference photo\./)
+  assert.doesNotMatch(text, /Image 3/)
+})
+
+test('renderConversationalImage builds one dynamic framing clause per material image, in order, naming its role', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderConversationalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    materialImages: [
+      { role: 'background', imageBase64: 'BG_B64' },
+      { role: 'copy-style', imageBase64: 'COPY_B64' },
+    ],
+    productInstances: PRODUCT_INSTANCES,
+    replacements: REPLACEMENTS,
+    format: FORMAT,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const req = getLastRequest()
+  const imageParts = req.input[0].content.filter((c) => c.type === 'input_image')
+  assert.equal(imageParts.length, 4)
+  assert.equal(imageParts[2].image_url, 'data:image/png;base64,BG_B64')
+  assert.equal(imageParts[3].image_url, 'data:image/png;base64,COPY_B64')
+
+  const text = req.input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Image 3 is our background reference/)
+  assert.match(text, /Image 4 is our brand's copy styling reference/)
+})
+
+test('renderConversationalImage includes the full face-replacement instruction only when a model-face material is present', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderConversationalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    materialImages: [{ role: 'model-face', imageBase64: 'FACE_B64' }],
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Image 3 is our model's face reference/)
+  assert.match(text, /Completely replace the face/)
+  assert.match(text, /full face swap, not a styling influence/)
+})
+
+test('renderConversationalImage reuses replacementInstructionFor/productSwapInstructionFor mechanics unchanged', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderConversationalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    materialImages: [],
+    productInstances: PRODUCT_INSTANCES,
+    replacements: REPLACEMENTS,
+    format: FORMAT,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Replacements: \[{"location":"top banner","original_text":"원본","new_text":"대체"}\]/)
+  assert.match(text, /Seamlessly replace EVERY instance of the competitor's product/)
+  assert.doesNotMatch(text, /third image/i, 'this call must not use productSwapInstructionFor\'s own old framing sentence')
+})
+
+test('renderConversationalImage appends free-text instructions verbatim at the end', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderConversationalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    materialImages: [],
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    instructions: '제품을 조금 더 크게',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /제품을 조금 더 크게$/)
 })

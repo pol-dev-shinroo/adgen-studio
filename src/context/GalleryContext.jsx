@@ -36,6 +36,16 @@ export function GalleryProvider({ children }) {
   // copy from, until the next generation attempt clears it.
   const [lastError, setLastError] = useState(null)
 
+  // Part EE: extracted so 생성 AI's own single-image render call (which
+  // never goes through useJobPolling's onDone the way 생성 스튜디오's batch
+  // jobs do) can trigger the exact same re-fetch-and-adapt this screen's own
+  // mount effect and onDone below already relied on, instead of duplicating
+  // it a third time.
+  const refreshResults = useCallback(async () => {
+    const { results: raw } = await getGeneratedResults()
+    setResults(raw.map(adaptGeneratedResult))
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     getGeneratedResults()
@@ -103,8 +113,7 @@ export function GalleryProvider({ children }) {
         showToast(`생성 실패: ${job.error || '알 수 없는 오류'}`)
       },
       onDone: async (job) => {
-        const { results: raw } = await getGeneratedResults()
-        setResults(raw.map(adaptGeneratedResult))
+        await refreshResults()
         setLastSummary(job.summary)
         showToast(
           `생성 완료: ${job.summary.succeeded}건 성공` +
@@ -117,7 +126,7 @@ export function GalleryProvider({ children }) {
         showToast(`생성 중 오류가 발생했습니다: ${err.message}`)
       },
     })
-  }, [showToast, run])
+  }, [showToast, run, refreshResults])
 
   const approveResult = useCallback(async (id) => {
     const previous = results
@@ -162,7 +171,10 @@ export function GalleryProvider({ children }) {
 
   return (
     <GalleryContext.Provider
-      value={{ results, activeJob, lastSummary, lastError, startGeneration, approveResult, retryResult, resultsLoading }}
+      value={{
+        results, activeJob, lastSummary, lastError, startGeneration, approveResult, retryResult, resultsLoading,
+        refreshResults,
+      }}
     >
       {children}
     </GalleryContext.Provider>

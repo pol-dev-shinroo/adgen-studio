@@ -2,9 +2,7 @@ import { useAds } from '../../../context/AdsContext.jsx'
 import { useStudio } from '../../../context/StudioContext.jsx'
 import Thumb from '../../common/Thumb.jsx'
 import Chip from '../../common/Chip.jsx'
-
-const FORMATS = ['1:1 피드', '4:5 피드', '9:16 스토리']
-const QUANTITIES = ['1장', '2장', '4장']
+import { FORMATS, QUANTITIES } from '../../../data/generationOptions.js'
 
 export default function StepGenerationOptions() {
   const { ads } = useAds()

@@ -8,6 +8,7 @@ import collectRoutes from './routes/collect.routes.js'
 import adsRoutes from './routes/ads.routes.js'
 import productsRoutes from './routes/products.routes.js'
 import generationRoutes from './routes/generation.routes.js'
+import aiGenerateRoutes from './routes/aiGenerate.routes.js'
 import credentialsRoutes from './routes/credentials.routes.js'
 
 // Every existing endpoint is only ever called from our own Vercel frontend,
@@ -82,6 +83,12 @@ export function createApp() {
   app.use('/api/ads', adsRoutes)
   app.use('/api/products', productsRoutes)
   app.use('/api/generate', generationRoutes)
+  // Part EE: 생성 AI's own route namespace, separate from /api/generate
+  // (생성 스튜디오's batch job-runner) — a single-ad, single-render
+  // conversational flow with a genuinely different request/response shape,
+  // not a variant of the existing job endpoints. Gated by the same global
+  // requireAuth check as every other route here (see PUBLIC_ROUTES above).
+  app.use('/api/ai-generate', aiGenerateRoutes)
   app.use('/api/credentials', credentialsRoutes)
 
   app.use((req, res) => res.status(404).json({ error: 'Not found' }))

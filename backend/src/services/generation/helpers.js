@@ -14,14 +14,23 @@ export function findBrandDef(brandKey) {
 // a human model). Malformed/missing JSON (older rows, or rows that were
 // never extracted) safely yields [], same "not extracted yet" outcome
 // prepareInputs already handled for the old single-field case.
-export function productTypeReferences(product) {
+//
+// Part EE: generalized to take the type as a parameter, since 생성 AI's
+// right-panel galleries need to filter by 'background'/'model'/'product' (or
+// any other extracted type) just as much as the render pipeline has always
+// needed to filter by 'product'.
+export function referencesOfType(product, type) {
   let references
   try {
     references = JSON.parse(product['Extracted References JSON'] || '[]')
   } catch {
     return []
   }
-  return Array.isArray(references) ? references.filter((r) => r?.type === 'product') : []
+  return Array.isArray(references) ? references.filter((r) => r?.type === type) : []
+}
+
+export function productTypeReferences(product) {
+  return referencesOfType(product, 'product')
 }
 
 // Sane default when nothing more specific is picked: the first product-type

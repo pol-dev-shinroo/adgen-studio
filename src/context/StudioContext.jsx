@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback } from 'react'
 import { useNavigation } from './NavigationContext.jsx'
 import { useGallery } from './GalleryContext.jsx'
 import { useProducts } from './ProductsContext.jsx'
+import { useProductRefSelections } from '../hooks/useProductRefSelections.js'
 
 const StudioContext = createContext(null)
 
@@ -110,21 +111,10 @@ export function StudioProvider({ children }) {
     const override = productRefOverrides[b.name] || {}
     const selectedNames = (selections[b.name]?.products || []).filter((n) => b.products[n])
 
-    const galleryItems = selectedNames.flatMap((name) => {
-      const product = b.products[name]
-      return product.extractedReferences.map((ref, index) => ({
-        key: `${name}::${index}`, productName: name, product, ref,
-      }))
-    })
+    // Part EE: shared derivation — see useProductRefSelections.js for why
+    // this now lives in one place instead of being computed inline here.
+    const { galleryItems, availablePrices, availablePromotions, availableAdHooks } = useProductRefSelections(b, selectedNames)
     const galleryKeys = new Set(galleryItems.map((item) => item.key))
-
-    const availablePrices = [...new Set(selectedNames.map((n) => b.products[n].price).filter((v) => v && v !== '-'))]
-    const availablePromotions = [
-      ...new Set(selectedNames.map((n) => b.products[n].promotionInfo).filter((v) => v && v !== '없음')),
-    ]
-    const availableAdHooks = [
-      ...new Set(selectedNames.map((n) => b.products[n].adHookCopy).filter((v) => v && v !== '없음')),
-    ]
 
     productRefSelections[b.name] = {
       galleryItems,

@@ -51,6 +51,7 @@ For each element:
 - "type": a short English category label. Use one of these when it genuinely fits: product, human_model, promo_badge, authority_badge, logo, headline_copy, subheadline_copy, promo_phrase — but choose a different label yourself if something present doesn't fit any of these.
   - "promo_badge" is specifically a price/discount callout graphic (e.g. "Up to 46%").
   - "authority_badge" is a credential/endorsement graphic instead — an expert's photo+title (e.g. a "피부과 의사" stamp), a certification mark, or an "전문가 추천" stamp. This is a distinct concept from promo_badge, worth its own type.
+  - "background" is the backdrop/setting behind the product and model — only worth extracting as its own element if it's a distinct, reusable studio/lifestyle backdrop, not a plain solid color.
 - "label": a short Korean label for this element.
 - "description": what this element looks like and exactly where it is in the photo — this feeds a later step that isolates it as its own image. For a phrase (headline/subheadline/promo phrase), describe its exact font, color, size, and any badge/highlight graphic around it, not just its wording — the isolated asset needs to look like it does on the ad, not just say the same words in an arbitrary font.
 - "text": ONLY when this element is inherently textual (a headline, subheadline, or promo phrase) — the exact text as it verbatim appears in the photo. Omit this field for a product, human model, badge, or logo, which has no transcribable text of its own worth capturing.

@@ -9,6 +9,7 @@ import FeedScreen from './components/feed/FeedScreen.jsx'
 import ProductsScreen from './components/products/ProductsScreen.jsx'
 import ReferenceImagesScreen from './components/references/ReferenceImagesScreen.jsx'
 import StudioScreen from './components/studio/StudioScreen.jsx'
+import AIStudioScreen from './components/aiStudio/AIStudioScreen.jsx'
 import GalleryScreen from './components/gallery/GalleryScreen.jsx'
 import SettingsScreen from './components/settings/SettingsScreen.jsx'
 
@@ -20,6 +21,7 @@ function Screens() {
       {screen === 'products' && <ProductsScreen />}
       {screen === 'references' && <ReferenceImagesScreen />}
       {screen === 'studio' && <StudioScreen />}
+      {screen === 'ai-studio' && <AIStudioScreen />}
       {screen === 'gallery' && <GalleryScreen />}
       {screen === 'settings' && <SettingsScreen />}
     </main>

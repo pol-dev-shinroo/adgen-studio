@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { key: 'products', icon: '🗂️', label: '상품 관리' },
   { key: 'references', icon: '🖼️', label: '추출 참조 이미지' },
   { key: 'studio', icon: '✨', label: '생성 스튜디오' },
+  { key: 'ai-studio', icon: '💬', label: '생성 AI' },
   { key: 'gallery', icon: '🖼️', label: '결과 갤러리' },
   { key: 'settings', icon: '⚙️', label: '설정' },
 ]

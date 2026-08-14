@@ -217,3 +217,28 @@ export function updateGeneratedStatus(generationId, status) {
     body: JSON.stringify({ status }),
   })
 }
+
+// Part EE: 생성 AI's own segmentation call — costs one real gpt-5.5 call
+// server-side, only fired once per conversation (when the user finishes
+// picking a reference ad). Resolves to { segments, imageUrl }.
+export function startAiSegmentation(refAdId) {
+  return request('/api/ai-generate/segment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refAdId }),
+  })
+}
+
+// Part EE: 생성 AI's single-image render call — chains the same vision/
+// research/copywriting/render pipeline startGeneration above does, just for
+// exactly one reference ad x one product x one format at a time, driven by
+// a segment-by-segment `decisions` object instead of a style-intensity
+// slider. Resolves to { generationId }. input: { refAdId, refBrand,
+// brand:{key,productId}, formats, quantity, decisions }.
+export function startAiRender(input) {
+  return request('/api/ai-generate/render', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}

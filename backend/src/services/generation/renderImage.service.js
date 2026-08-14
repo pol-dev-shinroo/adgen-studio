@@ -18,6 +18,21 @@ const getClient = createCachedClient(() => config.openaiApiKey, (apiKey) => new 
 // this account. gpt-4o-mini and gpt-4.1 both hit an identical 403.
 const MODEL = 'gpt-5.5'
 
+// Part EE: extracted so renderConversationalImage's own model-face material
+// image (§8 of that prompt) can reuse the exact same face-swap mechanics
+// styleInstructionFor's MAXIMUM tier already uses below — the detail of
+// HOW to do a full face swap doesn't change based on which screen/slider
+// drove the decision to do one. Phrased in terms of "the model-face
+// reference image" rather than "the third image" specifically, since
+// renderConversationalImage's material images aren't always exactly the
+// third one the way this old three-image scheme's style reference always is.
+export const FACE_REPLACEMENT_DETAIL = 'Completely replace the face of the human model shown in the first image ' +
+  '(the original competitor ad) with the face shown in the model-face reference image — a full face swap, not a ' +
+  'styling influence. Keep the original ad\'s body pose, hand position, clothing, framing, lighting, and ' +
+  'background exactly as they are; change ONLY the face/head to match the reference model. If the reference ' +
+  'image shows the face at a different angle than the original pose, adapt it naturally to match the ' +
+  'original\'s head angle and lighting rather than pasting it in unchanged.'
+
 // Part U-2: redefines what this 0-100 slider actually controls. It used to
 // be a pure artistic-license dial (low = stay close to the original's
 // composition/lighting, high = reinterpret more freely) with no connection
@@ -55,12 +70,7 @@ const MODEL = 'gpt-5.5'
 function styleInstructionFor(styleIntensity, hasStyleReference, styleReferenceType) {
   if (styleIntensity === 100 && hasStyleReference && styleReferenceType === 'model') {
     return 'Style intensity: MAXIMUM. A third image is our own brand\'s extracted model reference photo. ' +
-      'Completely replace the face of the human model shown in the first image (the original competitor ad) with ' +
-      'the face shown in the third image — a full face swap, not a styling influence. Keep the original ad\'s ' +
-      'body pose, hand position, clothing, framing, lighting, and background exactly as they are; change ONLY the ' +
-      'face/head to match the third image\'s model. If the third image shows the face at a different angle than ' +
-      'the original pose, adapt it naturally to match the original\'s head angle and lighting rather than pasting ' +
-      'it in unchanged.'
+      FACE_REPLACEMENT_DETAIL
   }
   if (styleIntensity <= 33) {
     const base = 'Style intensity: LOW. Keep the layout, background, composition, color grading, and any depicted ' +
@@ -93,7 +103,11 @@ function styleInstructionFor(styleIntensity, hasStyleReference, styleReferenceTy
 
 // Text-replacement instruction, carrying over "3. 최종 이미지.json"'s GPT-5.5
 // Renderer node's exact preservation language verbatim.
-function replacementInstructionFor(replacements) {
+//
+// Part EE: exported so renderConversationalImage (생성 AI's own render
+// function) can reuse this unchanged — text-replacement mechanics don't
+// change based on which screen drove the decision to replace text.
+export function replacementInstructionFor(replacements) {
   if (!replacements.length) {
     return 'Do not change any text in the image — preserve every text element exactly as it appears in the original.'
   }
@@ -122,7 +136,15 @@ function replacementInstructionFor(replacements) {
 // way to know the second image (our product) and third image (our model's
 // face) play completely different roles despite both being "our own"
 // material.
-function productSwapInstructionFor(productInstances, hasStyleReference, styleReferenceType) {
+//
+// Part EE: exported so renderConversationalImage can reuse this unchanged
+// too — called with hasStyleReference=false there regardless of how many
+// material images are actually present, since that screen builds its own,
+// separate multi-image framing sentence (§8) rather than this function's
+// old two/three-image-specific one; this call only contributes the reusable
+// swap-mechanics paragraph (the instance list + "seamlessly replace..."
+// wording), not framing.
+export function productSwapInstructionFor(productInstances, hasStyleReference, styleReferenceType) {
   const instanceList = productInstances.length
     ? productInstances.map((p, i) => `${i + 1}. ${p.location} — ${p.description}`).join('\n')
     : 'The single instance of the advertised product visible in the scene.'
@@ -182,6 +204,75 @@ export async function renderFinalImage({
   if (hasStyleReference) {
     content.push({ type: 'input_image', image_url: `data:image/png;base64,${styleReferenceImageBase64}` })
   }
+  content.push({ type: 'input_text', text: parts.join('\n\n') })
+
+  const response = await getClientFn().responses.create({
+    model: MODEL,
+    tools: [{ type: 'image_generation', action: 'edit', size: sizeForFormat(format) }],
+    input: [{ role: 'user', content }],
+  })
+
+  return extractGeneratedImageBase64(response)
+}
+
+const MATERIAL_ROLE_LABEL = {
+  'background': 'our background reference — use its setting/backdrop instead of the original ad\'s background.',
+  'model-face': 'our model\'s face reference — completely replace the original ad\'s model\'s face with this face, ' +
+    'keeping the original pose/lighting/framing (see additional instruction below).',
+  'copy-style': 'our brand\'s copy styling reference — match its font/color/badge treatment for the text ' +
+    'replacements described below.',
+}
+
+// Part EE §8: 생성 AI's own render function, parallel to renderFinalImage
+// above (which 생성 스튜디오 keeps using unchanged) — this screen has no
+// style-intensity slider, every material image's role is explicit (keep vs.
+// replace, per segment) rather than a single blended dial, so
+// styleInstructionFor's tiered framing doesn't apply here at all.
+//
+// materialImages: array of { role: 'background' | 'model-face' | 'copy-style',
+// imageBase64 } — 0 to 3 entries, order not significant (each is
+// individually labeled in the prompt text by role, not by position).
+//
+// getClientFn is injected (defaulting to the real getClient) purely so this
+// is unit-testable without a real OpenAI call — same DI convention as
+// renderFinalImage above.
+export async function renderConversationalImage({
+  referenceImageBase64, productImageBase64, materialImages, productInstances, replacements, format, instructions,
+}, { getClientFn = getClient } = {}) {
+  const materials = materialImages || []
+
+  // Dynamic framing sentence — §8: "Image 1 is the original reference ad.
+  // Image 2 is our product's reference photo." plus one clause per material
+  // image, in order, naming its actual role.
+  const framingClauses = materials.map((m, i) => (
+    `Image ${i + 3} is ${MATERIAL_ROLE_LABEL[m.role] || 'a supplementary reference image.'}`
+  ))
+  const framing = [
+    'Image 1 is the original reference ad. Image 2 is our product\'s reference photo.',
+    ...framingClauses,
+  ].join(' ')
+
+  const modelFaceMaterial = materials.find((m) => m.role === 'model-face')
+
+  const parts = [
+    framing,
+    replacementInstructionFor(replacements),
+    // hasStyleReference=false here deliberately — this call only wants the
+    // reusable swap-instance-listing mechanics, not that function's own
+    // two/three-image framing sentence, since the dynamic framing above
+    // already introduces every image in this request. See
+    // productSwapInstructionFor's own comment for why this is safe to reuse
+    // as-is despite that parameter.
+    productSwapInstructionFor(productInstances, false, null),
+  ]
+  if (modelFaceMaterial) parts.push(FACE_REPLACEMENT_DETAIL)
+  if (instructions?.trim()) parts.push(instructions.trim())
+
+  const content = [
+    { type: 'input_image', image_url: `data:image/jpeg;base64,${referenceImageBase64}` },
+    { type: 'input_image', image_url: `data:image/png;base64,${productImageBase64}` },
+    ...materials.map((m) => ({ type: 'input_image', image_url: `data:image/png;base64,${m.imageBase64}` })),
+  ]
   content.push({ type: 'input_text', text: parts.join('\n\n') })
 
   const response = await getClientFn().responses.create({
