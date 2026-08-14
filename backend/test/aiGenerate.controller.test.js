@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { postSegment, postRender, applyTextDecisionOverrides } from '../src/controllers/aiGenerate.controller.js'
+import { postSegment, postRender, postBackgroundImage, applyTextDecisionOverrides } from '../src/controllers/aiGenerate.controller.js'
 
 function makeRes() {
   const res = { statusCode: null, body: null }
@@ -54,6 +54,55 @@ test('postSegment: real success downloads the resolved image and returns segment
   )
   assert.equal(res.statusCode, null)
   assert.deepEqual(res.body, { segments: [{ id: 'background-0' }], imageUrl: 'https://example.com/ad.jpg' })
+})
+
+// --- postBackgroundImage (Part FF-2) ---
+
+test('postBackgroundImage: 400 when refAdId is missing', async () => {
+  const res = makeRes()
+  await postBackgroundImage({ body: {} }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
+test('postBackgroundImage: 404 when no ad matches refAdId', async () => {
+  const res = makeRes()
+  await postBackgroundImage(
+    { body: { refAdId: 'missing' } }, res, makeNext(),
+    { getAllAdsFn: async () => [{ 'Ad Archive ID': 'ad-1' }] }
+  )
+  assert.equal(res.statusCode, 404)
+})
+
+test('postBackgroundImage: 400 when the matched ad has no image available', async () => {
+  const res = makeRes()
+  await postBackgroundImage(
+    { body: { refAdId: 'ad-1' } }, res, makeNext(),
+    { getAllAdsFn: async () => [{ 'Ad Archive ID': 'ad-1' }] }
+  )
+  assert.equal(res.statusCode, 400)
+})
+
+test('postBackgroundImage: real success downloads the ad image, isolates it, uploads the result, and returns its URL', async () => {
+  const res = makeRes()
+  let uploadArgs = null
+  await postBackgroundImage(
+    { body: { refAdId: 'ad-1' } }, res, makeNext(),
+    {
+      getAllAdsFn: async () => [{ 'Ad Archive ID': 'ad-1', 'Archived Image Links': 'https://example.com/ad.jpg' }],
+      downloadImageAsBase64Fn: async (url) => { assert.equal(url, 'https://example.com/ad.jpg'); return { base64: 'B64' } },
+      isolateAdBackgroundFn: async (base64) => { assert.equal(base64, 'B64'); return 'ISOLATED_B64' },
+      uploadImageFn: async (base64, args) => {
+        uploadArgs = { base64, ...args }
+        return 'https://drive.google.com/file/d/bg123/view'
+      },
+    }
+  )
+  assert.equal(res.statusCode, null)
+  assert.deepEqual(res.body, { backgroundImageUrl: 'https://drive.google.com/file/d/bg123/view' })
+  assert.equal(uploadArgs.base64, 'ISOLATED_B64')
+  assert.equal(uploadArgs.rootFolderName, 'AdGen AI Studio Backgrounds')
+  assert.equal(uploadArgs.subfolder, 'ad-1')
+  assert.match(uploadArgs.fileName, /^background-.+\.png$/)
 })
 
 // --- applyTextDecisionOverrides ---

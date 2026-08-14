@@ -46,22 +46,20 @@
   padding:3px 8px;border-radius:6px;
   white-space:nowrap;
 }
-/* 배경 mode: the label isn't anchored to a single box anymore (there's no
-   one "background box" being highlighted — see AIImagePane.jsx), so it's
-   pinned to a fixed corner of the frame instead. */
+/* 배경 mode: no box is ever highlighted for background (see
+   AIImagePane.jsx — a whole separate isolated image is shown instead), so
+   this label is pinned to a fixed corner rather than anchored above a box. */
 .ai-image-highlight-label-fixed{
   top:10px;left:10px;
 }
-/* One of these renders per foreground (text/product/model) segment when a
-   background dialog is active — dims everything that ISN'T background,
-   which reads as "background = whatever's left uncovered" rather than
-   trying to box-highlight background directly. */
-.ai-image-mask-cutout{
-  position:absolute;
-  background:rgba(20,22,40,.6);
-  border:1.5px dashed rgba(255,255,255,.5);
-  border-radius:4px;
-  pointer-events:none;
+/* Shown over the (still-original-ad) image while the real isolated
+   background asset is being generated — a real, metered call, so this can
+   take a few seconds. */
+.ai-image-loading-overlay{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  background:rgba(20,22,40,.55);
+  color:#fff;font-size:13px;font-weight:600;
 }
 
 /* --- Chat pane --- */

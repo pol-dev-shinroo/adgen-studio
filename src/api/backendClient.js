@@ -229,6 +229,18 @@ export function startAiSegmentation(refAdId) {
   })
 }
 
+// Part FF-2: real, standalone isolated-background asset for the 배경
+// dialog's image pane — costs one real gpt-image-2 edit call server-side,
+// only fired once per conversation (when the background dialog phase is
+// entered). Resolves to { backgroundImageUrl }.
+export function startAiBackgroundImage(refAdId) {
+  return request('/api/ai-generate/background-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refAdId }),
+  })
+}
+
 // Part EE: 생성 AI's single-image render call — chains the same vision/
 // research/copywriting/render pipeline startGeneration above does, just for
 // exactly one reference ad x one product x one format at a time, driven by

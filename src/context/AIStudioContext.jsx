@@ -5,7 +5,7 @@ import { useProducts } from './ProductsContext.jsx'
 import { useGallery } from './GalleryContext.jsx'
 import { useProductRefSelections } from '../hooks/useProductRefSelections.js'
 import { looksLikeFactualCopy } from '../utils/looksLikeFactualCopy.js'
-import { startAiSegmentation, startAiRender } from '../api/backendClient.js'
+import { startAiSegmentation, startAiRender, startAiBackgroundImage } from '../api/backendClient.js'
 import { QUANTITIES } from '../data/generationOptions.js'
 
 const AIStudioContext = createContext(null)
@@ -111,6 +111,14 @@ export function AIStudioProvider({ children }) {
   const [segmentationError, setSegmentationError] = useState(null)
   const [renderError, setRenderError] = useState(null)
   const [lastResult, setLastResult] = useState(null)
+
+  // Part FF-2: the real, standalone isolated-background image shown in
+  // place of the original ad while the 배경 dialog is active — see
+  // AIImagePane.jsx and adSegmentation.service.js's isolateAdBackground for
+  // why this replaced the earlier box/mask-on-the-original-ad approaches.
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState(null)
+  const [backgroundImageLoading, setBackgroundImageLoading] = useState(false)
+  const [backgroundImageError, setBackgroundImageError] = useState(null)
 
   const appendMessage = useCallback((partial) => {
     const message = { id: nextId(), createdAt: new Date().toISOString(), ...partial }
@@ -262,6 +270,38 @@ export function AIStudioProvider({ children }) {
     runSegmentation()
   }, [phase, runSegmentation])
 
+  // Part FF-2: fires once per conversation, the instant the background
+  // dialog phase is entered — same StrictMode-double-invoke-safe ref guard
+  // as runSegmentation's own effect above (this is also a real, metered
+  // call). Failure is non-fatal: AIImagePane.jsx falls back to showing the
+  // original ad image (no highlight) rather than blocking the conversation
+  // over a nice-to-have preview image.
+  const runBackgroundIsolation = useCallback(async () => {
+    if (!selectedRefAdId) return
+    setBackgroundImageLoading(true)
+    setBackgroundImageError(null)
+    try {
+      const { backgroundImageUrl: url } = await startAiBackgroundImage(selectedRefAdId)
+      setBackgroundImageUrl(url)
+    } catch (err) {
+      console.error('Ad background isolation failed:', err)
+      setBackgroundImageError(err.message || '알 수 없는 오류')
+    } finally {
+      setBackgroundImageLoading(false)
+    }
+  }, [selectedRefAdId])
+
+  const backgroundImageStartedRef = useRef(false)
+  useEffect(() => {
+    if (phase !== 'dialog:background') {
+      backgroundImageStartedRef.current = false
+      return
+    }
+    if (backgroundImageStartedRef.current) return
+    backgroundImageStartedRef.current = true
+    runBackgroundIsolation()
+  }, [phase, runBackgroundIsolation])
+
   // Part EE §5: chooseKeep/chooseReplace/chooseCustom are the three generic
   // decision primitives every dialog (background/text/model/product)
   // reduces to — see each dialog's own option list in the spec, all of
@@ -391,6 +431,9 @@ export function AIStudioProvider({ children }) {
     setSegmentationError(null)
     setRenderError(null)
     setLastResult(null)
+    setBackgroundImageUrl(null)
+    setBackgroundImageLoading(false)
+    setBackgroundImageError(null)
   }, [])
 
   // Selected brand's own product-reference derivation, mirroring
@@ -412,6 +455,8 @@ export function AIStudioProvider({ children }) {
         selectedRefBrand, selectedRefAdId, selectedBrandKey, selectedProductId,
         selectRefBrand, selectRefAd, selectBrandProduct,
         segmentationError, retrySegmentation: runSegmentation,
+        backgroundImageUrl, backgroundImageLoading, backgroundImageError,
+        retryBackgroundImage: runBackgroundIsolation,
         chooseKeep, chooseReplace, chooseCustom,
         formats, toggleFormat, quantity, setQuantity,
         startGenerate, renderError, lastResult,

@@ -1,10 +1,28 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parseSegmentationResult, segmentReferenceAd } from '../src/services/generation/adSegmentation.service.js'
+import { parseSegmentationResult, segmentReferenceAd, isolateAdBackground } from '../src/services/generation/adSegmentation.service.js'
 
 function fakeClient(outputText) {
   let lastRequest = null
   const client = { responses: { create: async (request) => { lastRequest = request; return { output_text: outputText } } } }
+  return { client, getLastRequest: () => lastRequest }
+}
+
+// isolateAdBackground doesn't use text.format (no JSON parsing) — it drives
+// the image_generation tool and pulls a base64 PNG out of an
+// image_generation_call output item, same response shape
+// productImageExtraction.service.js's isolateEntity/renderImage.service.js's
+// renderFinalImage already return.
+function fakeImageClient(resultBase64) {
+  let lastRequest = null
+  const client = {
+    responses: {
+      create: async (request) => {
+        lastRequest = request
+        return { output: [{ type: 'image_generation_call', result: resultBase64 }] }
+      },
+    },
+  }
   return { client, getLastRequest: () => lastRequest }
 }
 
@@ -83,4 +101,33 @@ test('segmentReferenceAd sends the image as a data URL and returns parsed segmen
   const userMessage = req.input.find((m) => m.role === 'user')
   const imagePart = userMessage.content.find((c) => c.type === 'input_image')
   assert.equal(imagePart.image_url, 'data:image/jpeg;base64,base64imagedata')
+})
+
+// --- isolateAdBackground (Part FF-2) ---
+
+test('isolateAdBackground sends the ad image plus a background-preservation prompt, and returns the isolated base64', async () => {
+  const { client, getLastRequest } = fakeImageClient('isolated-background-base64')
+
+  const result = await isolateAdBackground('base64imagedata', { getClientFn: () => client })
+
+  assert.equal(result, 'isolated-background-base64')
+
+  const req = getLastRequest()
+  assert.deepEqual(req.tools, [{ type: 'image_generation', action: 'edit', background: 'opaque', quality: 'high' }])
+  const userMessage = req.input.find((m) => m.role === 'user')
+  const imagePart = userMessage.content.find((c) => c.type === 'input_image')
+  assert.equal(imagePart.image_url, 'data:image/jpeg;base64,base64imagedata')
+  const textPart = userMessage.content.find((c) => c.type === 'input_text')
+  // Must ask to REMOVE the foreground and PRESERVE the real backdrop — never
+  // the generic product-isolation wording's "plain solid white background",
+  // which would defeat the entire point of a background reference.
+  assert.match(textPart.text, /Remove the advertised product\(s\), any human model/)
+  assert.match(textPart.text, /filling the full frame/)
+  assert.doesNotMatch(textPart.text, /plain solid white background/)
+})
+
+test('isolateAdBackground strips a data-URL prefix from the result, same as every other image_generation caller', async () => {
+  const { client } = fakeImageClient('data:image/png;base64,prefixed-result')
+  const result = await isolateAdBackground('base64imagedata', { getClientFn: () => client })
+  assert.equal(result, 'prefixed-result')
 })

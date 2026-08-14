@@ -12,6 +12,11 @@ const mockGo = vi.fn()
 const mockRefreshResults = vi.fn().mockResolvedValue(undefined)
 const mockStartAiSegmentation = vi.fn()
 const mockStartAiRender = vi.fn()
+// Part FF-2: resolves to a harmless default (no url) so existing tests that
+// never assert on background-image behavior aren't forced to also mock this
+// out one by one — real background-isolation behavior gets its own
+// describe block below.
+const mockStartAiBackgroundImage = vi.fn().mockResolvedValue({ backgroundImageUrl: null })
 
 let mockAds = []
 let mockRefBrands = []
@@ -32,6 +37,7 @@ vi.mock('./GalleryContext.jsx', () => ({
 vi.mock('../api/backendClient.js', () => ({
   startAiSegmentation: (...args) => mockStartAiSegmentation(...args),
   startAiRender: (...args) => mockStartAiRender(...args),
+  startAiBackgroundImage: (...args) => mockStartAiBackgroundImage(...args),
 }))
 
 function makeSegments(textCount, { withModel = false } = {}) {
@@ -54,6 +60,7 @@ function renderAIStudio() {
 beforeEach(() => {
   vi.clearAllMocks()
   mockRefreshResults.mockResolvedValue(undefined)
+  mockStartAiBackgroundImage.mockResolvedValue({ backgroundImageUrl: null })
   mockAds = [{ id: 'ad-1', brand: '경쟁사A', image: 'https://example.com/ad-1.png' }]
   mockRefBrands = ['경쟁사A']
   mockMyBrands = [
@@ -166,6 +173,51 @@ describe('chooseCustom', () => {
   })
 })
 
+describe('background image isolation (Part FF-2)', () => {
+  it('fires exactly once when entering dialog:background, and stores the resulting URL', async () => {
+    mockStartAiSegmentation.mockResolvedValue({ segments: makeSegments(0), imageUrl: 'https://example.com/ad.png' })
+    mockStartAiBackgroundImage.mockResolvedValue({ backgroundImageUrl: 'https://example.com/bg-isolated.png' })
+    const { result } = renderAIStudio()
+
+    act(() => result.current.selectRefBrand('경쟁사A'))
+    act(() => result.current.selectRefAd('ad-1'))
+    act(() => result.current.selectBrandProduct('healthykiki', '1'))
+    await waitFor(() => expect(result.current.phase).toBe('dialog:background'))
+
+    await waitFor(() => expect(result.current.backgroundImageUrl).toBe('https://example.com/bg-isolated.png'))
+    expect(mockStartAiBackgroundImage).toHaveBeenCalledWith('ad-1')
+    expect(mockStartAiBackgroundImage).toHaveBeenCalledTimes(1)
+    expect(result.current.backgroundImageLoading).toBe(false)
+    expect(result.current.backgroundImageError).toBeNull()
+
+    // Answering the dialog and moving on must not re-trigger a second,
+    // wasted real image_generation call.
+    act(() => result.current.chooseKeep())
+    expect(mockStartAiBackgroundImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed isolation surfaces an error but never blocks the dialog itself from being answered', async () => {
+    mockStartAiSegmentation.mockResolvedValue({ segments: makeSegments(0), imageUrl: 'https://example.com/ad.png' })
+    mockStartAiBackgroundImage.mockRejectedValue(new Error('이미지 생성 실패'))
+    const { result } = renderAIStudio()
+
+    act(() => result.current.selectRefBrand('경쟁사A'))
+    act(() => result.current.selectRefAd('ad-1'))
+    act(() => result.current.selectBrandProduct('healthykiki', '1'))
+    await waitFor(() => expect(result.current.phase).toBe('dialog:background'))
+
+    await waitFor(() => expect(result.current.backgroundImageError).toBe('이미지 생성 실패'))
+    expect(result.current.backgroundImageUrl).toBeNull()
+    expect(result.current.backgroundImageLoading).toBe(false)
+
+    // The background dialog itself is independent of whether its preview
+    // image loaded — a failed preview must never block the user from
+    // answering.
+    act(() => result.current.chooseKeep())
+    expect(result.current.decisions.background).toEqual({ mode: 'keep', value: null })
+  })
+})
+
 describe('resetConversation', () => {
   it('returns every piece of state to its initial value', async () => {
     mockStartAiSegmentation.mockResolvedValue({ segments: makeSegments(0), imageUrl: 'https://example.com/ad.png' })
@@ -187,5 +239,8 @@ describe('resetConversation', () => {
     expect(result.current.segments).toEqual([])
     expect(result.current.selectedRefBrand).toBeNull()
     expect(result.current.decisions).toEqual({ background: null, texts: {}, model: null, product: null })
+    expect(result.current.backgroundImageUrl).toBeNull()
+    expect(result.current.backgroundImageLoading).toBe(false)
+    expect(result.current.backgroundImageError).toBeNull()
   })
 })

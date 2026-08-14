@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { getAllAds } from '../services/sheets/sheets.service.js'
 import { getAllProducts } from '../services/sheets/productSheets.service.js'
-import { downloadImageAsBase64, uploadGeneratedImage } from '../services/generation/imageIO.service.js'
-import { segmentReferenceAd } from '../services/generation/adSegmentation.service.js'
+import { downloadImageAsBase64, uploadGeneratedImage, uploadImage } from '../services/generation/imageIO.service.js'
+import { segmentReferenceAd, isolateAdBackground } from '../services/generation/adSegmentation.service.js'
 import { findBrandDef, firstLink, resolveProductReferenceImageUrl } from '../services/generation/helpers.js'
 import { analyzeReferenceAd } from '../services/generation/visionAnalysis.service.js'
 import { findCounterFacts } from '../services/generation/counterFacts.service.js'
@@ -46,6 +46,51 @@ export async function postSegment(req, res, next, {
     const { segments } = await segmentReferenceAdFn(base64)
 
     res.json({ segments, imageUrl: imageLink })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// Part FF-2: real, standalone isolated-background asset for the 배경
+// dialog's image pane — see adSegmentation.service.js's isolateAdBackground
+// header comment for why this replaced the earlier box/mask-on-the-
+// original-ad approaches. Resolves the ad's image the identical way
+// postSegment does (same fallback chain, shared via helpers.js's firstLink
+// rather than reimplemented) since this is always called for an ad that's
+// already been through /segment in the same conversation. Uploaded to its
+// own Drive root ("AdGen AI Studio Backgrounds") — distinct from both
+// "AdGen Generated Ads" (uploadGeneratedImage's root, real generation
+// output tied to a brand) and productImageExtraction's "AdGen Product
+// References" root, since this is neither — it's a derived-from-a-
+// competitor-ad asset with no owning brand.
+export async function postBackgroundImage(req, res, next, {
+  getAllAdsFn = getAllAds,
+  downloadImageAsBase64Fn = downloadImageAsBase64,
+  isolateAdBackgroundFn = isolateAdBackground,
+  uploadImageFn = uploadImage,
+} = {}) {
+  const { refAdId } = req.body ?? {}
+  if (!refAdId) {
+    return res.status(400).json({ error: '"refAdId" is required' })
+  }
+
+  try {
+    const ads = await getAllAdsFn()
+    const ad = ads.find((a) => String(a['Ad Archive ID']) === String(refAdId))
+    if (!ad) return res.status(404).json({ error: `No reference ad found for id "${refAdId}"` })
+
+    const imageLink = firstLink(ad['Archived Image Links']) || ad['Archived Thumbnail'] || firstLink(ad['Image Links'])
+    if (!imageLink) return res.status(400).json({ error: 'Reference ad has no image available' })
+
+    const { base64 } = await downloadImageAsBase64Fn(imageLink)
+    const isolatedBase64 = await isolateAdBackgroundFn(base64)
+    const backgroundImageUrl = await uploadImageFn(isolatedBase64, {
+      rootFolderName: 'AdGen AI Studio Backgrounds',
+      subfolder: String(refAdId),
+      fileName: `background-${randomUUID()}.png`,
+    })
+
+    res.json({ backgroundImageUrl })
   } catch (err) {
     next(err)
   }

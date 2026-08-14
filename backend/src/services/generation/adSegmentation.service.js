@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { config } from '../../config/index.js'
 import { createCachedClient } from '../cachedApiClient.js'
+import { extractGeneratedImageBase64 } from '../../utils/gptImage.js'
 
 // AA-6: maxRetries retries connection errors + 408/409/429/5xx with the
 // SDK's own built-in exponential backoff — same convention as every other
@@ -16,15 +17,19 @@ const MODEL = 'gpt-5.5'
 // coordinates. This is a new, dedicated call whose whole purpose is a
 // normalized-fraction bounding box per segment, so 생성 AI's chat can drive
 // an on-image highlight overlay as each dialog is asked.
-// The 'background' segment's own box is a nominal placeholder, not something
-// the frontend ever renders directly — AIImagePane.jsx derives the "what is
-// background" highlight by dimming every OTHER (text/product/model)
-// segment's box and leaving the rest of the image at full brightness, which
-// communicates "background = whatever isn't foreground" far more clearly
-// than trying to box-highlight one sample patch of it ever could. So the
-// prompt below just asks for the full-image box for background, rather than
-// spending model effort hunting for "a representative background area" that
-// nothing downstream actually uses.
+// The 'background' segment's own box is a nominal placeholder, never
+// rendered by the frontend at all. Two approaches were tried and rejected
+// before landing on isolateAdBackground below: (1) a single box over "a
+// representative background area" reads as arbitrary/confusing, and (2) a
+// CSS mask dimming every OTHER segment's box (leaving the rest of the
+// original ad bright) was real user feedback as still not what was wanted —
+// what "배경" actually looks like on its own is much clearer as a genuine
+// standalone image than any highlight-over-the-original-ad technique. So
+// AIImagePane.jsx now displays a real isolated background image
+// (isolateAdBackground's output) in place of the original ad entirely while
+// the background dialog is active, and this segment's own box is kept only
+// as a nominal full-image placeholder so parseSegmentationResult's schema
+// stays uniform across every segment type.
 const SYSTEM_PROMPT = `You are an expert Ad Layout Analyst. Inspect this advertisement image and break it into distinct visual segments, so each can be individually highlighted and discussed.
 
 Identify:
@@ -132,4 +137,44 @@ export async function segmentReferenceAd(imageBase64, { getClientFn = getClient 
   })
 
   return parseSegmentationResult(response.output_text)
+}
+
+// Part FF-2: isolates the reference ad's real background/backdrop as its
+// own standalone image — a real image_generation edit call, the exact same
+// mechanic productImageExtraction.service.js's isolateEntity uses for our
+// own product photos (and the exact wording of that file's own dedicated
+// 'background' branch, adapted here since there's no per-entity
+// description to reference — an ad has exactly one background, not several
+// candidate entities to disambiguate between). AIImagePane.jsx shows this
+// in place of the original ad image entirely while the 배경 dialog is
+// active. This is a real, metered call — only fire it once per
+// conversation (see AIStudioContext.jsx's own StrictMode-safe guard,
+// mirroring runSegmentation's).
+const AD_BACKGROUND_ISOLATION_PROMPT = 'Isolate ONLY the background/backdrop of this advertisement image. ' +
+  'Remove the advertised product(s), any human model, hands, marketing text overlays, discount badges, and ' +
+  'any other foreground graphic elements — keep only the pure backdrop/setting itself. Output it filling the ' +
+  'full frame, preserving its true colors, textures, and lighting. Naturally fill in whatever area the removed ' +
+  'foreground elements occupied so the result looks like a continuous, usable background plate, not a ' +
+  'background with holes cut out of it. Do not add new objects, text, or decorative elements that weren\'t ' +
+  'part of the original backdrop.'
+
+// imageBase64: raw base64 (no data: prefix). getClientFn is injected the
+// same DI convention as segmentReferenceAd above. Returns raw base64 PNG
+// (no prefix), same contract as productImageExtraction.service.js's
+// isolateEntity / renderImage.service.js's renderFinalImage.
+export async function isolateAdBackground(imageBase64, { getClientFn = getClient } = {}) {
+  const response = await getClientFn().responses.create({
+    model: MODEL,
+    input: [
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: AD_BACKGROUND_ISOLATION_PROMPT },
+          { type: 'input_image', image_url: `data:image/jpeg;base64,${imageBase64}` },
+        ],
+      },
+    ],
+    tools: [{ type: 'image_generation', action: 'edit', background: 'opaque', quality: 'high' }],
+  })
+  return extractGeneratedImageBase64(response)
 }
