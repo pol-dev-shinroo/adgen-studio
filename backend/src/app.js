@@ -52,7 +52,19 @@ export function createApp() {
   const app = express()
 
   const restrictiveCors = cors({ origin: config.corsOrigin, credentials: true })
-  const permissiveCors = cors({ origin: true })
+  // credentials: true here too — omitting it (the original bug) makes cors
+  // skip the Access-Control-Allow-Credentials response header, so any
+  // fetch(..., {credentials:'include'}) to a CORS_OPEN_PATHS_RE route (which
+  // is exactly what GalleryContext's getGeneratedResults() sends, since it
+  // needs the session cookie) gets silently rejected by the browser as a
+  // network-level "Failed to fetch" — even though Railway's own logs show
+  // the server responding 200. Confirmed live: the same request with
+  // {credentials:'omit'} gets a clean 401 (proves CORS, not connectivity),
+  // and {credentials:'include'} reproduces "Failed to fetch" every time.
+  // This was surfacing to the user as "생성 중 오류가 발생했습니다: Failed
+  // to fetch" — both on Gallery's initial mount fetch and on the
+  // post-generation onDone refetch.
+  const permissiveCors = cors({ origin: true, credentials: true })
   app.use((req, res, next) => (
     CORS_OPEN_PATHS_RE.test(req.path) ? permissiveCors(req, res, next) : restrictiveCors(req, res, next)
   ))
