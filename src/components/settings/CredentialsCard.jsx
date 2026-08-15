@@ -151,7 +151,9 @@ export default function CredentialsCard() {
                   <div>
                     <div className="t">{key}</div>
                     <div className="d">
-                      {cred?.configured ? (
+                      {cred?.decryptError ? (
+                        '복호화 실패 — 암호화 키가 변경되었을 수 있습니다. 값을 다시 입력해 저장해주세요.'
+                      ) : cred?.configured ? (
                         <>
                           {cred.masked}
                           {cred.updatedByEmail && (
@@ -164,8 +166,8 @@ export default function CredentialsCard() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span className={`status-pill ${cred?.configured ? 'ok' : 'neutral'}`}>
-                      {cred?.configured ? '● 설정됨' : '● 설정 필요'}
+                    <span className={`status-pill ${cred?.decryptError ? 'warn' : cred?.configured ? 'ok' : 'neutral'}`}>
+                      {cred?.decryptError ? '● 재설정 필요' : cred?.configured ? '● 설정됨' : '● 설정 필요'}
                     </span>
                     <button type="button" className="btn ghost sm" onClick={() => setEditingKey(key)}>
                       편집

@@ -23,6 +23,7 @@ export async function getCredentials(
         key: s.key,
         configured: s.configured,
         masked: s.masked,
+        decryptError: s.decryptError || false,
         updatedAt: s.updatedAt,
         updatedByEmail: s.updatedByUserId ? emailById.get(s.updatedByUserId) : null,
       })),

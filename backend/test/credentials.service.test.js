@@ -143,3 +143,28 @@ test('listCredentialStatus reports every migratable key, including unconfigured 
   assert.equal(unconfigured.configured, false)
   assert.equal(unconfigured.masked, null)
 })
+
+test('listCredentialStatus reports a per-row decrypt failure as decryptError instead of throwing and losing every other row\'s real status', async () => {
+  // Simulates the real production bug: a row written under a since-rotated
+  // CREDENTIALS_ENCRYPTION_KEY can no longer be decrypted with the current
+  // one (AES-GCM's auth tag check fails -> "Unsupported state or unable to
+  // authenticate data"). Before this fix, that thrown error propagated out
+  // of listCredentialStatus entirely, 500ing GET /api/credentials and hiding
+  // the real, healthy status of every OTHER key too.
+  const healthy = buildExistingRow({ key: 'OPENAI_API_KEY', value: 'sk-still-good-value123' })
+  const corrupted = buildExistingRow({ key: 'PINECONE_API_KEY', value: 'irrelevant' })
+  corrupted['Encrypted Value'] = 'deadbeef:deadbeefdeadbeefdeadbeefdeadbeef:deadbeef' // decryptable-shaped but wrong key/tag
+  const fakeSheets = makeFakeSheets({ existingRows: [healthy, corrupted] })
+
+  const statuses = await listCredentialStatus({ getClientFn: () => fakeSheets })
+
+  const openai = statuses.find((s) => s.key === 'OPENAI_API_KEY')
+  assert.equal(openai.configured, true)
+  assert.equal(openai.masked, 'sk-...e123')
+  assert.equal(openai.decryptError, false, 'a healthy row must not be affected by a sibling row failing to decrypt')
+
+  const pinecone = statuses.find((s) => s.key === 'PINECONE_API_KEY')
+  assert.equal(pinecone.configured, true, 'a row that exists but fails to decrypt is still "configured" -- it needs re-saving, not first-time setup')
+  assert.equal(pinecone.masked, null)
+  assert.equal(pinecone.decryptError, true)
+})

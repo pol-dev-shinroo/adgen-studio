@@ -24,8 +24,9 @@ test('getCredentials: real success masks values and resolves the updater email',
     {}, res, makeNext(),
     {
       listCredentialStatusFn: async () => [
-        { key: 'OPENAI_API_KEY', configured: true, masked: 'sk-...ab12', updatedAt: 't1', updatedByUserId: 'admin-1' },
-        { key: 'APIFY_TOKEN', configured: false, masked: null, updatedAt: null, updatedByUserId: null },
+        { key: 'OPENAI_API_KEY', configured: true, masked: 'sk-...ab12', decryptError: false, updatedAt: 't1', updatedByUserId: 'admin-1' },
+        { key: 'APIFY_TOKEN', configured: false, masked: null, decryptError: false, updatedAt: null, updatedByUserId: null },
+        { key: 'PINECONE_API_KEY', configured: true, masked: null, decryptError: true, updatedAt: 't0', updatedByUserId: null },
       ],
       getUserByIdFn: async (id) => (id === 'admin-1' ? { id: 'admin-1', email: 'admin@x.com' } : null),
     }
@@ -33,8 +34,9 @@ test('getCredentials: real success masks values and resolves the updater email',
 
   assert.deepEqual(res.body, {
     credentials: [
-      { key: 'OPENAI_API_KEY', configured: true, masked: 'sk-...ab12', updatedAt: 't1', updatedByEmail: 'admin@x.com' },
-      { key: 'APIFY_TOKEN', configured: false, masked: null, updatedAt: null, updatedByEmail: null },
+      { key: 'OPENAI_API_KEY', configured: true, masked: 'sk-...ab12', decryptError: false, updatedAt: 't1', updatedByEmail: 'admin@x.com' },
+      { key: 'APIFY_TOKEN', configured: false, masked: null, decryptError: false, updatedAt: null, updatedByEmail: null },
+      { key: 'PINECONE_API_KEY', configured: true, masked: null, decryptError: true, updatedAt: 't0', updatedByEmail: null },
     ],
   })
 })

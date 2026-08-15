@@ -152,6 +152,19 @@ export function maskValue(value) {
 // unconfigured rather than simply omitted, so the Settings UI can render a
 // complete, stable list ("설정되지 않음" for anything absent) instead of a
 // list that grows unpredictably as credentials get set one at a time.
+//
+// Each row's decrypt is individually try/caught (mirroring
+// initCredentialsFromVault's own per-key try/catch in credentialsVault.js) —
+// found the hard way: a single row left over from before a
+// CREDENTIALS_ENCRYPTION_KEY rotation throws "Unsupported state or unable to
+// authenticate data" out of decrypt(), and without a per-row catch that
+// exception propagated out of the whole Promise.all-less .map(), 500ing the
+// *entire* GET /api/credentials response — even for the other, perfectly
+// healthy keys. The Settings UI's error path then fell back to an empty
+// list, rendering every row (including already-configured ones) as "설정되지
+// 않음"/"설정 필요", which made a real save look like it silently failed on
+// reload. Reported as its own decryptError:true state instead, so the row a
+// user actually needs to re-save is distinguishable from a truly unset one.
 export async function listCredentialStatus({ getClientFn = getClient } = {}) {
   const sheets = getClientFn()
   await ensureCredentialsTab(sheets)
@@ -161,14 +174,27 @@ export async function listCredentialStatus({ getClientFn = getClient } = {}) {
   return MIGRATABLE_CREDENTIAL_KEYS.map((key) => {
     const row = byKey.get(key)
     if (!row || !row['Encrypted Value']) {
-      return { key, configured: false, masked: null, updatedAt: null, updatedByUserId: null }
+      return { key, configured: false, masked: null, decryptError: false, updatedAt: null, updatedByUserId: null }
     }
-    return {
-      key,
-      configured: true,
-      masked: maskValue(decrypt(row['Encrypted Value'], config.credentialsEncryptionKey)),
-      updatedAt: row['Updated At'] || null,
-      updatedByUserId: row['Updated By User ID'] || null,
+    try {
+      return {
+        key,
+        configured: true,
+        masked: maskValue(decrypt(row['Encrypted Value'], config.credentialsEncryptionKey)),
+        decryptError: false,
+        updatedAt: row['Updated At'] || null,
+        updatedByUserId: row['Updated By User ID'] || null,
+      }
+    } catch (err) {
+      console.warn(`listCredentialStatus: failed to decrypt "${key}", reporting decryptError instead of failing the whole list: ${err.message}`)
+      return {
+        key,
+        configured: true,
+        masked: null,
+        decryptError: true,
+        updatedAt: row['Updated At'] || null,
+        updatedByUserId: row['Updated By User ID'] || null,
+      }
     }
   })
 }
