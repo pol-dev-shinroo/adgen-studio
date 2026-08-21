@@ -11,3 +11,7 @@ backend/Users*
 # not part of the app itself; re-run any time with `npx tsx
 # scripts/verify-credentials.js` from backend/.
 backend/scripts/verify-credentials.js
+
+# Part JJ: official dedicated test-login account — plain reference only,
+# never read by the app itself. `.env` alone doesn't match this filename.
+backend/.env.test-login
