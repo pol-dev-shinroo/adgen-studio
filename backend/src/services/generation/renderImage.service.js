@@ -208,7 +208,7 @@ export async function renderFinalImage({
 
   const response = await getClientFn().responses.create({
     model: MODEL,
-    tools: [{ type: 'image_generation', action: 'edit', size: sizeForFormat(format) }],
+    tools: [{ type: 'image_generation', action: 'edit', size: sizeForFormat(format), quality: 'high' }],
     input: [{ role: 'user', content }],
   })
 
@@ -277,7 +277,7 @@ export async function renderConversationalImage({
 
   const response = await getClientFn().responses.create({
     model: MODEL,
-    tools: [{ type: 'image_generation', action: 'edit', size: sizeForFormat(format) }],
+    tools: [{ type: 'image_generation', action: 'edit', size: sizeForFormat(format), quality: 'high' }],
     input: [{ role: 'user', content }],
   })
 

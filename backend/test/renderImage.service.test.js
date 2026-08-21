@@ -58,7 +58,7 @@ test('renderFinalImage sends exactly two input_image entries and the original tw
   assert.doesNotMatch(textEntry.text, /third image/i)
   assert.doesNotMatch(textEntry.text, /reference sheet of our own brand's past ad styling/)
 
-  assert.deepEqual(req.tools, [{ type: 'image_generation', action: 'edit', size: '1024x1024' }])
+  assert.deepEqual(req.tools, [{ type: 'image_generation', action: 'edit', size: '1024x1024', quality: 'high' }])
 })
 
 test('renderFinalImage adds a third input_image and the style-reference instruction when a style reference is given', async () => {
@@ -109,6 +109,28 @@ test('renderFinalImage treats a missing styleReferenceImageBase64 (undefined) th
 
   const content = getLastRequest().input[0].content
   assert.equal(content.filter((c) => c.type === 'input_image').length, 2)
+})
+
+// Part HH: every other image_generation-edit caller in the codebase
+// (product/background isolation) already sends quality: 'high' — these two
+// render functions were the only callers silently falling back to OpenAI's
+// default quality tier, which was the actual root cause of "copy/product
+// replacement not visibly applying" client reports. Locked down here so it
+// can't silently regress again.
+test('renderFinalImage requests quality: \'high\' on the image_generation tool', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    styleIntensity: 50,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  assert.deepEqual(getLastRequest().tools, [{ type: 'image_generation', action: 'edit', size: '1024x1024', quality: 'high' }])
 })
 
 test('renderFinalImage still appends instructions after the style-reference paragraph when both are present', async () => {
@@ -422,4 +444,22 @@ test('renderConversationalImage appends free-text instructions verbatim at the e
 
   const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
   assert.match(text, /제품을 조금 더 크게$/)
+})
+
+// Part HH: same quality regression guard as renderFinalImage's own test
+// above, for 생성 AI's render function.
+test('renderConversationalImage requests quality: \'high\' on the image_generation tool', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderConversationalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    materialImages: [],
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  assert.deepEqual(getLastRequest().tools, [{ type: 'image_generation', action: 'edit', size: '1024x1024', quality: 'high' }])
 })

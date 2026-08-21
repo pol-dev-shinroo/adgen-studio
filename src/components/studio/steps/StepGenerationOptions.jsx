@@ -79,6 +79,7 @@ export default function StepGenerationOptions() {
           style={{ width: 220 }}
         />
         <span style={{ fontSize: 12, color: 'var(--sub)' }}>우리 스타일 반영</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', minWidth: 32 }}>{styleIntensity}%</span>
       </div>
 
       <div className="field">
