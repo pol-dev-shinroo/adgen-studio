@@ -6,3 +6,8 @@ dist
 # Stray debug artifacts (e.g. a mangled Windows temp path saved as a
 # literal filename when inspecting a downloaded image locally)
 backend/Users*
+
+# Part II: one-off local credential-verification script — a dev convenience,
+# not part of the app itself; re-run any time with `npx tsx
+# scripts/verify-credentials.js` from backend/.
+backend/scripts/verify-credentials.js
