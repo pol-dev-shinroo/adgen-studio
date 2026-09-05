@@ -2,6 +2,21 @@
    Three panes: image (top-left, capped height) + chat (bottom-left, scrolls
    internally) + a fixed-width right context panel. */
 
+/* Part OO §2.5: persistent banner shown only for a conversation seeded from
+   a 결과 갤러리 result ("이어서 편집") — reminds the user what before/after
+   they're actually looking at throughout the whole dialog sequence, not
+   just at the start. Absent entirely for a normal from-scratch conversation. */
+.ai-studio-source-banner{
+  display:flex;align-items:center;gap:10px;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  padding:10px 14px;
+  margin-bottom:12px;
+  font-size:13px;
+  color:var(--ink);
+}
+
 .ai-studio-grid{
   display:grid;
   grid-template-columns:1fr 360px;

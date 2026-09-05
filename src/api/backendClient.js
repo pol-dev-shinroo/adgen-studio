@@ -221,11 +221,17 @@ export function updateGeneratedStatus(generationId, status) {
 // Part EE: 생성 AI's own segmentation call — costs one real gpt-5.5 call
 // server-side, only fired once per conversation (when the user finishes
 // picking a reference ad). Resolves to { segments, imageUrl }.
-export function startAiSegmentation(refAdId) {
+// Part OO: optional sourceImageUrl — when the conversation was seeded from
+// one of OUR OWN prior 생성 스튜디오 results ("이어서 편집"), this is that
+// result's own image, segmented instead of the competitor's original ad.
+// Omitted from the request body (not sent as an explicit null/undefined
+// key) when absent, so an older backend that doesn't know this field yet
+// sees an unchanged request.
+export function startAiSegmentation(refAdId, sourceImageUrl) {
   return request('/api/ai-generate/segment', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refAdId }),
+    body: JSON.stringify(sourceImageUrl ? { refAdId, sourceImageUrl } : { refAdId }),
   })
 }
 
@@ -233,11 +239,12 @@ export function startAiSegmentation(refAdId) {
 // dialog's image pane — costs one real gpt-image-2 edit call server-side,
 // only fired once per conversation (when the background dialog phase is
 // entered). Resolves to { backgroundImageUrl }.
-export function startAiBackgroundImage(refAdId) {
+// Part OO: same optional sourceImageUrl override as startAiSegmentation above.
+export function startAiBackgroundImage(refAdId, sourceImageUrl) {
   return request('/api/ai-generate/background-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refAdId }),
+    body: JSON.stringify(sourceImageUrl ? { refAdId, sourceImageUrl } : { refAdId }),
   })
 }
 

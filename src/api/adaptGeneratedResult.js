@@ -36,6 +36,10 @@ export function adaptGeneratedResult(row) {
     // fallback every other optional field here already uses.
     refBrand: row['Ref Brand'] || '',
     referenceAdId: row['Reference Ad ID'] || '',
+    // Part OO: which of OUR products this result actually used — needed to
+    // seed a 생성 AI conversation from this result without re-asking the
+    // user to re-pick a product they already chose once in 생성 스튜디오.
+    productId: row['Product ID'] || '',
     format: row['Format'] || '',
     styleIntensity: row['Style Intensity'] || '',
     instructions: row['Instructions'] || '',

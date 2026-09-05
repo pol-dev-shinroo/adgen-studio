@@ -242,5 +242,68 @@ describe('resetConversation', () => {
     expect(result.current.backgroundImageUrl).toBeNull()
     expect(result.current.backgroundImageLoading).toBe(false)
     expect(result.current.backgroundImageError).toBeNull()
+    expect(result.current.sourceResult).toBeNull()
+  })
+})
+
+// Part OO: startFromResult seeds a conversation from one of OUR OWN prior
+// 생성 스튜디오 results ("이어서 편집") instead of always starting blank.
+describe('startFromResult + seeded resetConversation (Part OO)', () => {
+  function makeResult(overrides = {}) {
+    return {
+      id: 'gen-1', brand: '헬시키키', refBrand: '경쟁사A', referenceAdId: 'ad-1', productId: '1',
+      image: 'https://example.com/result-thumb-w600.png',
+      originalImage: 'https://drive.google.com/file/d/RESULT_FILE/view',
+      originalReferenceAdImage: 'https://example.com/original-ad.png',
+      ...overrides,
+    }
+  }
+
+  it('jumps straight to segmenting with the 4 selection states + sourceImageUrl/sourceResult set from the seed', async () => {
+    mockStartAiSegmentation.mockResolvedValue({ segments: makeSegments(0), imageUrl: 'https://example.com/result-thumb-w600.png' })
+    const { result } = renderAIStudio()
+    const seedResult = makeResult()
+
+    act(() => result.current.startFromResult(seedResult, mockMyBrands))
+    act(() => result.current.resetConversation())
+
+    expect(result.current.phase).toBe('segmenting')
+    expect(result.current.selectedRefBrand).toBe('경쟁사A')
+    expect(result.current.selectedRefAdId).toBe('ad-1')
+    expect(result.current.selectedBrandKey).toBe('healthykiki')
+    expect(result.current.selectedProductId).toBe('1')
+    expect(result.current.sourceResult).toEqual(seedResult)
+    // The permanent Drive URL, never the w600 embeddable thumbnail variant.
+    expect(result.current.messages[0].text).toMatch(/이어서 편집/)
+
+    // The existing runSegmentation effect for phase 'segmenting' must fire
+    // exactly as it already does, now carrying sourceImageUrl through.
+    await waitFor(() => expect(mockStartAiSegmentation).toHaveBeenCalledTimes(1))
+    expect(mockStartAiSegmentation).toHaveBeenCalledWith('ad-1', 'https://drive.google.com/file/d/RESULT_FILE/view')
+  })
+
+  it('falls back to a normal blank start (with a console.warn) when the result\'s brand can\'t be resolved to a known brand key', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { result } = renderAIStudio()
+    const seedResult = makeResult({ brand: '없어진브랜드' })
+
+    act(() => result.current.startFromResult(seedResult, mockMyBrands))
+    act(() => result.current.resetConversation())
+
+    expect(result.current.phase).toBe('select-brand')
+    expect(result.current.sourceResult).toBeNull()
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('a normal (non-seeded) visit behaves exactly as before — resetConversation with no prior startFromResult call starts blank', () => {
+    const { result } = renderAIStudio()
+    act(() => result.current.resetConversation())
+
+    expect(result.current.phase).toBe('select-brand')
+    expect(result.current.messages).toHaveLength(1)
+    expect(result.current.messages[0].kind).toBe('choices')
+    expect(result.current.sourceResult).toBeNull()
+    expect(mockStartAiSegmentation).not.toHaveBeenCalled()
   })
 })

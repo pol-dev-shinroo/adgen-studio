@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useGallery } from '../../context/GalleryContext.jsx'
 import { useAds } from '../../context/AdsContext.jsx'
+import { useAIStudio } from '../../context/AIStudioContext.jsx'
+import { useProducts } from '../../context/ProductsContext.jsx'
+import { useNavigation } from '../../context/NavigationContext.jsx'
 import Thumb from '../common/Thumb.jsx'
 import Badge from '../common/Badge.jsx'
 import CompareModal from './CompareModal.jsx'
@@ -12,7 +15,18 @@ import CompareModal from './CompareModal.jsx'
 export default function ResultCard({ result }) {
   const { approveResult } = useGallery()
   const { ads } = useAds()
+  const { startFromResult } = useAIStudio()
+  const { brands: myBrands } = useProducts()
+  const { go } = useNavigation()
   const [compareOpen, setCompareOpen] = useState(false)
+
+  // Part OO: "이어서 편집" needs to actually resolve to a real brand/product
+  // to seed a working conversation — an older row that predates the
+  // Product ID column, or a brand name that no longer matches any of our
+  // current brands, can't be continued. Same "don't offer an action that
+  // can't actually work" posture 비교's own disabled={compareImages.length
+  // < 2} already uses on this same card.
+  const canContinueInAiStudio = !!result.productId && myBrands.some((b) => b.name === result.brand)
 
   const referenceAd = ads.find((a) => String(a.id) === String(result.referenceAdId))
   // Part V: prefer the snapshot generation.service.js persisted at
@@ -50,6 +64,14 @@ export default function ResultCard({ result }) {
           </button>
           <button className="btn pri sm" onClick={() => approveResult(result.id)}>
             {result.approved ? '✔ 승인됨' : '✔ 승인'}
+          </button>
+          <button
+            className="btn ghost sm"
+            onClick={() => { startFromResult(result, myBrands); go('ai-studio') }}
+            disabled={!canContinueInAiStudio}
+            title={canContinueInAiStudio ? undefined : '이 결과는 이어서 편집할 수 없습니다 (브랜드/제품 정보 없음)'}
+          >
+            💬 생성 AI에서 이어서 편집
           </button>
         </div>
       </div>

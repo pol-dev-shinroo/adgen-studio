@@ -3,7 +3,7 @@ import { getAllAds } from '../services/sheets/sheets.service.js'
 import { getAllProducts } from '../services/sheets/productSheets.service.js'
 import { downloadImageAsBase64, uploadGeneratedImage, uploadImage } from '../services/generation/imageIO.service.js'
 import { segmentReferenceAd, isolateAdBackground } from '../services/generation/adSegmentation.service.js'
-import { findBrandDef, firstLink, resolveProductReferenceImageUrl } from '../services/generation/helpers.js'
+import { findBrandDef, firstLink, isPlausibleUrl, resolveProductReferenceImageUrl } from '../services/generation/helpers.js'
 import { analyzeReferenceAd } from '../services/generation/visionAnalysis.service.js'
 import { findCounterFacts } from '../services/generation/counterFacts.service.js'
 import { writeReplacementCopy } from '../services/generation/copywriting.service.js'
@@ -26,21 +26,34 @@ import { mapGeneratedAd } from '../mappers/generatedAd.mapper.js'
 // CC-2-style deps: getAllAdsFn/downloadImageAsBase64Fn/segmentReferenceAdFn
 // are injected (defaulting to the real implementations) purely so this is
 // unit-testable without a real Sheets/OpenAI call.
+// Part OO: optional sourceImageUrl overrides the refAdId->ad-image lookup
+// entirely — used when "이어서 편집" seeds this conversation from one of OUR
+// OWN already-generated 생성 스튜디오 results instead of the competitor's
+// original ad. refAdId is still required either way (segmentation itself
+// doesn't need it, but this keeps the request shape consistent with
+// postRender below, which DOES still need refAdId/refBrand as lineage
+// metadata even when sourceImageUrl overrides the actual image analyzed).
 export async function postSegment(req, res, next, {
   getAllAdsFn = getAllAds, downloadImageAsBase64Fn = downloadImageAsBase64, segmentReferenceAdFn = segmentReferenceAd,
 } = {}) {
-  const { refAdId } = req.body ?? {}
+  const { refAdId, sourceImageUrl } = req.body ?? {}
   if (!refAdId) {
     return res.status(400).json({ error: '"refAdId" is required' })
   }
+  if (sourceImageUrl !== undefined && sourceImageUrl !== null && !isPlausibleUrl(sourceImageUrl)) {
+    return res.status(400).json({ error: '"sourceImageUrl" must be a valid http(s) URL' })
+  }
 
   try {
-    const ads = await getAllAdsFn()
-    const ad = ads.find((a) => String(a['Ad Archive ID']) === String(refAdId))
-    if (!ad) return res.status(404).json({ error: `No reference ad found for id "${refAdId}"` })
+    let imageLink = sourceImageUrl || null
+    if (!imageLink) {
+      const ads = await getAllAdsFn()
+      const ad = ads.find((a) => String(a['Ad Archive ID']) === String(refAdId))
+      if (!ad) return res.status(404).json({ error: `No reference ad found for id "${refAdId}"` })
 
-    const imageLink = firstLink(ad['Archived Image Links']) || ad['Archived Thumbnail'] || firstLink(ad['Image Links'])
-    if (!imageLink) return res.status(400).json({ error: 'Reference ad has no image available to segment' })
+      imageLink = firstLink(ad['Archived Image Links']) || ad['Archived Thumbnail'] || firstLink(ad['Image Links'])
+      if (!imageLink) return res.status(400).json({ error: 'Reference ad has no image available to segment' })
+    }
 
     const { base64 } = await downloadImageAsBase64Fn(imageLink)
     const { segments } = await segmentReferenceAdFn(base64)
@@ -63,24 +76,33 @@ export async function postSegment(req, res, next, {
 // output tied to a brand) and productImageExtraction's "AdGen Product
 // References" root, since this is neither — it's a derived-from-a-
 // competitor-ad asset with no owning brand.
+// Part OO: same optional sourceImageUrl override as postSegment above —
+// isolates the background from OUR OWN prior result instead of the
+// competitor's original ad when seeded via "이어서 편집".
 export async function postBackgroundImage(req, res, next, {
   getAllAdsFn = getAllAds,
   downloadImageAsBase64Fn = downloadImageAsBase64,
   isolateAdBackgroundFn = isolateAdBackground,
   uploadImageFn = uploadImage,
 } = {}) {
-  const { refAdId } = req.body ?? {}
+  const { refAdId, sourceImageUrl } = req.body ?? {}
   if (!refAdId) {
     return res.status(400).json({ error: '"refAdId" is required' })
   }
+  if (sourceImageUrl !== undefined && sourceImageUrl !== null && !isPlausibleUrl(sourceImageUrl)) {
+    return res.status(400).json({ error: '"sourceImageUrl" must be a valid http(s) URL' })
+  }
 
   try {
-    const ads = await getAllAdsFn()
-    const ad = ads.find((a) => String(a['Ad Archive ID']) === String(refAdId))
-    if (!ad) return res.status(404).json({ error: `No reference ad found for id "${refAdId}"` })
+    let imageLink = sourceImageUrl || null
+    if (!imageLink) {
+      const ads = await getAllAdsFn()
+      const ad = ads.find((a) => String(a['Ad Archive ID']) === String(refAdId))
+      if (!ad) return res.status(404).json({ error: `No reference ad found for id "${refAdId}"` })
 
-    const imageLink = firstLink(ad['Archived Image Links']) || ad['Archived Thumbnail'] || firstLink(ad['Image Links'])
-    if (!imageLink) return res.status(400).json({ error: 'Reference ad has no image available' })
+      imageLink = firstLink(ad['Archived Image Links']) || ad['Archived Thumbnail'] || firstLink(ad['Image Links'])
+      if (!imageLink) return res.status(400).json({ error: 'Reference ad has no image available' })
+    }
 
     const { base64 } = await downloadImageAsBase64Fn(imageLink)
     const isolatedBase64 = await isolateAdBackgroundFn(base64)
@@ -129,7 +151,7 @@ export function applyTextDecisionOverrides(replacements, textSegments, decisions
 }
 
 function validateRenderBody(body) {
-  const { refAdId, brand, formats, quantity, decisions } = body ?? {}
+  const { refAdId, brand, formats, quantity, decisions, sourceImageUrl } = body ?? {}
   if (!refAdId) return '"refAdId" is required'
   if (!brand || typeof brand.key !== 'string' || (typeof brand.productId !== 'string' && typeof brand.productId !== 'number')) {
     return '"brand" must include "key" and "productId"'
@@ -138,6 +160,12 @@ function validateRenderBody(body) {
   const qty = Number(quantity)
   if (!Number.isInteger(qty) || qty < 1 || qty > 10) return '"quantity" must be an integer between 1 and 10'
   if (!decisions || typeof decisions !== 'object') return '"decisions" is required'
+  // Part OO: optional — overrides what's actually analyzed/rendered (see
+  // postRender's own comment), while refAdId/refBrand stay required above
+  // purely as lineage metadata regardless.
+  if (sourceImageUrl !== undefined && sourceImageUrl !== null && !isPlausibleUrl(sourceImageUrl)) {
+    return '"sourceImageUrl" must be a valid http(s) URL'
+  }
   return null
 }
 
@@ -167,7 +195,7 @@ export async function postRender(req, res, next, {
   const validationError = validateRenderBody(req.body)
   if (validationError) return res.status(400).json({ error: validationError })
 
-  const { refAdId, refBrand, brand, formats, quantity, decisions, segments } = req.body
+  const { refAdId, refBrand, brand, formats, quantity, decisions, segments, sourceImageUrl } = req.body
   const qty = Number(quantity)
   const textSegments = (Array.isArray(segments) ? segments : []).filter((s) => s?.type === 'text')
 
@@ -178,6 +206,11 @@ export async function postRender(req, res, next, {
     const ads = await getAllAdsFn()
     const ad = ads.find((a) => String(a['Ad Archive ID']) === String(refAdId))
     if (!ad) return res.status(404).json({ error: `No reference ad found for id "${refAdId}"` })
+    // Part OO: resolved unconditionally regardless of sourceImageUrl — this
+    // is the TRUE original competitor ad's image, persisted below via
+    // mapGeneratedAd's referenceAdImageUrl so the 비교 modal's "경쟁사 원본"
+    // stays anchored to it through any number of successive refinement
+    // rounds, never silently rebasing to "our own previous result."
     const referenceAdImageLink = firstLink(ad['Archived Image Links']) || ad['Archived Thumbnail'] || firstLink(ad['Image Links'])
     if (!referenceAdImageLink) return res.status(400).json({ error: 'Reference ad has no image available' })
 
@@ -200,8 +233,16 @@ export async function postRender(req, res, next, {
     const backgroundUrl = decisions.background?.mode === 'replace' ? decisions.background.value : null
     const modelFaceUrl = decisions.model?.mode === 'replace' ? decisions.model.value : null
 
+    // Part OO: sourceImageUrl (when present) is what's actually downloaded/
+    // analyzed/rendered against — the user is refining a prior 생성 스튜디오
+    // result they already produced, not re-analyzing the untouched
+    // competitor original. referenceAdImageLink itself was still resolved
+    // unconditionally above purely for lineage (see its own comment) — this
+    // is the only place the two are allowed to diverge.
+    const renderInputUrl = sourceImageUrl || referenceAdImageLink
+
     const [referenceImage, productImage, backgroundImage, modelFaceImage, copyStyleImage] = await Promise.all([
-      downloadImageAsBase64Fn(referenceAdImageLink),
+      downloadImageAsBase64Fn(renderInputUrl),
       downloadImageAsBase64Fn(productImageUrl),
       backgroundUrl ? downloadImageAsBase64Fn(backgroundUrl) : Promise.resolve(null),
       modelFaceUrl ? downloadImageAsBase64Fn(modelFaceUrl) : Promise.resolve(null),

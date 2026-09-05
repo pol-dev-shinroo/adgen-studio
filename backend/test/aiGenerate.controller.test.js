@@ -56,6 +56,36 @@ test('postSegment: real success downloads the resolved image and returns segment
   assert.deepEqual(res.body, { segments: [{ id: 'background-0' }], imageUrl: 'https://example.com/ad.jpg' })
 })
 
+// --- postSegment: sourceImageUrl override (Part OO) ---
+
+test('postSegment: sourceImageUrl skips the ad lookup entirely and segments that image directly', async () => {
+  const res = makeRes()
+  let getAllAdsCalled = false
+  await postSegment(
+    { body: { refAdId: 'ad-1', sourceImageUrl: 'https://example.com/our-own-result.png' } }, res, makeNext(),
+    {
+      getAllAdsFn: async () => { getAllAdsCalled = true; return [] },
+      downloadImageAsBase64Fn: async (url) => { assert.equal(url, 'https://example.com/our-own-result.png'); return { base64: 'B64' } },
+      segmentReferenceAdFn: async (base64) => { assert.equal(base64, 'B64'); return { segments: [{ id: 'background-0' }] } },
+    }
+  )
+  assert.equal(res.statusCode, null)
+  assert.equal(getAllAdsCalled, false, 'the ads sheet must never be read when sourceImageUrl is present')
+  assert.deepEqual(res.body, { segments: [{ id: 'background-0' }], imageUrl: 'https://example.com/our-own-result.png' })
+})
+
+test('postSegment: still requires refAdId even when sourceImageUrl is present', async () => {
+  const res = makeRes()
+  await postSegment({ body: { sourceImageUrl: 'https://example.com/our-own-result.png' } }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
+test('postSegment: 400 for an implausible sourceImageUrl', async () => {
+  const res = makeRes()
+  await postSegment({ body: { refAdId: 'ad-1', sourceImageUrl: 'not-a-url' } }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
 // --- postBackgroundImage (Part FF-2) ---
 
 test('postBackgroundImage: 400 when refAdId is missing', async () => {
@@ -103,6 +133,25 @@ test('postBackgroundImage: real success downloads the ad image, isolates it, upl
   assert.equal(uploadArgs.rootFolderName, 'AdGen AI Studio Backgrounds')
   assert.equal(uploadArgs.subfolder, 'ad-1')
   assert.match(uploadArgs.fileName, /^background-.+\.png$/)
+})
+
+// --- postBackgroundImage: sourceImageUrl override (Part OO) ---
+
+test('postBackgroundImage: sourceImageUrl skips the ad lookup and isolates the background from that image directly', async () => {
+  const res = makeRes()
+  let getAllAdsCalled = false
+  await postBackgroundImage(
+    { body: { refAdId: 'ad-1', sourceImageUrl: 'https://example.com/our-own-result.png' } }, res, makeNext(),
+    {
+      getAllAdsFn: async () => { getAllAdsCalled = true; return [] },
+      downloadImageAsBase64Fn: async (url) => { assert.equal(url, 'https://example.com/our-own-result.png'); return { base64: 'B64' } },
+      isolateAdBackgroundFn: async (base64) => { assert.equal(base64, 'B64'); return 'ISOLATED_B64' },
+      uploadImageFn: async () => 'https://drive.google.com/file/d/bg123/view',
+    }
+  )
+  assert.equal(res.statusCode, null)
+  assert.equal(getAllAdsCalled, false)
+  assert.deepEqual(res.body, { backgroundImageUrl: 'https://drive.google.com/file/d/bg123/view' })
 })
 
 // --- applyTextDecisionOverrides ---
@@ -275,6 +324,60 @@ test('postRender: total failure (succeeded 0) still responds 200 with a summary,
   assert.equal(res.body.succeeded, 0)
   assert.equal(res.body.failed, 1)
   assert.equal(res.body.generationId, null)
+})
+
+// --- postRender: sourceImageUrl override (Part OO) ---
+
+test('postRender: sourceImageUrl is downloaded/analyzed/rendered against instead of the competitor ad image, but referenceAdImageUrl in the persisted row still points at the TRUE original ad', async () => {
+  const res = makeRes()
+  const downloadedUrls = []
+  let analyzedBase64 = null
+  let renderedReferenceBase64 = null
+  const deps = fakeRenderDeps({
+    downloadImageAsBase64Fn: async (url) => { downloadedUrls.push(url); return { base64: `B64(${url})` } },
+    analyzeReferenceAdFn: async (base64) => {
+      analyzedBase64 = base64
+      return { identified_texts: [{ location: 'top', text: '원본 문구' }], product_instances: [] }
+    },
+    renderConversationalImageFn: async ({ referenceImageBase64 }) => {
+      renderedReferenceBase64 = referenceImageBase64
+      return 'RENDERED_B64'
+    },
+  })
+
+  await postRender(
+    { body: validRenderBody({ sourceImageUrl: 'https://example.com/our-own-prior-result.png' }) },
+    res, makeNext(), deps
+  )
+
+  assert.equal(res.body.succeeded, 1)
+  // The competitor ad's own image link ('https://example.com/ad.jpg', from
+  // fakeRenderDeps' getAllAdsFn) must never be downloaded/analyzed/rendered
+  // against once sourceImageUrl is present — only sourceImageUrl itself is.
+  assert.ok(downloadedUrls.includes('https://example.com/our-own-prior-result.png'))
+  assert.ok(!downloadedUrls.includes('https://example.com/ad.jpg'))
+  assert.equal(analyzedBase64, 'B64(https://example.com/our-own-prior-result.png)')
+  assert.equal(renderedReferenceBase64, 'B64(https://example.com/our-own-prior-result.png)')
+
+  // Lineage: the persisted row's referenceAdImageUrl must still be the TRUE
+  // original competitor ad's image — the 비교 modal's "경쟁사 원본" must never
+  // silently rebase to "our own previous result."
+  assert.equal(deps._appendCalls[0]['Reference Ad Image URL'], 'https://example.com/ad.jpg')
+})
+
+test('postRender: 400 for an implausible sourceImageUrl', async () => {
+  const res = makeRes()
+  await postRender({ body: validRenderBody({ sourceImageUrl: 'not-a-url' }) }, res, makeNext())
+  assert.equal(res.statusCode, 400)
+})
+
+test('postRender: without sourceImageUrl, behaves exactly as before — analyzes/renders against the competitor ad image', async () => {
+  const res = makeRes()
+  const deps = fakeRenderDeps()
+  await postRender({ body: validRenderBody() }, res, makeNext(), deps)
+
+  assert.equal(res.body.succeeded, 1)
+  assert.equal(deps._appendCalls[0]['Reference Ad Image URL'], 'https://example.com/ad.jpg')
 })
 
 test('postRender: a background/model/copy-style "replace" decision downloads and threads the picked image into materialImages', async () => {

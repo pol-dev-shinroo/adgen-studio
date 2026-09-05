@@ -14,6 +14,20 @@ function nextId() {
   return Date.now() + Math.random()
 }
 
+// Part OO: a "pending seed" for starting a conversation from one of OUR OWN
+// prior 생성 스튜디오 results ("이어서 편집"), set by startFromResult
+// (called from ResultCard.jsx right before navigating to this screen) and
+// consumed by resetConversation below. Deliberately module-level state, NOT
+// React state — startFromResult fires synchronously right before
+// go('ai-studio') triggers a navigation-driven re-render, and there is no
+// guarantee that a setState from the previous screen has actually committed
+// before AIStudioScreen's own mount effect reads it; a plain module
+// variable has no such race since it's just a JS reference, read/write
+// unconditionally regardless of React's render timing. There is only ever
+// one AIStudioProvider instance in this app, so a single module-level slot
+// is safe.
+let pendingSeed = null
+
 // Part EE: builds the fixed dialog sequence a real segmentation result
 // implies — exactly one background dialog, one per detected text segment
 // (in detection order), one model dialog ONLY if a model segment exists,
@@ -104,6 +118,17 @@ export function AIStudioProvider({ children }) {
   const [selectedRefAdId, setSelectedRefAdId] = useState(null)
   const [selectedBrandKey, setSelectedBrandKey] = useState(null)
   const [selectedProductId, setSelectedProductId] = useState(null)
+
+  // Part OO: set only for a conversation seeded from one of OUR OWN prior
+  // 생성 스튜디오 results ("이어서 편집") — sourceImageUrl is the actual image
+  // segmented/isolated/rendered against (in place of the competitor ad's
+  // own image); sourceResult is the whole originating result object,
+  // needed by AIStudioScreen.jsx's before/after banner (§2.5) for its
+  // referenceImage/productReferenceImage/styleReferenceImage fallbacks,
+  // not just the pieces already pulled into the 4 selection states above.
+  // Both null for a normal from-scratch conversation.
+  const [sourceImageUrl, setSourceImageUrl] = useState(null)
+  const [sourceResult, setSourceResult] = useState(null)
 
   const [formats, setFormats] = useState([])
   const [quantity, setQuantity] = useState(QUANTITIES[0])
@@ -239,7 +264,13 @@ export function AIStudioProvider({ children }) {
     if (!selectedRefAdId) return
     setSegmentationError(null)
     try {
-      const { segments: fetchedSegments, imageUrl: fetchedImageUrl } = await startAiSegmentation(selectedRefAdId)
+      // Part OO: when this conversation was seeded from one of OUR OWN
+      // prior 생성 스튜디오 results, sourceImageUrl is segmented instead of
+      // the competitor ad's own image — the user is refining what they
+      // already generated, not re-analyzing the untouched original.
+      const { segments: fetchedSegments, imageUrl: fetchedImageUrl } = sourceImageUrl
+        ? await startAiSegmentation(selectedRefAdId, sourceImageUrl)
+        : await startAiSegmentation(selectedRefAdId)
       setSegments(fetchedSegments)
       setImageUrl(fetchedImageUrl)
       advancePhase('segmenting', { segments: fetchedSegments })
@@ -248,7 +279,7 @@ export function AIStudioProvider({ children }) {
       setSegmentationError(err.message || '알 수 없는 오류')
       showToast(`분석 실패: ${err.message}`)
     }
-  }, [selectedRefAdId, advancePhase, showToast])
+  }, [selectedRefAdId, sourceImageUrl, advancePhase, showToast])
 
   // Fires exactly once per entry into 'segmenting', guarded by a ref rather
   // than relying on the effect itself — React 18 StrictMode (see main.jsx)
@@ -281,7 +312,10 @@ export function AIStudioProvider({ children }) {
     setBackgroundImageLoading(true)
     setBackgroundImageError(null)
     try {
-      const { backgroundImageUrl: url } = await startAiBackgroundImage(selectedRefAdId)
+      // Part OO: same sourceImageUrl override as runSegmentation above.
+      const { backgroundImageUrl: url } = sourceImageUrl
+        ? await startAiBackgroundImage(selectedRefAdId, sourceImageUrl)
+        : await startAiBackgroundImage(selectedRefAdId)
       setBackgroundImageUrl(url)
     } catch (err) {
       console.error('Ad background isolation failed:', err)
@@ -289,7 +323,7 @@ export function AIStudioProvider({ children }) {
     } finally {
       setBackgroundImageLoading(false)
     }
-  }, [selectedRefAdId])
+  }, [selectedRefAdId, sourceImageUrl])
 
   const backgroundImageStartedRef = useRef(false)
   useEffect(() => {
@@ -366,6 +400,11 @@ export function AIStudioProvider({ children }) {
         // it here is free (no extra real API call), unlike re-running
         // segmentation server-side would be.
         segments,
+        // Part OO: when set, the backend analyzes/renders against THIS
+        // image instead of the competitor ad's own — refAdId/refBrand above
+        // still travel through as lineage metadata regardless (see
+        // postRender's own comment).
+        sourceImageUrl: sourceImageUrl || undefined,
       })
       setLastResult(result)
       await refreshResults()
@@ -398,12 +437,46 @@ export function AIStudioProvider({ children }) {
     }
   }, [
     formats, quantity, decisions, selectedRefAdId, selectedRefBrand, selectedBrandKey, selectedProductId,
-    appendMessage, refreshResults, showToast,
+    sourceImageUrl, appendMessage, refreshResults, showToast,
   ])
 
   const goToGallery = useCallback(() => {
     go('gallery')
   }, [go])
+
+  // Part OO: called from ResultCard.jsx ("💬 생성 AI에서 이어서 편집") right
+  // before navigating here — resolves everything a seeded conversation
+  // needs and stashes it in the module-level pendingSeed (see its own
+  // comment for why this can't just be more React state), rather than
+  // setting this context's own state directly: resetConversation is the
+  // single place that actually applies a seed (or starts blank), so there's
+  // exactly one code path that initializes a conversation, not two.
+  // myBrandsList is passed in (rather than read from this context's own
+  // `myBrands`) since ResultCard.jsx already has it from its own
+  // useProducts() call and the two are guaranteed to be the same data.
+  const startFromResult = useCallback((result, myBrandsList) => {
+    const brandKey = myBrandsList.find((b) => b.name === result.brand)?.key
+    if (!brandKey) {
+      console.warn(
+        `startFromResult: could not resolve a brand key for result brand "${result.brand}" ` +
+        '(brand name changed, or products haven\'t loaded yet) — falling back to a blank conversation instead ' +
+        'of seeding into a broken state.'
+      )
+      pendingSeed = null
+      return
+    }
+    pendingSeed = {
+      selectedRefBrand: result.refBrand,
+      selectedRefAdId: result.referenceAdId,
+      selectedBrandKey: brandKey,
+      selectedProductId: result.productId,
+      // The real, downloadable Drive URL — never the w600 embeddable
+      // thumbnail variant (`result.image`), which the backend can't use as
+      // a download source the way it uses every other imageUrl in this app.
+      sourceImageUrl: result.originalImage,
+      sourceResult: result,
+    }
+  }, [])
 
   // §9: no persistence across screen navigations/reloads — each visit
   // starts fresh. AIStudioScreen.jsx calls this on mount rather than this
@@ -415,7 +488,42 @@ export function AIStudioProvider({ children }) {
   // for a brand pick (advancePhase only ever fires in response to an action
   // that already completed a phase), so without this the chat would open
   // completely empty with no way to start the conversation at all.
+  //
+  // Part OO: checks pendingSeed FIRST — when present (a fresh "이어서 편집"
+  // click), skips straight past select-brand/select-ad/select-product
+  // (all 3 already implied by the seed) directly into 'segmenting', which
+  // the existing runSegmentation effect below picks up exactly as it
+  // already does for that phase, now carrying sourceImageUrl through.
   const resetConversation = useCallback(() => {
+    if (pendingSeed) {
+      const seed = pendingSeed
+      pendingSeed = null
+      setPhase('segmenting')
+      setMessages([{
+        id: nextId(), createdAt: new Date().toISOString(), role: 'ai', kind: 'text',
+        text: '이 결과를 이어서 편집합니다 — 이미지를 분석하고 있습니다...',
+      }])
+      setSegments([])
+      setImageUrl(null)
+      setActiveSegmentId(null)
+      setDecisions({ background: null, texts: {}, model: null, product: null })
+      setSelectedRefBrand(seed.selectedRefBrand)
+      setSelectedRefAdId(seed.selectedRefAdId)
+      setSelectedBrandKey(seed.selectedBrandKey)
+      setSelectedProductId(seed.selectedProductId)
+      setSourceImageUrl(seed.sourceImageUrl)
+      setSourceResult(seed.sourceResult)
+      setFormats([])
+      setQuantity(QUANTITIES[0])
+      setSegmentationError(null)
+      setRenderError(null)
+      setLastResult(null)
+      setBackgroundImageUrl(null)
+      setBackgroundImageLoading(false)
+      setBackgroundImageError(null)
+      return
+    }
+
     setPhase('select-brand')
     setMessages([{ id: nextId(), createdAt: new Date().toISOString(), role: 'ai', kind: 'choices', text: '어떤 브랜드의 광고를 참고할까요?' }])
     setSegments([])
@@ -426,6 +534,8 @@ export function AIStudioProvider({ children }) {
     setSelectedRefAdId(null)
     setSelectedBrandKey(null)
     setSelectedProductId(null)
+    setSourceImageUrl(null)
+    setSourceResult(null)
     setFormats([])
     setQuantity(QUANTITIES[0])
     setSegmentationError(null)
@@ -462,6 +572,10 @@ export function AIStudioProvider({ children }) {
         startGenerate, renderError, lastResult,
         selectedBrand, selectedProductName, productRefSelection,
         resetConversation, goToGallery,
+        // Part OO: startFromResult seeds pendingSeed (see its own comment) —
+        // sourceResult is exposed so AIStudioScreen.jsx's before/after
+        // banner (§2.5) can render without a second round-trip.
+        startFromResult, sourceResult,
       }}
     >
       {children}

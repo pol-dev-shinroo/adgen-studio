@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import '../../styles/aiStudio.css'
 import { useAIStudio } from '../../context/AIStudioContext.jsx'
+import { useAds } from '../../context/AdsContext.jsx'
 import AIImagePane from './AIImagePane.jsx'
 import AIChatPane from './AIChatPane.jsx'
 import AIContextPanel from './AIContextPanel.jsx'
+import CompareModal from '../gallery/CompareModal.jsx'
 
 // Part EE §9: no persistence across screen navigations/reloads — every
 // visit to 생성 AI starts fresh. AIStudioProvider is composed once at the
@@ -11,8 +13,10 @@ import AIContextPanel from './AIContextPanel.jsx'
 // its own as the user navigates away and back, so this screen resets the
 // conversation itself on mount rather than relying on unmount/remount.
 export default function AIStudioScreen() {
-  const { resetConversation } = useAIStudio()
+  const { resetConversation, sourceResult } = useAIStudio()
+  const { ads } = useAds()
   const resetOnce = useRef(false)
+  const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
     if (resetOnce.current) return
@@ -20,6 +24,22 @@ export default function AIStudioScreen() {
     resetConversation()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Part OO §2.5: this flow is meaningfully different from starting 생성 AI
+  // from scratch — the user already produced sourceResult via 생성 스튜디오
+  // and needs to see how it came out (경쟁사 원본 vs. that result) before and
+  // while deciding how to refine it further. Reuses CompareModal exactly as
+  // 결과 갤러리 already does — same referenceImage fallback chain
+  // ResultCard.jsx's own compareImages derivation uses. Stays visible for
+  // the WHOLE conversation (not just the first message), since the user may
+  // want to re-check the before/after at any point mid-dialog, and renders
+  // nothing at all for a normal from-scratch conversation (sourceResult null).
+  const sourceReferenceAd = sourceResult
+    ? ads.find((a) => String(a.id) === String(sourceResult.referenceAdId))
+    : null
+  const sourceReferenceImage = sourceResult
+    ? (sourceResult.originalReferenceAdImage || sourceReferenceAd?.images?.[0] || '')
+    : ''
 
   return (
     <section className="ai-studio-screen">
@@ -30,6 +50,15 @@ export default function AIStudioScreen() {
         </div>
       </div>
 
+      {sourceResult && (
+        <div className="ai-studio-source-banner">
+          🔧 결과 갤러리에서 이어서 편집 중
+          <button type="button" className="btn ghost sm" onClick={() => setCompareOpen(true)}>
+            원본 비교 보기
+          </button>
+        </div>
+      )}
+
       <div className="ai-studio-grid">
         <div className="ai-studio-left">
           <AIImagePane />
@@ -37,6 +66,10 @@ export default function AIStudioScreen() {
         </div>
         <AIContextPanel />
       </div>
+
+      {compareOpen && sourceResult && (
+        <CompareModal referenceImage={sourceReferenceImage} result={sourceResult} onClose={() => setCompareOpen(false)} />
+      )}
     </section>
   )
 }

@@ -4,6 +4,15 @@ export function firstLink(newlineJoined) {
   return (newlineJoined || '').split('\n').find(Boolean) || ''
 }
 
+// Part OO: basic sanity check for a client-supplied override URL
+// (sourceImageUrl) before it's ever handed to downloadImageAsBase64Fn —
+// deliberately not full URL parsing/validation, just enough to reject an
+// obviously garbage value with a clear 400 instead of an opaque download
+// failure deeper in the pipeline.
+export function isPlausibleUrl(value) {
+  return typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim())
+}
+
 export function findBrandDef(brandKey) {
   return config.brands.find((b) => b.key === brandKey)
 }
