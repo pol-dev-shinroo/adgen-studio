@@ -180,26 +180,45 @@ export function productSwapInstructionFor(productInstances, hasStyleReference, s
     // — the earlier wording's case-by-case "when an instance has no
     // equivalent" framing left room for the model to read it as "you may
     // design a plausible variant," not "you may only ever show what's in
-    // the photo." The unconditional, no-exceptions rule is now the FIRST
+    // the photo." The unconditional, no-exceptions rule became the FIRST
     // sentence of this paragraph (long-prompt instruction-following weighs
-    // earlier/more-repeated statements more heavily), and duplicates of our
-    // one real product are explicitly named as the correct, expected outcome
-    // rather than an edge case to tolerate.
-    'CRITICAL: This applies to EVERY instance without exception — if the competitor\'s original shows 2 or more ' +
-    'product instances in different physical forms (e.g. a boxed product AND a separate stick pack, sachet, or ' +
-    'poured sample), replace ALL of them with our exact same reference-photo product, resulting in multiple ' +
-    'identical copies of our real product if necessary. Do NOT design, invent, or improvise a second packaging ' +
-    'variant for our brand under any circumstances, even one that would visually match the original scene ' +
-    'better — our product only exists in the one form shown in the reference photo, full stop. Our product ' +
-    'must be rendered using EXACTLY the packaging shown in the second reference image — the same container ' +
-    'type, shape, materials, and design for every single instance. NEVER invent, imagine, or fabricate a ' +
-    'packaging form factor for our product that isn\'t depicted in that reference photo (e.g. if the ' +
-    'competitor\'s original shows a torn-open sachet/pouch, loose powder, or a pill/tablet outside its ' +
-    'container, and our reference photo only shows a sealed box or bottle, do NOT invent a sachet/loose-powder ' +
-    'version of our branding). When an instance\'s physical form has no equivalent in our reference photo, ' +
-    'render that instance as our actual product exactly as it appears in the reference photo instead — ' +
-    'adapting only its perspective, scale, and lighting to fit the scene, even if its resulting shape doesn\'t ' +
-    'exactly mirror the silhouette of the thing it\'s replacing.'
+    // earlier/more-repeated statements more heavily).
+    //
+    // Part PP: Part NN's own "resulting in multiple identical copies of our
+    // real product if necessary" framing then produced a NEW, different bug
+    // — a hand shown holding our real box (correct) plus two toy-scale
+    // miniature copies of that same box awkwardly crammed against the
+    // fingers, because the model mechanically copied the competitor's
+    // original instance count/scale/position rather than composing a
+    // physically plausible scene. The design-fidelity rule (never a
+    // fabricated packaging variant) stays absolute and unconditional; what
+    // loosens is the INSTANCE COUNT/PLACEMENT rule — the model now has
+    // explicit permission to consolidate/resize/reposition/omit a redundant
+    // or awkward extra instance, as long as at least one real, correctly-
+    // designed instance remains clearly visible. This is a real, evidence-
+    // based tightening pass (Part MM -> NN -> PP), each one fixing what the
+    // previous version's wording turned out to still leave open.
+    'CRITICAL: our product must NEVER appear as a fabricated or invented packaging design — every visible ' +
+    'instance must be the exact same real design shown in the second reference image, no exceptions. However, ' +
+    'apply this with real photographic judgment about WHERE and HOW MANY instances to show, not by ' +
+    'mechanically copying the competitor\'s original instance count/scale/position. If the competitor\'s ' +
+    'original shows multiple product instances in different physical forms or at scales that would look ' +
+    'implausible once all replaced with copies of our one real product (e.g. a full-size box in a hand ' +
+    'alongside miniature-scale copies of the same box awkwardly tucked into that hand, reading as toys rather ' +
+    'than real products), do NOT force that literal result. Instead, compose the scene the way a real product ' +
+    'photo would: you may consolidate, resize sensibly, reposition, or simply omit a redundant/awkward extra ' +
+    'instance, as long as at least one instance of our real product — exactly as shown in the reference photo ' +
+    '— remains clearly and prominently visible. Never solve an awkward-composition problem by inventing a ' +
+    'different packaging design instead; solve it by adjusting how many copies appear and where, not what ' +
+    'they look like. Our product must be rendered using EXACTLY the packaging shown in the second reference ' +
+    'image — the same container type, shape, materials, and design for every single instance shown. NEVER ' +
+    'invent, imagine, or fabricate a packaging form factor for our product that isn\'t depicted in that ' +
+    'reference photo (e.g. if the competitor\'s original shows a torn-open sachet/pouch, loose powder, or a ' +
+    'pill/tablet outside its container, and our reference photo only shows a sealed box or bottle, do NOT ' +
+    'invent a sachet/loose-powder version of our branding). When an instance\'s physical form has no ' +
+    'equivalent in our reference photo, render that instance as our actual product exactly as it appears in ' +
+    'the reference photo instead — adapting only its perspective, scale, and lighting to fit the scene, even ' +
+    'if its resulting shape doesn\'t exactly mirror the silhouette of the thing it\'s replacing.'
 }
 
 // referenceImageBase64/productImageBase64: raw base64 (no data: prefix).

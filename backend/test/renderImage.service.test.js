@@ -114,7 +114,15 @@ test('renderFinalImage\'s main swap sentence itself (not just the CRITICAL parag
   assert.match(text, /the identical container, shape, and design every single time, never a different or invented variant/)
 })
 
-test('renderFinalImage requires duplicating our real product across every instance when the competitor shows 2+ different physical forms, never a second invented variant', async () => {
+// Part PP: Part NN's own "resulting in multiple identical copies... if
+// necessary" framing produced a NEW bug — a hand holding our real box plus
+// two toy-scale miniature copies crammed against the fingers, because the
+// model mechanically copied the competitor's original instance count/scale/
+// position. The design-fidelity rule (never a fabricated packaging variant)
+// stays absolute; the instance-count/placement rule now explicitly permits
+// photographic judgment (consolidate/resize/reposition/omit) instead of
+// demanding literal duplication.
+test('renderFinalImage requires design fidelity for every instance, but gives explicit photographic-judgment latitude on instance count/placement instead of demanding literal duplication', async () => {
   const { client, getLastRequest } = fakeClient()
   const twoFormInstances = [
     { location: 'left hand', description: 'a boxed product' },
@@ -133,20 +141,24 @@ test('renderFinalImage requires duplicating our real product across every instan
   }, { getClientFn: () => client })
 
   const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
-  // The unconditional rule must be the FIRST sentence of the CRITICAL
-  // paragraph, ahead of the older illustrative examples — instruction-
-  // following on long prompts weighs earlier/more-repeated statements more.
+  // The unconditional design-fidelity rule must be the FIRST sentence of the
+  // CRITICAL paragraph, ahead of the older illustrative examples —
+  // instruction-following on long prompts weighs earlier statements more.
   const criticalIndex = text.indexOf('CRITICAL:')
-  const unconditionalIndex = text.indexOf('This applies to EVERY instance without exception')
+  const fidelityIndex = text.indexOf('our product must NEVER appear as a fabricated or invented packaging design')
   const examplesIndex = text.indexOf('torn-open sachet/pouch, loose powder')
-  assert.ok(criticalIndex !== -1 && unconditionalIndex !== -1 && examplesIndex !== -1)
-  assert.ok(unconditionalIndex < examplesIndex, 'the no-exceptions rule must come before the illustrative examples')
-  assert.ok(unconditionalIndex - criticalIndex < 15, 'the no-exceptions rule must be the very first sentence after "CRITICAL:"')
+  assert.ok(criticalIndex !== -1 && fidelityIndex !== -1 && examplesIndex !== -1)
+  assert.ok(fidelityIndex < examplesIndex, 'the design-fidelity rule must come before the illustrative examples')
+  assert.ok(fidelityIndex - criticalIndex < 15, 'the design-fidelity rule must be the very first sentence after "CRITICAL:"')
 
-  assert.match(text, /resulting in multiple identical copies of our real product if necessary/)
-  assert.match(text, /Do NOT design, invent, or improvise a second packaging variant for our brand under any circumstances/)
-  assert.match(text, /even one that would visually match the original scene better/)
-  assert.match(text, /our product only exists in the one form shown in the reference photo, full stop/)
+  // Design fidelity: still absolute, no exceptions.
+  assert.match(text, /every visible instance must be the exact same real design shown in the second reference image, no exceptions/)
+  // Instance count/placement: now explicit photographic-judgment latitude,
+  // not a literal-duplication mandate.
+  assert.match(text, /apply this with real photographic judgment about WHERE and HOW MANY instances to show/)
+  assert.match(text, /you may consolidate, resize sensibly, reposition, or simply omit a redundant\/awkward extra instance/)
+  assert.match(text, /Never solve an awkward-composition problem by inventing a different packaging design instead/)
+  assert.doesNotMatch(text, /resulting in multiple identical copies of our real product if necessary/)
 })
 
 test('renderFinalImage adds a third input_image and the style-reference instruction when a style reference is given', async () => {
