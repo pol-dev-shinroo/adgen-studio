@@ -88,6 +88,67 @@ test('renderFinalImage forbids fabricating a packaging form factor our product d
   assert.match(text, /render that instance as our actual product exactly as it appears in the reference photo/)
 })
 
+// Part NN: Part MM's fix stopped fabrication for the PRIMARY instance, but
+// live re-testing found the model still invented a second, different
+// packaging shape for a second instance in a different physical form (a
+// stick pack, not the original bug's torn sachet, but still fabricated) —
+// the case-by-case "when an instance has no equivalent" framing left room
+// to read it as "design a plausible variant," not "only ever show what's in
+// the photo." These lock down the strengthened, unconditional wording.
+test('renderFinalImage\'s main swap sentence itself (not just the CRITICAL paragraph) demands an exact, non-invented copy', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    productInstances: PRODUCT_INSTANCES,
+    replacements: REPLACEMENTS,
+    format: FORMAT,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /an exact copy of OUR product from the second reference image/)
+  assert.match(text, /the identical container, shape, and design every single time, never a different or invented variant/)
+})
+
+test('renderFinalImage requires duplicating our real product across every instance when the competitor shows 2+ different physical forms, never a second invented variant', async () => {
+  const { client, getLastRequest } = fakeClient()
+  const twoFormInstances = [
+    { location: 'left hand', description: 'a boxed product' },
+    { location: 'right hand', description: 'a torn-open stick pack' },
+  ]
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    productInstances: twoFormInstances,
+    replacements: REPLACEMENTS,
+    format: FORMAT,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  // The unconditional rule must be the FIRST sentence of the CRITICAL
+  // paragraph, ahead of the older illustrative examples — instruction-
+  // following on long prompts weighs earlier/more-repeated statements more.
+  const criticalIndex = text.indexOf('CRITICAL:')
+  const unconditionalIndex = text.indexOf('This applies to EVERY instance without exception')
+  const examplesIndex = text.indexOf('torn-open sachet/pouch, loose powder')
+  assert.ok(criticalIndex !== -1 && unconditionalIndex !== -1 && examplesIndex !== -1)
+  assert.ok(unconditionalIndex < examplesIndex, 'the no-exceptions rule must come before the illustrative examples')
+  assert.ok(unconditionalIndex - criticalIndex < 15, 'the no-exceptions rule must be the very first sentence after "CRITICAL:"')
+
+  assert.match(text, /resulting in multiple identical copies of our real product if necessary/)
+  assert.match(text, /Do NOT design, invent, or improvise a second packaging variant for our brand under any circumstances/)
+  assert.match(text, /even one that would visually match the original scene better/)
+  assert.match(text, /our product only exists in the one form shown in the reference photo, full stop/)
+})
+
 test('renderFinalImage adds a third input_image and the style-reference instruction when a style reference is given', async () => {
   const { client, getLastRequest } = fakeClient()
 

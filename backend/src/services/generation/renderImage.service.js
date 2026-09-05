@@ -162,7 +162,7 @@ export function productSwapInstructionFor(productInstances, hasStyleReference, s
       : ' A third image is also provided — see the separate instruction below for its role.'
   }
 
-  return `${framing} Seamlessly replace EVERY instance of the competitor's product shown in the first image with OUR product from the second image, at these instances:\n` +
+  return `${framing} Seamlessly replace EVERY instance of the competitor's product shown in the first image with an exact copy of OUR product from the second reference image — the identical container, shape, and design every single time, never a different or invented variant, at these instances:\n` +
     `${instanceList}\n\n` +
     'Ensure each replaced instance perfectly inherits its own perspective, lighting, hand grip placement, finger occlusion, and relative size from the object it\'s replacing, so every swap looks completely authentic. Do not add or remove any product instances beyond what is listed.\n\n' +
     // Part MM: without this, "seamlessly replace... inherits perspective/
@@ -172,10 +172,29 @@ export function productSwapInstructionFor(productInstances, hasStyleReference, s
     // box/bottle) than to fabricate a same-shaped sachet wearing our
     // branding — a real product that doesn't exist. Caught live by the
     // client in a 비교 modal screenshot.
-    'CRITICAL: Our product must be rendered using EXACTLY the packaging shown in the second reference image — ' +
-    'the same container type, shape, materials, and design for every single instance. NEVER invent, imagine, ' +
-    'or fabricate a packaging form factor for our product that isn\'t depicted in that reference photo (e.g. ' +
-    'if the competitor\'s original shows a torn-open sachet/pouch, loose powder, or a pill/tablet outside its ' +
+    //
+    // Part NN: Part MM's version fixed the PRIMARY instance but a live
+    // re-check found the model still invented a second, different
+    // packaging shape (a stick pack, not the original torn sachet, but
+    // still fabricated) for a SECOND instance in a different physical form
+    // — the earlier wording's case-by-case "when an instance has no
+    // equivalent" framing left room for the model to read it as "you may
+    // design a plausible variant," not "you may only ever show what's in
+    // the photo." The unconditional, no-exceptions rule is now the FIRST
+    // sentence of this paragraph (long-prompt instruction-following weighs
+    // earlier/more-repeated statements more heavily), and duplicates of our
+    // one real product are explicitly named as the correct, expected outcome
+    // rather than an edge case to tolerate.
+    'CRITICAL: This applies to EVERY instance without exception — if the competitor\'s original shows 2 or more ' +
+    'product instances in different physical forms (e.g. a boxed product AND a separate stick pack, sachet, or ' +
+    'poured sample), replace ALL of them with our exact same reference-photo product, resulting in multiple ' +
+    'identical copies of our real product if necessary. Do NOT design, invent, or improvise a second packaging ' +
+    'variant for our brand under any circumstances, even one that would visually match the original scene ' +
+    'better — our product only exists in the one form shown in the reference photo, full stop. Our product ' +
+    'must be rendered using EXACTLY the packaging shown in the second reference image — the same container ' +
+    'type, shape, materials, and design for every single instance. NEVER invent, imagine, or fabricate a ' +
+    'packaging form factor for our product that isn\'t depicted in that reference photo (e.g. if the ' +
+    'competitor\'s original shows a torn-open sachet/pouch, loose powder, or a pill/tablet outside its ' +
     'container, and our reference photo only shows a sealed box or bottle, do NOT invent a sachet/loose-powder ' +
     'version of our branding). When an instance\'s physical form has no equivalent in our reference photo, ' +
     'render that instance as our actual product exactly as it appears in the reference photo instead — ' +
