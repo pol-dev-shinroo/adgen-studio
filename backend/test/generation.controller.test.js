@@ -103,6 +103,37 @@ test('postGenerate: 400 for an out-of-range styleIntensity', async () => {
   assert.equal(res.statusCode, 400)
 })
 
+// Part LL: freeRestyle/strongReferenceInfluence/verbatimCopy default to
+// false rather than hard-failing when missing, so an older/cached client
+// payload that doesn't send them yet still starts a job.
+test('postGenerate: defaults freeRestyle/strongReferenceInfluence/verbatimCopy to false when omitted', async () => {
+  const res = makeRes()
+  let captured
+  await postGenerate(
+    { body: validGenerateBody() },
+    res, makeNext(),
+    { startGenerationFn: async (input) => { captured = input; return 'job-1' } }
+  )
+  assert.equal(res.statusCode, 202)
+  assert.equal(captured.freeRestyle, false)
+  assert.equal(captured.strongReferenceInfluence, false)
+  assert.equal(captured.verbatimCopy, false)
+})
+
+test('postGenerate: passes explicit freeRestyle/strongReferenceInfluence/verbatimCopy through as booleans', async () => {
+  const res = makeRes()
+  let captured
+  await postGenerate(
+    { body: validGenerateBody({ freeRestyle: true, strongReferenceInfluence: true, verbatimCopy: true }) },
+    res, makeNext(),
+    { startGenerationFn: async (input) => { captured = input; return 'job-1' } }
+  )
+  assert.equal(res.statusCode, 202)
+  assert.equal(captured.freeRestyle, true)
+  assert.equal(captured.strongReferenceInfluence, true)
+  assert.equal(captured.verbatimCopy, true)
+})
+
 test('postGenerate: err.badRequest from startGeneration maps to 400', async () => {
   const res = makeRes()
   const err = new Error('선택한 제품을 찾을 수 없습니다.')

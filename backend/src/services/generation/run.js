@@ -14,7 +14,13 @@ const jobStore = createJobStore()
 const RECENT_ITEMS_LIMIT = 20
 
 // Input: { refBrand, refAdConfigs, brand:{key,productIds}, styleIntensity,
-// instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType }.
+// freeRestyle, strongReferenceInfluence, verbatimCopy, instructions,
+// adCopyOverride, referenceSheetImageUrl, styleReferenceType }.
+// Part LL: freeRestyle/strongReferenceInfluence/verbatimCopy are the 3
+// independent booleans that now actually drive styleInstructionFor's/
+// styleIntensityInstructionFor's branch selection — styleIntensity itself
+// is threaded through unchanged too, but only for the generated-row sheet
+// record; it plays no part in what gets rendered/written any more.
 // Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
 // each entry is { adId, formats: string[], quantity: number }, since the
 // client's real need is per-reference-ad format/quantity (e.g. ad A -> 1
@@ -50,7 +56,8 @@ const RECENT_ITEMS_LIMIT = 20
 // fire-and-forget callback, not awaited directly here.
 export async function startGeneration(input, deps = {}) {
   const {
-    refBrand, refAdConfigs, brand, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
+    refBrand, refAdConfigs, brand, styleIntensity, freeRestyle, strongReferenceInfluence, verbatimCopy,
+    instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
   } = input
   const { prepareInputsFn = prepareInputs } = deps
   // prepareInputs only ever needs the plain ID list to fetch ad rows, never
@@ -86,8 +93,8 @@ export async function startGeneration(input, deps = {}) {
     (job) => runJob(
       job,
       {
-        refAds, products, brandDef, refAdConfigs, styleIntensity, instructions, adCopyOverride,
-        referenceSheetImageUrl, styleReferenceType, refBrand,
+        refAds, products, brandDef, refAdConfigs, styleIntensity, freeRestyle, strongReferenceInfluence,
+        verbatimCopy, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType, refBrand,
       },
       deps
     ),
@@ -116,8 +123,8 @@ function configFor(refAdConfigs, adId) {
 async function runJob(
   job,
   {
-    refAds, products, brandDef, refAdConfigs, styleIntensity, instructions, adCopyOverride,
-    referenceSheetImageUrl, styleReferenceType, refBrand,
+    refAds, products, brandDef, refAdConfigs, styleIntensity, freeRestyle, strongReferenceInfluence, verbatimCopy,
+    instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType, refBrand,
   },
   {
     downloadImageAsBase64Fn = downloadImageAsBase64,
@@ -183,10 +190,10 @@ async function runJob(
       const counter_facts = overrideFacts ?? (await findCounterFactsFn(brandDef.key, analysis.identified_texts)).counter_facts
 
       progress.phase = 'writing'
-      // Part U-2: same shared styleIntensity slider renderFinalImage
-      // already receives below — same "competitor original vs our own
-      // material" axis, applied to copy instead of image.
-      const { replacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, styleIntensity)
+      // Part LL: verbatimCopy is the copy-side counterpart to
+      // freeRestyle/strongReferenceInfluence below — same "competitor
+      // original vs our own material" axis, applied to copy instead of image.
+      const { replacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, verbatimCopy)
 
       perAdContext.push({
         adId, imageLink, referenceImageBase64, productInstances: analysis.product_instances, replacements,
@@ -242,7 +249,8 @@ async function runJob(
               productInstances: ctx.productInstances,
               replacements: ctx.replacements,
               format,
-              styleIntensity,
+              freeRestyle,
+              strongReferenceInfluence,
               instructions,
             })
 

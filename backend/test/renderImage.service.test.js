@@ -34,7 +34,8 @@ test('renderFinalImage sends exactly two input_image entries and the original tw
     productInstances: PRODUCT_INSTANCES,
     replacements: REPLACEMENTS,
     format: FORMAT,
-    styleIntensity: 50,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
     instructions: '',
   }, { getClientFn: () => client })
 
@@ -56,7 +57,7 @@ test('renderFinalImage sends exactly two input_image entries and the original tw
     /The first image is the original reference ad\. The second image is our own product's reference photo\. Seamlessly replace/
   )
   assert.doesNotMatch(textEntry.text, /third image/i)
-  assert.doesNotMatch(textEntry.text, /reference sheet of our own brand's past ad styling/)
+  assert.doesNotMatch(textEntry.text, /style reference/i)
 
   assert.deepEqual(req.tools, [{ type: 'image_generation', action: 'edit', size: '1024x1024', quality: 'high' }])
 })
@@ -71,7 +72,8 @@ test('renderFinalImage adds a third input_image and the style-reference instruct
     productInstances: PRODUCT_INSTANCES,
     replacements: REPLACEMENTS,
     format: FORMAT,
-    styleIntensity: 50,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
     instructions: '',
   }, { getClientFn: () => client })
 
@@ -87,10 +89,10 @@ test('renderFinalImage adds a third input_image and the style-reference instruct
 
   // Framing sentence updated to acknowledge the third image, and the
   // dedicated style-reference instruction paragraph is present with its
-  // "supplementary, not literal" guidance.
+  // "supplementary, not literal" guidance (strongReferenceInfluence: false).
   assert.match(textEntry.text, /A third image is also provided/)
-  assert.match(textEntry.text, /reference sheet of our own brand's past ad styling/)
-  assert.match(textEntry.text, /Do not copy its layout or insert elements/)
+  assert.match(textEntry.text, /light supplementary visual guidance/)
+  assert.match(textEntry.text, /without copying its layout or inserting elements/)
 })
 
 test('renderFinalImage treats a missing styleReferenceImageBase64 (undefined) the same as omitted', async () => {
@@ -103,7 +105,8 @@ test('renderFinalImage treats a missing styleReferenceImageBase64 (undefined) th
     productInstances: [],
     replacements: [],
     format: FORMAT,
-    styleIntensity: 10,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
     instructions: '',
   }, { getClientFn: () => client })
 
@@ -126,7 +129,8 @@ test('renderFinalImage requests quality: \'high\' on the image_generation tool',
     productInstances: [],
     replacements: [],
     format: FORMAT,
-    styleIntensity: 50,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
     instructions: '',
   }, { getClientFn: () => client })
 
@@ -143,12 +147,13 @@ test('renderFinalImage still appends instructions after the style-reference para
     productInstances: [],
     replacements: [],
     format: FORMAT,
-    styleIntensity: 50,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
     instructions: 'Make the background neon green.',
   }, { getClientFn: () => client })
 
   const textEntry = getLastRequest().input[0].content.find((c) => c.type === 'input_text')
-  const styleRefIndex = textEntry.text.indexOf("reference sheet of our own brand's past ad styling")
+  const styleRefIndex = textEntry.text.indexOf('light supplementary visual guidance')
   const instructionsIndex = textEntry.text.indexOf('Make the background neon green.')
 
   assert.notEqual(styleRefIndex, -1)
@@ -156,14 +161,13 @@ test('renderFinalImage still appends instructions after the style-reference para
   assert.ok(instructionsIndex > styleRefIndex)
 })
 
-// Part U-2: styleIntensity redefined as a competitor-original-vs-our-own-
-// material axis, not general artistic license. These cover the three
-// tiers' actual wording, both with and without a style-reference image —
-// the earlier tests above already exercised MEDIUM (styleIntensity 50)
-// incidentally, since its style-reference wording was deliberately kept
-// matching the old always-on styleReferenceInstructionFor text.
+// Part LL: freeRestyle/strongReferenceInfluence are the 2 image-side axes a
+// single shared styleIntensity number used to force together silently —
+// each independently settable now. These cover every one of the 4
+// (freeRestyle x hasStyleReference-with-strongReferenceInfluence)
+// combinations' actual wording.
 
-test('renderFinalImage LOW (<=33) with a style reference tells the model to give it minimal to no influence', async () => {
+test('renderFinalImage freeRestyle=false with a style reference tells the model to give it only light, non-conflicting influence', async () => {
   const { client, getLastRequest } = fakeClient()
 
   await renderFinalImage({
@@ -173,17 +177,18 @@ test('renderFinalImage LOW (<=33) with a style reference tells the model to give
     productInstances: [],
     replacements: [],
     format: FORMAT,
-    styleIntensity: 20,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
     instructions: '',
   }, { getClientFn: () => client })
 
   const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
   assert.match(text, /Style intensity: LOW/)
-  assert.match(text, /minimal to no influence/)
-  assert.match(text, /competitor ad's own original treatment should win/)
+  assert.match(text, /light supplementary visual guidance/)
+  assert.match(text, /competitor ad's own original treatment should still win/)
 })
 
-test('renderFinalImage LOW (<=33) with no style reference stays close to the original preservation wording, no third-image mention', async () => {
+test('renderFinalImage freeRestyle=false with no style reference stays close to the original preservation wording, no third-image mention', async () => {
   const { client, getLastRequest } = fakeClient()
 
   await renderFinalImage({
@@ -192,85 +197,19 @@ test('renderFinalImage LOW (<=33) with no style reference stays close to the ori
     productInstances: [],
     replacements: [],
     format: FORMAT,
-    styleIntensity: 0,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
     instructions: '',
   }, { getClientFn: () => client })
 
   const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
   assert.match(text, /Style intensity: LOW/)
   assert.match(text, /as close to the original reference ad as possible/)
+  assert.match(text, /minor lighting\/color refinements are still acceptable/)
   assert.doesNotMatch(text, /third image/i)
 })
 
-test('renderFinalImage HIGH (>66) with a style reference actively prefers it as a strong influence', async () => {
-  const { client, getLastRequest } = fakeClient()
-
-  await renderFinalImage({
-    referenceImageBase64: 'REF_B64',
-    productImageBase64: 'PROD_B64',
-    styleReferenceImageBase64: 'STYLE_B64',
-    productInstances: [],
-    replacements: [],
-    format: FORMAT,
-    styleIntensity: 90,
-    instructions: '',
-  }, { getClientFn: () => client })
-
-  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
-  assert.match(text, /Style intensity: HIGH/)
-  assert.match(text, /Actively prefer our own reference material/)
-  assert.match(text, /strong influence/)
-})
-
-test('renderFinalImage HIGH (>66) with no style reference falls back to the original freer-reinterpretation wording, not a third-image reference', async () => {
-  const { client, getLastRequest } = fakeClient()
-
-  await renderFinalImage({
-    referenceImageBase64: 'REF_B64',
-    productImageBase64: 'PROD_B64',
-    productInstances: [],
-    replacements: [],
-    format: FORMAT,
-    styleIntensity: 100,
-    instructions: '',
-  }, { getClientFn: () => client })
-
-  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
-  assert.match(text, /Style intensity: HIGH/)
-  assert.match(text, /reinterpret the lighting, color grading, and background styling more freely/)
-  assert.doesNotMatch(text, /third image/i)
-  assert.doesNotMatch(text, /Actively prefer our own reference material/)
-})
-
-// Part DD: full face replacement at the slider's true maximum (100, not
-// just "in the 67-99 HIGH range") when a real model-type style reference is
-// selected — a qualitatively different instruction from HIGH's "lean
-// toward our own styling."
-
-test('renderFinalImage MAXIMUM (100) with a model-type style reference triggers a full face-swap instruction', async () => {
-  const { client, getLastRequest } = fakeClient()
-
-  await renderFinalImage({
-    referenceImageBase64: 'REF_B64',
-    productImageBase64: 'PROD_B64',
-    styleReferenceImageBase64: 'STYLE_B64',
-    styleReferenceType: 'model',
-    productInstances: [],
-    replacements: [],
-    format: FORMAT,
-    styleIntensity: 100,
-    instructions: '',
-  }, { getClientFn: () => client })
-
-  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
-  assert.match(text, /Style intensity: MAXIMUM/)
-  assert.match(text, /Completely replace the face/)
-  assert.match(text, /full face swap, not a styling influence/)
-  assert.match(text, /Keep the original ad's body pose, hand position, clothing, framing, lighting, and background exactly as they are/)
-  assert.doesNotMatch(text, /Style intensity: HIGH/)
-})
-
-test('renderFinalImage MAXIMUM (100) with a NON-model style reference (e.g. a badge) falls through to ordinary HIGH wording', async () => {
+test('renderFinalImage strongReferenceInfluence=true with a style reference actively prefers it as a strong influence', async () => {
   const { client, getLastRequest } = fakeClient()
 
   await renderFinalImage({
@@ -281,18 +220,43 @@ test('renderFinalImage MAXIMUM (100) with a NON-model style reference (e.g. a ba
     productInstances: [],
     replacements: [],
     format: FORMAT,
-    styleIntensity: 100,
+    freeRestyle: true,
+    strongReferenceInfluence: true,
     instructions: '',
   }, { getClientFn: () => client })
 
   const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
   assert.match(text, /Style intensity: HIGH/)
   assert.match(text, /Actively prefer our own reference material/)
-  assert.doesNotMatch(text, /Style intensity: MAXIMUM/)
-  assert.doesNotMatch(text, /face swap/i)
+  assert.match(text, /strong influence/)
 })
 
-test('renderFinalImage at 99 (not the true maximum) with a model-type style reference still falls through to ordinary HIGH wording', async () => {
+test('renderFinalImage freeRestyle=true with no style reference falls back to the original freer-reinterpretation wording, not a third-image reference', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    freeRestyle: true,
+    strongReferenceInfluence: true,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: HIGH/)
+  assert.match(text, /reinterpret the lighting, color grading, and background styling more freely/)
+  assert.doesNotMatch(text, /third image/i)
+  assert.doesNotMatch(text, /Actively prefer our own reference material/)
+})
+
+// Part LL: full face replacement now fires purely off the
+// strongReferenceInfluence checkbox + a model-type reference — no slider
+// position involved at all any more.
+
+test('renderFinalImage strongReferenceInfluence=true with a model-type style reference triggers a full face-swap instruction', async () => {
   const { client, getLastRequest } = fakeClient()
 
   await renderFinalImage({
@@ -303,15 +267,64 @@ test('renderFinalImage at 99 (not the true maximum) with a model-type style refe
     productInstances: [],
     replacements: [],
     format: FORMAT,
-    styleIntensity: 99,
+    freeRestyle: false,
+    strongReferenceInfluence: true,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: MAXIMUM/)
+  assert.match(text, /Completely replace the face/)
+  assert.match(text, /full face swap, not a styling influence/)
+  assert.match(text, /Keep the original ad's body pose, hand position, clothing, framing, lighting, and background exactly as they are/)
+  assert.doesNotMatch(text, /Style intensity: HIGH/)
+  assert.doesNotMatch(text, /Style intensity: LOW/)
+})
+
+test('renderFinalImage strongReferenceInfluence=true with a NON-model style reference (e.g. a badge) does NOT trigger a face swap', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    styleReferenceType: 'badge',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    freeRestyle: true,
+    strongReferenceInfluence: true,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: HIGH/)
+  assert.match(text, /Actively prefer our own reference material/)
+  assert.doesNotMatch(text, /Style intensity: MAXIMUM/)
+  assert.doesNotMatch(text, /face swap/i)
+})
+
+test('renderFinalImage strongReferenceInfluence=false with a model-type style reference does NOT trigger a face swap', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    styleReferenceType: 'model',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    freeRestyle: true,
+    strongReferenceInfluence: false,
     instructions: '',
   }, { getClientFn: () => client })
 
   // Note: "used for a face swap" legitimately still appears in the
-  // product-swap framing sentence at any intensity once styleReferenceType
-  // is 'model' (it always needs to clarify the third image's role) — the
-  // MAXIMUM-tier-specific instruction ("Completely replace the face...")
-  // is the actual thing that must NOT appear below the true maximum.
+  // product-swap framing sentence at any setting once styleReferenceType is
+  // 'model' (it always needs to clarify the third image's role) — the
+  // MAXIMUM-tier-specific instruction ("Completely replace the face...") is
+  // the actual thing that must NOT appear when the checkbox is unchecked.
   const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
   assert.match(text, /Style intensity: HIGH/)
   assert.doesNotMatch(text, /Style intensity: MAXIMUM/)
@@ -330,7 +343,8 @@ test('renderFinalImage MAXIMUM + model reference: the product-swap framing sente
     productInstances: [],
     replacements: [],
     format: FORMAT,
-    styleIntensity: 100,
+    freeRestyle: false,
+    strongReferenceInfluence: true,
     instructions: '',
   }, { getClientFn: () => client })
 
@@ -338,6 +352,55 @@ test('renderFinalImage MAXIMUM + model reference: the product-swap framing sente
   assert.match(text, /used for a face swap/)
   assert.match(text, /NOT another product image/)
   assert.match(text, /Do not confuse the second image \(product\) with the third image \(face reference\)/)
+})
+
+// Part LL: all-false / all-true sanity checks across every axis this
+// function actually branches on (freeRestyle, strongReferenceInfluence),
+// each combined with hasStyleReference — the client-facing "does 0%
+// actually look different from 100%" concern this whole part exists to fix.
+
+test('renderFinalImage all axes false (with a non-model style reference) produces the most conservative combination', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    styleReferenceType: 'badge',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: LOW/)
+  assert.match(text, /light supplementary visual guidance/)
+  assert.doesNotMatch(text, /Actively prefer our own reference material/)
+  assert.doesNotMatch(text, /reinterpret the lighting, color grading, and background styling more freely/)
+})
+
+test('renderFinalImage all axes true (with a model style reference) produces the most aggressive combination — a full face swap', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    styleReferenceImageBase64: 'STYLE_B64',
+    styleReferenceType: 'model',
+    productInstances: [],
+    replacements: [],
+    format: FORMAT,
+    freeRestyle: true,
+    strongReferenceInfluence: true,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /Style intensity: MAXIMUM/)
+  assert.match(text, /Completely replace the face/)
 })
 
 // Part EE §8: renderConversationalImage — 생성 AI's own render function.

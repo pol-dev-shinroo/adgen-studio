@@ -219,3 +219,28 @@ test('startGeneration: threads styleReferenceType through to renderFinalImageFn'
 
   assert.equal(capturedType, 'model')
 })
+
+// Part LL: the 3 checkbox-driven booleans replace styleIntensity as the
+// actual tier-selection signal — freeRestyle/strongReferenceInfluence must
+// reach renderFinalImageFn, and verbatimCopy must reach writeReplacementCopyFn
+// (styleIntensity itself is still threaded through, but only for the
+// generated-row sheet record — see run.js's own comment).
+test('startGeneration: threads freeRestyle/strongReferenceInfluence through to renderFinalImageFn and verbatimCopy through to writeReplacementCopyFn', async () => {
+  let capturedRenderArgs
+  let capturedVerbatimCopy
+  const deps = makeDeps({
+    renderFinalImageFn: async (args) => { capturedRenderArgs = args; return 'RENDERED_BASE64' },
+  })
+  deps.writeReplacementCopyFn = async (_texts, _facts, verbatimCopy) => {
+    capturedVerbatimCopy = verbatimCopy
+    return { replacements: [{ location: '상단', original_text: '71% 특가', new_text: '51% 특가' }] }
+  }
+
+  const input = baseInput({ freeRestyle: true, strongReferenceInfluence: true, verbatimCopy: true })
+  const jobId = await startGeneration(input, deps)
+  await waitForJob(jobId)
+
+  assert.equal(capturedRenderArgs.freeRestyle, true)
+  assert.equal(capturedRenderArgs.strongReferenceInfluence, true)
+  assert.equal(capturedVerbatimCopy, true)
+})

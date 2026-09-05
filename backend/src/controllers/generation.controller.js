@@ -23,7 +23,8 @@ export async function postGenerate(req, res, next, { startGenerationFn = startGe
   }
 
   const {
-    refBrand, refAdConfigs, brand, styleIntensity, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
+    refBrand, refAdConfigs, brand, styleIntensity, freeRestyle, strongReferenceInfluence, verbatimCopy,
+    instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
   } = req.body ?? {}
 
   if (!Array.isArray(refAdConfigs) || refAdConfigs.length === 0) {
@@ -55,6 +56,14 @@ export async function postGenerate(req, res, next, { startGenerationFn = startGe
       refAdConfigs,
       brand,
       styleIntensity: intensity,
+      // Part LL: the 3 checkbox-driven booleans that now actually select
+      // renderImage.service.js's/copywriting.service.js's tier wording —
+      // defaulted to false (never a hard 400) rather than required, so an
+      // older/cached client payload that doesn't send them yet still starts
+      // a job instead of hard-failing.
+      freeRestyle: Boolean(freeRestyle),
+      strongReferenceInfluence: Boolean(strongReferenceInfluence),
+      verbatimCopy: Boolean(verbatimCopy),
       instructions: typeof instructions === 'string' ? instructions : '',
       // Part P: { price, promotion, adHooks } from Step 3's ad-selection
       // panel — real, curated copy the user hand-picked, used instead of

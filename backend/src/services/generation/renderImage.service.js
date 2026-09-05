@@ -33,72 +33,76 @@ export const FACE_REPLACEMENT_DETAIL = 'Completely replace the face of the human
   'image shows the face at a different angle than the original pose, adapt it naturally to match the ' +
   'original\'s head angle and lighting rather than pasting it in unchanged.'
 
-// Part U-2: redefines what this 0-100 slider actually controls. It used to
-// be a pure artistic-license dial (low = stay close to the original's
-// composition/lighting, high = reinterpret more freely) with no connection
-// to WHOSE creative material the result actually leans on. Per the client
-// directly, it's really a dial between two sources of creative material:
-// the competitor reference ad's own original treatment vs our OWN reference
-// material — a selected style-reference image (Part Q/T: a model shot, a
-// promo-badge crop, etc.), when one's actually selected. Low minimizes our
-// own material's influence (everything stays as the competitor's original
-// except the mandatory product swap and whatever facts must factually
-// differ); high actively prefers our own material where it conflicts with
-// the original. See copywriting.service.js's own tier function for the
-// copy side of this same axis.
+// Part U-2: redefines what the old 0-100 slider used to control alone. It
+// used to be a pure artistic-license dial (low = stay close to the
+// original's composition/lighting, high = reinterpret more freely) with no
+// connection to WHOSE creative material the result actually leans on. Per
+// the client directly, it's really a dial between two sources of creative
+// material: the competitor reference ad's own original treatment vs our OWN
+// reference material — a selected style-reference image (Part Q/T: a model
+// shot, a promo-badge crop, etc.), when one's actually selected. See
+// copywriting.service.js's own tier function for the copy side of this same
+// axis.
 //
-// Merged with the old separate styleReferenceInstructionFor (Part Q) —
-// the style-reference image's influence is now genuinely PART of this same
-// axis (how much it should win, not just whether it's present at all), not
-// an independent concern bolted on beside it. hasStyleReference: whether a
-// third input_image is actually present this call — HIGH's wording
-// deliberately still falls back to the pre-Part-U freer-reinterpretation
-// framing when it's absent, since there's nothing of "ours" to lean into
-// beyond the mandatory swap, and referencing a third image that doesn't
-// exist would confuse the model.
+// Part LL: per direct client feedback (a live walkthrough), this and the
+// copy-side axis were actually 3 logically separate creative decisions
+// silently forced together by one shared number — split into 2 independent
+// checkbox-driven booleans here (a 3rd, verbatimCopy, belongs entirely to
+// copywriting.service.js's own tier function and never reaches this one):
 //
-// Part DD: styleReferenceType is the extracted-reference `type` the third
-// image was actually sourced from ('model', 'badge', etc. — see
-// productImageExtraction.service.js's storedTypeFor). Pushing the slider
-// all the way to its true maximum (100, not just "in the 67-99 HIGH range")
-// with a real model-type reference selected means something qualitatively
-// different from HIGH's "lean toward our own styling": a full face
-// replacement. Checked as its own tier, before the LOW/MEDIUM/HIGH chain,
-// since it's a more specific case of "high" — a badge/logo/text reference
-// at max intensity (or a model reference below max intensity) still falls
-// through to the existing HIGH wording unchanged.
-function styleInstructionFor(styleIntensity, hasStyleReference, styleReferenceType) {
-  if (styleIntensity === 100 && hasStyleReference && styleReferenceType === 'model') {
+// - freeRestyle: whether image styling (lighting/color grading/background)
+//   can be reinterpreted at all — false keeps it as close to the original
+//   as possible (minor refinements still tolerated, folding in the old
+//   MEDIUM tier's "minor stylistic refinements... acceptable" wording so
+//   unchecking doesn't read as absolute-zero-tolerance), true allows free
+//   reinterpretation (the old HIGH-with-no-reference wording).
+// - strongReferenceInfluence: how strongly a selected style-reference image
+//   should actually influence the result — false folds the old MEDIUM
+//   tier's "supplementary guidance" wording into the minimal-influence side
+//   (closer in spirit to minimal than to strong), true keeps the old HIGH
+//   tier's "strong influence" wording. Entirely inert (no clause emitted at
+//   all) whenever hasStyleReference is false — there's nothing to
+//   reference an influence strength for.
+//
+// hasStyleReference: whether a third input_image is actually present this
+// call. styleReferenceType (Part DD): the extracted-reference `type` the
+// third image was actually sourced from ('model', 'badge', etc.) — a real
+// model-type reference with strongReferenceInfluence checked means
+// something qualitatively different from "strong influence": a full face
+// replacement (MAXIMUM), checked before the freeRestyle/strongReferenceInfluence
+// wording chain since it's a more specific case that supersedes it entirely
+// — dropped the old `styleIntensity === 100` condition per Part LL, since
+// the checkbox itself is now the explicit signal, not a slider-position
+// coincidence. A badge/logo/text reference (or strongReferenceInfluence
+// left unchecked even with a model reference) still falls through to the
+// ordinary freeRestyle/strongReferenceInfluence wording unchanged.
+function styleInstructionFor(freeRestyle, strongReferenceInfluence, hasStyleReference, styleReferenceType) {
+  if (strongReferenceInfluence && hasStyleReference && styleReferenceType === 'model') {
     return 'Style intensity: MAXIMUM. A third image is our own brand\'s extracted model reference photo. ' +
       FACE_REPLACEMENT_DETAIL
   }
-  if (styleIntensity <= 33) {
-    const base = 'Style intensity: LOW. Keep the layout, background, composition, color grading, and any depicted ' +
-      'human model as close to the original reference ad as possible — apply ONLY the mandatory product swap and ' +
-      'whatever specific facts must factually differ (e.g. price, promotion values), nothing else.'
-    if (!hasStyleReference) return base
-    return base + ' A third image is also provided as our own brand\'s style reference, but at this intensity ' +
-      'give it minimal to no influence — the competitor ad\'s own original treatment should win everywhere ' +
-      'except the mandatory product swap and the facts that must differ.'
-  }
-  if (styleIntensity <= 66) {
-    const base = 'Style intensity: MEDIUM. Keep the overall layout and background recognizable and faithful to ' +
-      'the original, but minor stylistic refinements (lighting, color grading) are acceptable.'
-    if (!hasStyleReference) return base
-    return base + ' A third image, when provided, is a reference sheet of our own brand\'s past ad styling — ' +
-      'use it as supplementary visual guidance for our brand\'s product photography style, color/badge ' +
-      'treatment, and (if shown) model styling. Do not copy its layout or insert elements from it that don\'t ' +
-      'belong in this specific ad.'
-  }
-  if (!hasStyleReference) {
-    return 'Style intensity: HIGH. You may reinterpret the lighting, color grading, and background styling more ' +
+
+  const base = freeRestyle
+    ? 'Style intensity: HIGH. You may reinterpret the lighting, color grading, and background styling more ' +
       'freely, as long as the overall layout structure and the text/product replacements described below are ' +
       'still clearly followed.'
-  }
-  return 'Style intensity: HIGH. Actively prefer our own reference material where it conflicts with the ' +
-    'competitor ad\'s original treatment. A third image is our own brand\'s style reference — treat it as a ' +
-    'strong influence for whatever it depicts (model styling/pose, badge/sticker design). Lighting, color ' +
-    'grading, and background are free to shift toward our own brand\'s look, informed by this reference.'
+    : 'Style intensity: LOW. Keep the layout, background, composition, color grading, and any depicted human ' +
+      'model as close to the original reference ad as possible — apply the mandatory product swap and whatever ' +
+      'specific facts must factually differ (e.g. price, promotion values); minor lighting/color refinements ' +
+      'are still acceptable beyond that, but nothing more.'
+
+  if (!hasStyleReference) return base
+
+  const refClause = strongReferenceInfluence
+    ? ' Actively prefer our own reference material where it conflicts with the competitor ad\'s original ' +
+      'treatment. A third image is our own brand\'s style reference — treat it as a strong influence for ' +
+      'whatever it depicts (model styling/pose, badge/sticker design).'
+    : ' A third image is also provided as our own brand\'s style reference — use it only as light ' +
+      'supplementary visual guidance (product photography style, color/badge treatment, and, if shown, model ' +
+      'styling) without copying its layout or inserting elements from it that don\'t belong in this specific ad; ' +
+      'the competitor ad\'s own original treatment should still win wherever the two conflict.'
+
+  return base + refClause
 }
 
 // Text-replacement instruction, carrying over "3. 최종 이미지.json"'s GPT-5.5
@@ -183,17 +187,24 @@ export function productSwapInstructionFor(productInstances, hasStyleReference, s
 // can be unit-tested without a real OpenAI call — same DI convention as
 // sheets.service.js's getClientFn.
 //
+// Part LL: freeRestyle/strongReferenceInfluence replace the old single
+// styleIntensity number as styleInstructionFor's actual branch-selection
+// signal (see that function's own comment) — this function no longer reads
+// styleIntensity at all; the frontend/run.js may still carry it alongside
+// for record-keeping (the generated-row sheet column), but it plays no part
+// in what gets rendered.
+//
 // Returns raw base64 PNG (no prefix).
 export async function renderFinalImage({
   referenceImageBase64, productImageBase64, styleReferenceImageBase64, styleReferenceType, productInstances,
-  replacements, format, styleIntensity, instructions,
+  replacements, format, freeRestyle, strongReferenceInfluence, instructions,
 }, { getClientFn = getClient } = {}) {
   const hasStyleReference = !!styleReferenceImageBase64
 
   const parts = [
     replacementInstructionFor(replacements),
     productSwapInstructionFor(productInstances, hasStyleReference, styleReferenceType),
-    styleInstructionFor(styleIntensity, hasStyleReference, styleReferenceType),
+    styleInstructionFor(freeRestyle, strongReferenceInfluence, hasStyleReference, styleReferenceType),
   ]
   if (instructions?.trim()) parts.push(instructions.trim())
 

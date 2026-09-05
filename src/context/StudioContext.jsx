@@ -59,6 +59,17 @@ export function StudioProvider({ children }) {
   // it's removed — never left orphaned once its ad is no longer selected.
   const [refAdConfigs, setRefAdConfigs] = useState({})
   const [styleIntensity, setStyleIntensity] = useState(60)
+  // Part LL: 3 independently-settable creative decisions the old single 0-100
+  // slider used to force together silently (see renderImage.service.js's
+  // styleInstructionFor / copywriting.service.js's styleIntensityInstructionFor
+  // for what each one actually drives on the backend). Seeded from the
+  // slider's own initial value so a user who never touches the checkboxes
+  // gets exactly the old thresholds; updateStyleIntensity below keeps them
+  // in sync live while the slider is being dragged, but each is independently
+  // toggleable by hand afterward.
+  const [freeRestyle, setFreeRestyle] = useState(styleIntensity > 33)
+  const [strongReferenceInfluence, setStrongReferenceInfluence] = useState(styleIntensity > 66)
+  const [verbatimCopy, setVerbatimCopy] = useState(styleIntensity > 66)
   const [instructions, setInstructions] = useState('')
 
   const myBrands = productBrands.map((b) => ({ ...b, active: b.key === activeBrandKey }))
@@ -127,6 +138,22 @@ export function StudioProvider({ children }) {
       selectedAdHooks: (override.selectedAdHooks || []).filter((h) => availableAdHooks.includes(h)),
     }
   })
+
+  // Part LL: single source of truth for "does the currently active brand
+  // actually have a style reference / ad-copy override selected yet" —
+  // previously only computed inline inside goNext (as brandRefSel/
+  // hasAdCopyOverride/checkedItems/styleReferenceItem below), now also
+  // needed by StepGenerationOptions.jsx to grey out checkboxes 2/3 when
+  // they'd have no effect. Reused by goNext itself instead of re-deriving
+  // it a second, possibly-divergent way.
+  const brandRefSel = activeBrand ? productRefSelections[activeBrand.name] : null
+  const checkedItemsForBrand = (brandRefSel?.galleryItems || [])
+    .filter((item) => brandRefSel.selectedImageKeys.includes(item.key))
+  const styleReferenceItemForBrand = checkedItemsForBrand.find((item) => item.ref.type !== 'product') || null
+  const hasStyleReferenceForBrand = !!styleReferenceItemForBrand
+  const hasAdCopyOverrideForBrand = !!brandRefSel && !!(
+    brandRefSel.selectedPrice || brandRefSel.selectedPromotion || brandRefSel.selectedAdHooks.length > 0
+  )
 
   // BB-1: re-clicking the already-active brand card (e.g. a user jumping
   // back to Step 1 via the wizard's step pills just to double-check it) is
@@ -229,6 +256,18 @@ export function StudioProvider({ children }) {
       const next = current.includes(hook) ? current.filter((h) => h !== hook) : [...current, hook]
       return { ...prev, [brandName]: { ...prev[brandName], selectedAdHooks: next } }
     })
+  }, [])
+
+  // Part LL: the "checked dynamically upon dragging" behavior — re-derives
+  // all 3 checkboxes' defaults live every time the slider itself moves,
+  // without overwriting a value the user may have already hand-toggled
+  // independently between drags (each drag re-derives fresh from the new
+  // slider position, same as the very first render's initial useState above).
+  const updateStyleIntensity = useCallback((value) => {
+    setStyleIntensity(value)
+    setFreeRestyle(value > 33)
+    setStrongReferenceInfluence(value > 66)
+    setVerbatimCopy(value > 66)
   }, [])
 
   // Part DD: per-ad replacements for the old global toggleFormat/setQuantity
@@ -345,11 +384,11 @@ export function StudioProvider({ children }) {
     // when the user actually touched the panel. Only sent if at least one
     // of the three is actually populated — omitted (null) otherwise, so
     // anyone who never touches the panel gets exactly the old behavior.
-    const brandRefSel = productRefSelections[b.name]
-    const hasAdCopyOverride = !!brandRefSel && (
-      brandRefSel.selectedPrice || brandRefSel.selectedPromotion || brandRefSel.selectedAdHooks.length > 0
-    )
-    const adCopyOverride = hasAdCopyOverride ? {
+    // Part LL: brandRefSel/hasAdCopyOverride*/checkedItems*/
+    // styleReferenceItem* now come from the shared derivation above (`b`
+    // here is always the same lookup as `activeBrand`), rather than being
+    // recomputed a second time in here.
+    const adCopyOverride = hasAdCopyOverrideForBrand ? {
       price: brandRefSel.selectedPrice || null,
       promotion: brandRefSel.selectedPromotion || null,
       adHooks: brandRefSel.selectedAdHooks,
@@ -364,12 +403,9 @@ export function StudioProvider({ children }) {
     // all). A checked non-product entry (e.g. a model shot) is the style
     // reference — first one in gallery order, capped to one, same Part Q
     // one-image plumbing on the backend, just sourced from products now.
-    const checkedItems = (brandRefSel?.galleryItems || [])
-      .filter((item) => brandRefSel.selectedImageKeys.includes(item.key))
-
     const productImageOverrides = {}
     selectedProducts.forEach(({ product }) => {
-      const checkedForProduct = checkedItems.filter(
+      const checkedForProduct = checkedItemsForBrand.filter(
         (item) => item.product.productId === product.productId && item.ref.type === 'product'
       )
       if (checkedForProduct.length === 1) {
@@ -377,14 +413,13 @@ export function StudioProvider({ children }) {
       }
     })
 
-    const styleReferenceItem = checkedItems.find((item) => item.ref.type !== 'product')
-    const referenceSheetImageUrl = styleReferenceItem?.ref.imageUrl || null
+    const referenceSheetImageUrl = styleReferenceItemForBrand?.ref.imageUrl || null
     // Part DD: which extracted-reference `type` the style reference came
     // from (e.g. 'model', 'badge') — lets renderImage.service.js tell a
     // face-swap-eligible model reference apart from a badge/logo one at
     // maximum style intensity. null whenever no style reference is set,
     // same optionality as referenceSheetImageUrl itself.
-    const styleReferenceType = styleReferenceItem?.ref.type || null
+    const styleReferenceType = styleReferenceItemForBrand?.ref.type || null
 
     const brandPayload = { key: b.key, productIds: selectedProducts.map(({ product }) => product.productId) }
     if (Object.keys(productImageOverrides).length > 0) {
@@ -406,6 +441,9 @@ export function StudioProvider({ children }) {
       refAdConfigs: refAdConfigsPayload,
       brand: brandPayload,
       styleIntensity,
+      freeRestyle,
+      strongReferenceInfluence,
+      verbatimCopy,
       instructions,
       adCopyOverride,
       referenceSheetImageUrl,
@@ -419,7 +457,8 @@ export function StudioProvider({ children }) {
     go('gallery')
   }, [
     step, refAdIds, myBrands, refAdConfigs, selections, productRefSelections, refBrand, styleIntensity,
-    instructions, startGeneration, showToast, go,
+    freeRestyle, strongReferenceInfluence, verbatimCopy, brandRefSel, checkedItemsForBrand,
+    styleReferenceItemForBrand, hasAdCopyOverrideForBrand, instructions, startGeneration, showToast, go,
   ])
 
   return (
@@ -434,7 +473,10 @@ export function StudioProvider({ children }) {
         selectProductRefPrice, selectProductRefPromotion, toggleProductRefHookSelection,
         refAdConfigs, toggleAdFormat, setAdQuantity,
         totalRenders, activeBrandProductCount,
-        styleIntensity, setStyleIntensity,
+        styleIntensity, setStyleIntensity, updateStyleIntensity,
+        freeRestyle, setFreeRestyle, strongReferenceInfluence, setStrongReferenceInfluence,
+        verbatimCopy, setVerbatimCopy,
+        hasStyleReferenceForBrand, hasAdCopyOverrideForBrand,
         instructions, setInstructions,
         prefillFromAd, prefillFromAds,
       }}

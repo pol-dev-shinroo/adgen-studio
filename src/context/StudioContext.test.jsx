@@ -186,6 +186,81 @@ describe('totalRenders', () => {
   })
 })
 
+// Part LL: the 3 checkbox-driven booleans that replaced 스타일 반영 강도's
+// old hint text — updateStyleIntensity's live re-derivation, and the
+// shared hasStyleReferenceForBrand/hasAdCopyOverrideForBrand source of
+// truth StepGenerationOptions.jsx uses to grey out checkboxes 2/3.
+describe('style checkboxes (Part LL)', () => {
+  it('updateStyleIntensity re-derives all 3 checkboxes live at the 33/66 boundaries', () => {
+    const { result } = renderStudio()
+    expect(result.current.freeRestyle).toBe(true) // default styleIntensity 60 -> >33
+    expect(result.current.strongReferenceInfluence).toBe(false) // 60 is not >66
+    expect(result.current.verbatimCopy).toBe(false)
+
+    act(() => result.current.updateStyleIntensity(20))
+    expect(result.current.freeRestyle).toBe(false)
+    expect(result.current.strongReferenceInfluence).toBe(false)
+    expect(result.current.verbatimCopy).toBe(false)
+
+    act(() => result.current.updateStyleIntensity(100))
+    expect(result.current.freeRestyle).toBe(true)
+    expect(result.current.strongReferenceInfluence).toBe(true)
+    expect(result.current.verbatimCopy).toBe(true)
+  })
+
+  it('a hand-toggled checkbox holds its value until the slider is dragged again', () => {
+    const { result } = renderStudio()
+    act(() => result.current.updateStyleIntensity(20)) // all 3 false
+    act(() => result.current.setStrongReferenceInfluence(true))
+    expect(result.current.strongReferenceInfluence).toBe(true)
+    expect(result.current.freeRestyle).toBe(false, 'hand-toggling one checkbox must not touch the others')
+
+    act(() => result.current.updateStyleIntensity(20)) // re-drag re-derives fresh, overwriting the hand toggle
+    expect(result.current.strongReferenceInfluence).toBe(false)
+  })
+
+  it('hasStyleReferenceForBrand / hasAdCopyOverrideForBrand are false until Step 3 has a real selection, then true', () => {
+    mockBrands = [
+      makeBrand('healthykiki', '헬시키키', {
+        '제품A': makeProduct('1', {
+          extractedReferences: [
+            { type: 'product', imageUrl: 'https://example.com/1.png' },
+            { type: 'model', imageUrl: 'https://example.com/model.png' },
+          ],
+          price: '29,900원',
+        }),
+      }),
+    ]
+    const { result } = renderStudio()
+    expect(result.current.hasStyleReferenceForBrand).toBe(false)
+    expect(result.current.hasAdCopyOverrideForBrand).toBe(false)
+
+    act(() => result.current.toggleImageKeySelected('헬시키키', '제품A::1')) // the model-type entry
+    expect(result.current.hasStyleReferenceForBrand).toBe(true)
+
+    act(() => result.current.selectProductRefPrice('헬시키키', '29,900원'))
+    expect(result.current.hasAdCopyOverrideForBrand).toBe(true)
+  })
+
+  it('goNext includes freeRestyle/strongReferenceInfluence/verbatimCopy in the startGeneration payload', () => {
+    const { result } = renderStudio()
+    act(() => result.current.updateStyleIntensity(100))
+    act(() => result.current.setVerbatimCopy(false)) // hand-override one, independent of the other two
+
+    act(() => result.current.pickRefBrand('헬시키키'))
+    act(() => result.current.toggleRefAd('ad-1'))
+    act(() => result.current.goNext())
+    act(() => result.current.goNext())
+    act(() => result.current.goNext())
+    act(() => result.current.goNext())
+
+    const payload = mockStartGeneration.mock.calls[0][0]
+    expect(payload.freeRestyle).toBe(true)
+    expect(payload.strongReferenceInfluence).toBe(true)
+    expect(payload.verbatimCopy).toBe(false)
+  })
+})
+
 describe('goNext guard clauses', () => {
   it('blocks advancing past step 2 with zero refAdIds selected', () => {
     const { result } = renderStudio()

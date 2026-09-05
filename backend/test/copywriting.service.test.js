@@ -18,47 +18,42 @@ function fakeClient() {
   return { client, getLastRequest: () => lastRequest }
 }
 
-test('styleIntensityInstructionFor LOW (<=33) restates strict preservation and nearly-identical length', () => {
-  const text = styleIntensityInstructionFor(20)
+// Part LL: styleIntensityInstructionFor now takes an explicit verbatimCopy
+// boolean instead of a 0-100 number — the copy-side counterpart to
+// renderImage.service.js's freeRestyle/strongReferenceInfluence booleans.
+// The old MEDIUM tier folded into the false/LOW side (see that function's
+// own comment for why).
+
+test('styleIntensityInstructionFor verbatimCopy=false restates strict preservation, nearly-identical length, but tolerates minor adjustments to real selected phrasing', () => {
+  const text = styleIntensityInstructionFor(false)
   assert.match(text, /Style intensity: LOW/)
   assert.match(text, /Strictly preserve the original hook, tone, and wording/)
   assert.match(text, /nearly identical to/)
+  assert.match(text, /minor, reasonable wording adjustments are still fine/)
 })
 
-test('styleIntensityInstructionFor MEDIUM (<=66) allows override-sourced phrasing closer to its own wording, reasonably close length', () => {
-  const text = styleIntensityInstructionFor(50)
-  assert.match(text, /Style intensity: MEDIUM/)
-  assert.match(text, /closer to its own wording/)
-  assert.match(text, /reasonably close/)
-  // Explicitly relaxes LOW's "must be nearly identical" requirement — the
-  // text does mention "not nearly identical" as part of that relaxation,
-  // so the check is for the LOW tier's own imperative phrasing, not a ban
-  // on the substring "nearly identical" showing up at all.
-  assert.doesNotMatch(text, /length must be nearly identical/)
-})
-
-test('styleIntensityInstructionFor HIGH (>66) prioritizes our own brand voice close to verbatim, loosened length matching', () => {
-  const text = styleIntensityInstructionFor(90)
+test('styleIntensityInstructionFor verbatimCopy=true prioritizes our own brand voice close to verbatim, loosened length matching', () => {
+  const text = styleIntensityInstructionFor(true)
   assert.match(text, /Style intensity: HIGH/)
   assert.match(text, /Prioritize our own brand voice/)
   assert.match(text, /close to verbatim/)
   assert.match(text, /loosened substantially/)
 })
 
-test('styleIntensityInstructionFor tier boundaries match renderImage.service.js\'s own <=33/<=66 buckets', () => {
-  assert.match(styleIntensityInstructionFor(33), /LOW/)
-  assert.match(styleIntensityInstructionFor(34), /MEDIUM/)
-  assert.match(styleIntensityInstructionFor(66), /MEDIUM/)
-  assert.match(styleIntensityInstructionFor(67), /HIGH/)
+test('styleIntensityInstructionFor false and true produce genuinely distinct tiers', () => {
+  assert.match(styleIntensityInstructionFor(false), /LOW/)
+  assert.doesNotMatch(styleIntensityInstructionFor(false), /HIGH/)
+  assert.match(styleIntensityInstructionFor(true), /HIGH/)
+  assert.doesNotMatch(styleIntensityInstructionFor(true), /LOW/)
 })
 
-test('writeReplacementCopy appends the styleIntensity tier instruction into the user prompt, SYSTEM_PROMPT unchanged', async () => {
+test('writeReplacementCopy appends the verbatimCopy tier instruction into the user prompt, SYSTEM_PROMPT unchanged', async () => {
   const { client, getLastRequest } = fakeClient()
 
   await writeReplacementCopy(
     [{ location: 'top', text: '원본 텍스트' }],
     [{ category: '가격', fact: '29,900원' }],
-    90,
+    true,
     { getClientFn: () => client }
   )
 
@@ -72,4 +67,19 @@ test('writeReplacementCopy appends the styleIntensity tier instruction into the 
   // this part must never touch it, only append to the user prompt.
   assert.match(systemMessage.content, /Lead Copywriter AI/)
   assert.doesNotMatch(systemMessage.content, /Style intensity/)
+})
+
+test('writeReplacementCopy with verbatimCopy=false appends the LOW tier instruction', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await writeReplacementCopy(
+    [{ location: 'top', text: '원본 텍스트' }],
+    [{ category: '가격', fact: '29,900원' }],
+    false,
+    { getClientFn: () => client }
+  )
+
+  const userMessage = getLastRequest().input.find((m) => m.role === 'user')
+  assert.match(userMessage.content, /Style intensity: LOW/)
+  assert.match(userMessage.content, /Strictly preserve the original hook, tone, and wording/)
 })

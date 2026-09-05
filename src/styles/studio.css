@@ -88,6 +88,14 @@
 .range{display:flex;align-items:center;gap:10px}
 input[type=range]{accent-color:var(--brand)}
 
+/* Part LL: 3 checkboxes replacing 스타일 반영 강도's old explanatory hint —
+   each maps to one real backend fork (see StepGenerationOptions.jsx's own
+   comment). Plain column of rows, checkbox + label inline, same 10px gap
+   .optrow/.range already use for their own row spacing. */
+.style-checkbox-list{display:flex;flex-direction:column;gap:10px}
+.style-checkbox{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer}
+.style-checkbox input[type=checkbox]{accent-color:var(--brand);width:16px;height:16px;flex-shrink:0}
+
 /* Part S: brand-scoped product-reference panel (ProductReferencePanel.jsx),
    replacing Part O's ad-driven AdSelectionPanel entirely. Reuses
    .refrow/.refpick from above (this time for the "not yet extracted"

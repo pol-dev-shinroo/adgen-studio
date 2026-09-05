@@ -69,23 +69,27 @@ Output ONLY a valid JSON object in the exact format below:
 // a counterFacts entry that came from Step 3's adCopyOverride (a real
 // hand-picked hook/promo/price), not a bare Pinecone-retrieved fact. LOW
 // can't tell counterFacts apart by source (and doesn't need to — it's
-// SYSTEM_PROMPT's existing unconditional behavior, unchanged), but
-// MEDIUM/HIGH's wording is written assuming the caller may have passed
+// SYSTEM_PROMPT's existing unconditional behavior, unchanged), but the
+// verbatimCopy=true wording is written assuming the caller may have passed
 // override-sourced phrasing, since that's the only case where "use it
 // close to verbatim" is even meaningful — a bare Pinecone fact has no
 // particular wording of its own worth preserving verbatim in the first
 // place.
-export function styleIntensityInstructionFor(styleIntensity) {
-  if (styleIntensity <= 33) {
+//
+// Part LL: takes an explicit verbatimCopy boolean instead of a 0-100
+// number — one of 3 axes a single shared styleIntensity number used to
+// force together silently (see renderImage.service.js's styleInstructionFor
+// for the other 2, image-side axes). The old MEDIUM tier's "closer to its
+// own wording, reasonably close length" folds into the false/LOW side below
+// (closer in spirit to strict preservation than to "close to verbatim"),
+// so unchecking doesn't read as absolute-zero-tolerance for any real
+// selected phrasing that IS present.
+export function styleIntensityInstructionFor(verbatimCopy) {
+  if (!verbatimCopy) {
     return 'Style intensity: LOW. Strictly preserve the original hook, tone, and wording — replace only the ' +
-      'specific facts that must differ. Length Matching: new_text length must be nearly identical to ' +
-      'original_text, exactly as required above.'
-  }
-  if (styleIntensity <= 66) {
-    return 'Style intensity: MEDIUM. Preserve the original tone and hook where reasonable, but when the brand ' +
-      'facts include real selected phrasing (not just a bare fact), let it come through closer to its own ' +
-      'wording rather than tightly reshaping it to match the original\'s exact sentence. Length only needs to ' +
-      'be reasonably close to original_text, not nearly identical.'
+      'specific facts that must differ. Length Matching: new_text length must stay nearly identical to ' +
+      'original_text; when the brand facts include real selected phrasing (not just a bare fact), minor, ' +
+      'reasonable wording adjustments are still fine, but don\'t stray far from the original\'s own tone or length.'
   }
   return 'Style intensity: HIGH. Prioritize our own brand voice — when the brand facts include real selected ' +
     'phrasing (not just a bare fact), use it close to verbatim rather than heavily adapting it to match the ' +
@@ -95,16 +99,16 @@ export function styleIntensityInstructionFor(styleIntensity) {
 
 // extractedTexts: visionAnalysis's identified_texts array.
 // counterFacts: counterFacts.service's counter_facts array.
-// styleIntensity (Part U-2): 0-100, same slider renderImage.service.js's
-// renderFinalImage already receives — see styleIntensityInstructionFor
-// above for what each tier actually asks for.
+// verbatimCopy (Part LL): boolean — see styleIntensityInstructionFor above
+// for what each side actually asks for. Replaces the old 0-100 styleIntensity
+// number as the actual tier-selection signal.
 //
 // getClientFn is injected (defaulting to the real getClient) purely so
 // this can be unit-tested without a real OpenAI call — same DI convention
 // renderImage.service.js's renderFinalImage and sheets.service.js already
 // use.
 export async function writeReplacementCopy(
-  extractedTexts, counterFacts, styleIntensity, { getClientFn = getClient } = {}
+  extractedTexts, counterFacts, verbatimCopy, { getClientFn = getClient } = {}
 ) {
   const userPrompt = `Here is the Vision Analyst's report (Competitor's Original Text):
 ${JSON.stringify(extractedTexts)}
@@ -114,7 +118,7 @@ ${JSON.stringify(counterFacts)}
 
 Based on these two pieces of information, generate the final JSON replacement map perfectly matching the length and tone constraints.
 
-${styleIntensityInstructionFor(styleIntensity)}`
+${styleIntensityInstructionFor(verbatimCopy)}`
 
   const response = await getClientFn().responses.create({
     model: MODEL,

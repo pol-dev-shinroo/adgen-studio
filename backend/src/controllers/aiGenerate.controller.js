@@ -217,12 +217,16 @@ export async function postRender(req, res, next, {
     const { counter_facts } = await findCounterFactsFn(brandDef.key, analysis.identified_texts)
     // Part EE: this screen has no style-intensity slider — every text
     // decision is already explicit per segment, so this base copywriting
-    // pass just needs a neutral, non-presumptuous tier. MEDIUM (50) is used
-    // deliberately rather than LOW/HIGH, since neither extreme reflects
-    // this screen's own per-segment explicitness any better than the other;
-    // whatever this suggests per text element is then overridden per-
-    // segment below wherever a decision names a concrete value.
-    const { replacements: baseReplacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, 50)
+    // pass just needs a neutral, non-presumptuous tier. Whatever it
+    // suggests per text element is then overridden per-segment below
+    // wherever a decision names a concrete value.
+    // Part LL: styleIntensityInstructionFor now takes an explicit
+    // verbatimCopy boolean instead of a 0-100 number; the old MEDIUM tier
+    // this screen deliberately picked (neither LOW nor HIGH reflected its
+    // own per-segment explicitness any better than the other) folded into
+    // the false/LOW side of that boolean (see copywriting.service.js's own
+    // comment), so `false` is the closest equivalent here.
+    const { replacements: baseReplacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, false)
     const replacements = applyTextDecisionOverrides(baseReplacements, textSegments, decisions.texts)
 
     const instructions = buildConversationalInstructions(decisions, { productInstances: analysis.product_instances, replacements })
