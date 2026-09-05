@@ -261,3 +261,28 @@ export function startAiRender(input) {
     body: JSON.stringify(input),
   })
 }
+
+// Part SS: 생성 AI conversation persistence — a lightweight list for the
+// history sidebar (never the full message/segment/decision detail; see
+// getAiConversation below for that). Resolves to { conversations: [...] }.
+export function listAiConversations() {
+  return request('/api/ai-generate/conversations')
+}
+
+// Full detail for one conversation, used to hydrate AIStudioContext.jsx's
+// state when resuming it from the history sidebar.
+export function getAiConversation(id) {
+  return request(`/api/ai-generate/conversations/${encodeURIComponent(id)}`)
+}
+
+// Autosaved (debounced) by AIStudioContext.jsx as the conversation
+// progresses — conversation is the same shape getAiConversation resolves
+// to (minus createdAt/updatedAt, which the backend owns). Resolves to
+// { ok: true }.
+export function saveAiConversation(id, conversation) {
+  return request(`/api/ai-generate/conversations/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(conversation),
+  })
+}

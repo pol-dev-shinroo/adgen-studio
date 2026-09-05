@@ -5,15 +5,20 @@ import { useAds } from '../../context/AdsContext.jsx'
 import AIImagePane from './AIImagePane.jsx'
 import AIChatPane from './AIChatPane.jsx'
 import AIContextPanel from './AIContextPanel.jsx'
+import AIConversationList from './AIConversationList.jsx'
 import CompareModal from '../gallery/CompareModal.jsx'
 
-// Part EE §9: no persistence across screen navigations/reloads — every
-// visit to 생성 AI starts fresh. AIStudioProvider is composed once at the
-// top of the tree (same as every other context here) and never unmounts on
-// its own as the user navigates away and back, so this screen resets the
-// conversation itself on mount rather than relying on unmount/remount.
+// Part EE §9 / Part SS: no reset-on-navigate anymore — AIStudioProvider is
+// composed once at the top of the tree (same as every other context here)
+// and never unmounts on its own as the user navigates away and back, so
+// this screen used to unconditionally wipe the conversation on every mount.
+// Part SS persists conversations, so mounting now calls
+// initializeConversation instead: it resumes the most recently saved
+// conversation (or starts blank on a true first visit), while a pending
+// Part-OO "이어서 편집" seed still always wins and starts a fresh one — see
+// initializeConversation's own comment in AIStudioContext.jsx.
 export default function AIStudioScreen() {
-  const { resetConversation, sourceResult } = useAIStudio()
+  const { initializeConversation, sourceResult } = useAIStudio()
   const { ads } = useAds()
   const resetOnce = useRef(false)
   const [compareOpen, setCompareOpen] = useState(false)
@@ -21,7 +26,7 @@ export default function AIStudioScreen() {
   useEffect(() => {
     if (resetOnce.current) return
     resetOnce.current = true
-    resetConversation()
+    initializeConversation()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -60,6 +65,7 @@ export default function AIStudioScreen() {
       )}
 
       <div className="ai-studio-grid">
+        <AIConversationList />
         <div className="ai-studio-left">
           <AIImagePane />
           <AIChatPane />

@@ -17,6 +17,12 @@ const mockStartAiRender = vi.fn()
 // out one by one — real background-isolation behavior gets its own
 // describe block below.
 const mockStartAiBackgroundImage = vi.fn().mockResolvedValue({ backgroundImageUrl: null })
+// Part SS: conversation persistence — default to "no saved history" /
+// "save succeeds" so every existing test above (which never touches
+// persistence) behaves exactly as before.
+const mockListAiConversations = vi.fn().mockResolvedValue({ conversations: [] })
+const mockGetAiConversation = vi.fn()
+const mockSaveAiConversation = vi.fn().mockResolvedValue({ ok: true })
 
 let mockAds = []
 let mockRefBrands = []
@@ -38,6 +44,9 @@ vi.mock('../api/backendClient.js', () => ({
   startAiSegmentation: (...args) => mockStartAiSegmentation(...args),
   startAiRender: (...args) => mockStartAiRender(...args),
   startAiBackgroundImage: (...args) => mockStartAiBackgroundImage(...args),
+  listAiConversations: (...args) => mockListAiConversations(...args),
+  getAiConversation: (...args) => mockGetAiConversation(...args),
+  saveAiConversation: (...args) => mockSaveAiConversation(...args),
 }))
 
 function makeSegments(textCount, { withModel = false } = {}) {
@@ -61,6 +70,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockRefreshResults.mockResolvedValue(undefined)
   mockStartAiBackgroundImage.mockResolvedValue({ backgroundImageUrl: null })
+  mockListAiConversations.mockResolvedValue({ conversations: [] })
+  mockSaveAiConversation.mockResolvedValue({ ok: true })
   mockAds = [{ id: 'ad-1', brand: '경쟁사A', image: 'https://example.com/ad-1.png' }]
   mockRefBrands = ['경쟁사A']
   mockMyBrands = [
@@ -305,5 +316,91 @@ describe('startFromResult + seeded resetConversation (Part OO)', () => {
     expect(result.current.messages[0].kind).toBe('choices')
     expect(result.current.sourceResult).toBeNull()
     expect(mockStartAiSegmentation).not.toHaveBeenCalled()
+  })
+})
+
+// Part SS: conversation persistence — autosave, resume-on-load, and the
+// "a Part-OO seed always wins" rule.
+describe('conversation persistence (Part SS)', () => {
+  it('skips autosaving while still on the unanswered select-brand prompt, then saves (debounced) once a dialog is answered', async () => {
+    mockStartAiSegmentation.mockResolvedValue({ segments: makeSegments(0), imageUrl: 'https://example.com/ad.png' })
+    const { result } = renderAIStudio()
+    act(() => result.current.resetConversation())
+
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    expect(mockSaveAiConversation).not.toHaveBeenCalled()
+
+    act(() => result.current.selectRefBrand('경쟁사A'))
+    act(() => result.current.selectRefAd('ad-1'))
+    act(() => result.current.selectBrandProduct('healthykiki', '1'))
+    await waitFor(() => expect(result.current.phase).toBe('dialog:background'))
+
+    await waitFor(() => expect(mockSaveAiConversation).toHaveBeenCalled(), { timeout: 2000 })
+    const [id, payload] = mockSaveAiConversation.mock.calls.at(-1)
+    expect(id).toBe(result.current.conversationId)
+    expect(payload.phase).toBe('dialog:background')
+    expect(payload.selectedRefAdId).toBe('ad-1')
+    expect(payload.selectedBrandKey).toBe('healthykiki')
+  })
+
+  it('loadConversation hydrates every relevant piece of state from getAiConversation, including the active dialog segment', async () => {
+    mockGetAiConversation.mockResolvedValue({
+      id: 'conv-99',
+      selectedBrandKey: 'healthykiki', selectedRefBrand: '경쟁사A', selectedRefAdId: 'ad-1', selectedProductId: '1',
+      phase: 'dialog:background',
+      imageUrl: 'https://example.com/ad.png',
+      messages: [{ id: 1, role: 'ai', kind: 'text', text: 'hi' }],
+      segments: makeSegments(0),
+      decisions: { background: null, texts: {}, model: null, product: null },
+      sourceResult: null,
+    })
+    const { result } = renderAIStudio()
+
+    await act(async () => { await result.current.loadConversation('conv-99') })
+
+    expect(result.current.conversationId).toBe('conv-99')
+    expect(result.current.phase).toBe('dialog:background')
+    expect(result.current.selectedRefAdId).toBe('ad-1')
+    expect(result.current.messages).toEqual([{ id: 1, role: 'ai', kind: 'text', text: 'hi' }])
+    expect(result.current.activeSegmentId).toBe('background-0')
+  })
+
+  it('initializeConversation resumes the most recently saved conversation when no Part-OO seed is pending', async () => {
+    mockListAiConversations.mockResolvedValue({
+      conversations: [{ id: 'conv-recent', label: '최근 대화', updatedAt: '2026-01-01T00:00:00.000Z' }],
+    })
+    mockGetAiConversation.mockResolvedValue({
+      id: 'conv-recent', selectedBrandKey: null, selectedRefBrand: null, selectedRefAdId: null, selectedProductId: null,
+      phase: 'select-ad', imageUrl: null, messages: [{ id: 1, role: 'user', text: '경쟁사A' }], segments: [],
+      decisions: { background: null, texts: {}, model: null, product: null }, sourceResult: null,
+    })
+    const { result } = renderAIStudio()
+
+    await act(async () => { await result.current.initializeConversation() })
+
+    expect(result.current.conversationId).toBe('conv-recent')
+    expect(result.current.phase).toBe('select-ad')
+  })
+
+  it('a pending Part-OO seed always starts a NEW conversation via initializeConversation, never resuming the last saved one', async () => {
+    mockListAiConversations.mockResolvedValue({
+      conversations: [{ id: 'conv-old', label: '이전 대화', updatedAt: '2020-01-01T00:00:00.000Z' }],
+    })
+    mockStartAiSegmentation.mockResolvedValue({ segments: makeSegments(0), imageUrl: 'https://example.com/result-thumb-w600.png' })
+    const { result } = renderAIStudio()
+    const seedResult = {
+      id: 'gen-1', brand: '헬시키키', refBrand: '경쟁사A', referenceAdId: 'ad-1', productId: '1',
+      image: 'https://example.com/result-thumb-w600.png', originalImage: 'https://drive.google.com/file/d/RESULT_FILE/view',
+    }
+
+    act(() => result.current.startFromResult(seedResult, mockMyBrands))
+    await act(async () => { await result.current.initializeConversation() })
+
+    // The seeded flow races straight through 'segmenting' into
+    // runSegmentation's own resolution — what matters here is that it never
+    // resumed conv-old (phase would be 'select-ad') and did seed sourceResult.
+    expect(result.current.phase).not.toBe('select-ad')
+    expect(result.current.sourceResult).toEqual(seedResult)
+    expect(mockGetAiConversation).not.toHaveBeenCalled()
   })
 })

@@ -5,7 +5,10 @@ import { useProducts } from './ProductsContext.jsx'
 import { useGallery } from './GalleryContext.jsx'
 import { useProductRefSelections } from '../hooks/useProductRefSelections.js'
 import { looksLikeFactualCopy } from '../utils/looksLikeFactualCopy.js'
-import { startAiSegmentation, startAiRender, startAiBackgroundImage } from '../api/backendClient.js'
+import {
+  startAiSegmentation, startAiRender, startAiBackgroundImage,
+  listAiConversations, getAiConversation, saveAiConversation,
+} from '../api/backendClient.js'
 import { QUANTITIES } from '../data/generationOptions.js'
 
 const AIStudioContext = createContext(null)
@@ -54,6 +57,18 @@ function buildDialogSequence(segments) {
   // not the segment's own multi-instance reality.
   sequence.push({ phase: 'dialog:product', segmentId: productSeg?.id ?? null })
   return sequence
+}
+
+// Part SS: loadConversation resumes directly into whatever dialog phase was
+// saved (e.g. 'dialog:text:text-2') without replaying the phase-advancement
+// sequence that normally sets activeSegmentId as a side effect of getting
+// there — this derives the same value buildDialogSequence's own entry would
+// have set, so AIImagePane.jsx's highlight box still lands on the right
+// segment immediately after a resume, not just after the next dialog answer.
+function activeSegmentIdForPhase(phase, segments) {
+  if (!phase || !phase.startsWith('dialog:')) return null
+  const entry = buildDialogSequence(segments).find((e) => e.phase === phase)
+  return entry?.segmentId ?? null
 }
 
 function dialogMessageFor(entry, segments) {
@@ -106,6 +121,18 @@ export function AIStudioProvider({ children }) {
   const { ads, brands: refBrands } = useAds()
   const { brands: myBrands } = useProducts()
   const { refreshResults } = useGallery()
+
+  // Part SS: a stable id for the CURRENT conversation, created once
+  // (crypto.randomUUID() — browser-native, no new dependency) whenever a
+  // conversation starts, fresh or seeded, and swapped for the resumed
+  // conversation's own id by loadConversation. null only before the very
+  // first resetConversation/loadConversation call ever runs.
+  const [conversationId, setConversationId] = useState(null)
+  // Bumped after every successful autosave so AIConversationList.jsx knows
+  // to refetch the sidebar list (its own updatedAt/label just changed) —
+  // simpler than prop-drilling a callback or standing up an event bus for
+  // one signal.
+  const [conversationListVersion, setConversationListVersion] = useState(0)
 
   const [phase, setPhase] = useState('select-brand')
   const [messages, setMessages] = useState([])
@@ -498,6 +525,7 @@ export function AIStudioProvider({ children }) {
     if (pendingSeed) {
       const seed = pendingSeed
       pendingSeed = null
+      setConversationId(crypto.randomUUID())
       setPhase('segmenting')
       setMessages([{
         id: nextId(), createdAt: new Date().toISOString(), role: 'ai', kind: 'text',
@@ -524,6 +552,7 @@ export function AIStudioProvider({ children }) {
       return
     }
 
+    setConversationId(crypto.randomUUID())
     setPhase('select-brand')
     setMessages([{ id: nextId(), createdAt: new Date().toISOString(), role: 'ai', kind: 'choices', text: '어떤 브랜드의 광고를 참고할까요?' }])
     setSegments([])
@@ -545,6 +574,97 @@ export function AIStudioProvider({ children }) {
     setBackgroundImageLoading(false)
     setBackgroundImageError(null)
   }, [])
+
+  // Part SS: fetches full detail for one saved conversation and hydrates
+  // every relevant piece of state — the resume path used both by
+  // initializeConversation below (auto-resuming on mount) and by
+  // AIConversationList.jsx (clicking a row in the sidebar). Anything NOT
+  // persisted (formats/quantity/backgroundImage*/segmentationError/
+  // renderError/lastResult) resets to its blank-conversation default, same
+  // as resetConversation, since none of those survive a resume anyway.
+  const loadConversation = useCallback(async (id) => {
+    try {
+      const conv = await getAiConversation(id)
+      setConversationId(conv.id)
+      setPhase(conv.phase)
+      setMessages(conv.messages)
+      setSegments(conv.segments)
+      setDecisions(conv.decisions)
+      setImageUrl(conv.imageUrl)
+      setSelectedRefBrand(conv.selectedRefBrand)
+      setSelectedRefAdId(conv.selectedRefAdId)
+      setSelectedBrandKey(conv.selectedBrandKey)
+      setSelectedProductId(conv.selectedProductId)
+      setSourceResult(conv.sourceResult)
+      setSourceImageUrl(conv.sourceResult?.originalImage ?? null)
+      setActiveSegmentId(activeSegmentIdForPhase(conv.phase, conv.segments))
+      setFormats([])
+      setQuantity(QUANTITIES[0])
+      setSegmentationError(null)
+      setRenderError(null)
+      setLastResult(null)
+      setBackgroundImageUrl(null)
+      setBackgroundImageLoading(false)
+      setBackgroundImageError(null)
+    } catch (err) {
+      console.error('Failed to load AI studio conversation', err)
+      resetConversation()
+    }
+  }, [resetConversation])
+
+  // Part SS: AIStudioScreen.jsx's mount-effect entry point, replacing its
+  // old unconditional resetConversation() call. A pendingSeed (fresh "이어서
+  // 편집" click) always wins and starts a NEW conversation — resetConversation
+  // itself already checks pendingSeed first, so it's the right call either
+  // way. Otherwise resumes the most recently updated saved conversation, if
+  // any; a blank slate only when none exist yet (first-ever visit) or the
+  // list fetch fails.
+  const initializeConversation = useCallback(async () => {
+    if (pendingSeed) {
+      resetConversation()
+      return
+    }
+    try {
+      const { conversations } = await listAiConversations()
+      if (conversations && conversations.length > 0) {
+        await loadConversation(conversations[0].id)
+      } else {
+        resetConversation()
+      }
+    } catch (err) {
+      console.error('Failed to list AI studio conversations', err)
+      resetConversation()
+    }
+  }, [resetConversation, loadConversation])
+
+  // Part SS: debounced autosave, mirroring the ~800ms pattern already used
+  // elsewhere in this app for save-as-you-go UX. Skips saving while still
+  // on the very first, unanswered select-brand prompt (messages.length<=1)
+  // — nothing worth persisting yet, and saving here would litter the
+  // sidebar with empty "새 대화" rows on every mount. Logs (rather than
+  // throws) on failure — losing one autosave tick isn't worth surfacing as
+  // a user-facing error given the next edit will just retry it.
+  const autosaveTimerRef = useRef(null)
+  useEffect(() => {
+    if (!conversationId) return
+    if (phase === 'select-brand' && messages.length <= 1) return
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    autosaveTimerRef.current = setTimeout(() => {
+      saveAiConversation(conversationId, {
+        id: conversationId,
+        selectedBrandKey, selectedRefBrand, selectedRefAdId, selectedProductId,
+        sourceResult, phase, imageUrl, messages, segments, decisions,
+      }).then(() => {
+        setConversationListVersion((v) => v + 1)
+      }).catch((err) => {
+        console.error('Failed to autosave AI studio conversation', err)
+      })
+    }, 800)
+    return () => clearTimeout(autosaveTimerRef.current)
+  }, [
+    conversationId, phase, messages, decisions, segments, imageUrl,
+    selectedRefBrand, selectedRefAdId, selectedBrandKey, selectedProductId, sourceResult,
+  ])
 
   // Selected brand's own product-reference derivation, mirroring
   // StudioContext's productRefSelections but scoped to the ONE selected
@@ -576,6 +696,13 @@ export function AIStudioProvider({ children }) {
         // sourceResult is exposed so AIStudioScreen.jsx's before/after
         // banner (§2.5) can render without a second round-trip.
         startFromResult, sourceResult,
+        // Part SS: conversation persistence — AIStudioScreen.jsx calls
+        // initializeConversation on mount instead of resetConversation
+        // directly; AIConversationList.jsx uses conversationId (to
+        // highlight the active row), loadConversation (row click), and
+        // conversationListVersion (a refetch signal bumped after every
+        // successful autosave).
+        conversationId, loadConversation, initializeConversation, conversationListVersion,
       }}
     >
       {children}
