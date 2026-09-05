@@ -24,16 +24,16 @@ function fakeClient() {
 // The old MEDIUM tier folded into the false/LOW side (see that function's
 // own comment for why).
 
-test('styleIntensityInstructionFor verbatimCopy=false restates strict preservation, nearly-identical length, but tolerates minor adjustments to real selected phrasing', () => {
-  const text = styleIntensityInstructionFor(false)
+test('styleIntensityInstructionFor verbatimCopy=false, creativeCopy=false restates strict preservation, nearly-identical length, but tolerates minor adjustments to real selected phrasing', () => {
+  const text = styleIntensityInstructionFor(false, false)
   assert.match(text, /Style intensity: LOW/)
   assert.match(text, /Strictly preserve the original hook, tone, and wording/)
   assert.match(text, /nearly identical to/)
   assert.match(text, /minor, reasonable wording adjustments are still fine/)
 })
 
-test('styleIntensityInstructionFor verbatimCopy=true prioritizes our own brand voice close to verbatim, loosened length matching', () => {
-  const text = styleIntensityInstructionFor(true)
+test('styleIntensityInstructionFor verbatimCopy=true, creativeCopy=false prioritizes our own brand voice close to verbatim, loosened length matching', () => {
+  const text = styleIntensityInstructionFor(true, false)
   assert.match(text, /Style intensity: HIGH/)
   assert.match(text, /Prioritize our own brand voice/)
   assert.match(text, /close to verbatim/)
@@ -41,10 +41,30 @@ test('styleIntensityInstructionFor verbatimCopy=true prioritizes our own brand v
 })
 
 test('styleIntensityInstructionFor false and true produce genuinely distinct tiers', () => {
-  assert.match(styleIntensityInstructionFor(false), /LOW/)
-  assert.doesNotMatch(styleIntensityInstructionFor(false), /HIGH/)
-  assert.match(styleIntensityInstructionFor(true), /HIGH/)
-  assert.doesNotMatch(styleIntensityInstructionFor(true), /LOW/)
+  assert.match(styleIntensityInstructionFor(false, false), /LOW/)
+  assert.doesNotMatch(styleIntensityInstructionFor(false, false), /HIGH/)
+  assert.match(styleIntensityInstructionFor(true, false), /HIGH/)
+  assert.doesNotMatch(styleIntensityInstructionFor(true, false), /LOW/)
+})
+
+// Part MM: creativeCopy is a genuinely different axis (is the model allowed
+// to rewrite the hook at all), not a stronger version of verbatimCopy — it
+// must take priority regardless of verbatimCopy's value.
+
+test('styleIntensityInstructionFor creativeCopy=true returns the CREATIVE REWRITE instruction, ignoring verbatimCopy', () => {
+  const text = styleIntensityInstructionFor(false, true)
+  assert.match(text, /Style: CREATIVE REWRITE/)
+  assert.match(text, /creatively rewrite each piece of text into a compelling, benefit-driven marketing hook/)
+  assert.match(text, /rather than just listing what we have/)
+  assert.doesNotMatch(text, /Style intensity: LOW/)
+  assert.doesNotMatch(text, /Style intensity: HIGH/)
+})
+
+test('styleIntensityInstructionFor creativeCopy=true takes priority over verbatimCopy=true too', () => {
+  const text = styleIntensityInstructionFor(true, true)
+  assert.match(text, /Style: CREATIVE REWRITE/)
+  assert.doesNotMatch(text, /Style intensity: HIGH/)
+  assert.doesNotMatch(text, /Prioritize our own brand voice/)
 })
 
 test('writeReplacementCopy appends the verbatimCopy tier instruction into the user prompt, SYSTEM_PROMPT unchanged', async () => {
@@ -53,7 +73,7 @@ test('writeReplacementCopy appends the verbatimCopy tier instruction into the us
   await writeReplacementCopy(
     [{ location: 'top', text: '원본 텍스트' }],
     [{ category: '가격', fact: '29,900원' }],
-    true,
+    true, false,
     { getClientFn: () => client }
   )
 
@@ -69,17 +89,31 @@ test('writeReplacementCopy appends the verbatimCopy tier instruction into the us
   assert.doesNotMatch(systemMessage.content, /Style intensity/)
 })
 
-test('writeReplacementCopy with verbatimCopy=false appends the LOW tier instruction', async () => {
+test('writeReplacementCopy with verbatimCopy=false, creativeCopy=false appends the LOW tier instruction', async () => {
   const { client, getLastRequest } = fakeClient()
 
   await writeReplacementCopy(
     [{ location: 'top', text: '원본 텍스트' }],
     [{ category: '가격', fact: '29,900원' }],
-    false,
+    false, false,
     { getClientFn: () => client }
   )
 
   const userMessage = getLastRequest().input.find((m) => m.role === 'user')
   assert.match(userMessage.content, /Style intensity: LOW/)
   assert.match(userMessage.content, /Strictly preserve the original hook, tone, and wording/)
+})
+
+test('writeReplacementCopy with creativeCopy=true appends the CREATIVE REWRITE instruction regardless of verbatimCopy', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await writeReplacementCopy(
+    [{ location: 'top', text: '원본 텍스트' }],
+    [{ category: '가격', fact: '29,900원' }],
+    true, true,
+    { getClientFn: () => client }
+  )
+
+  const userMessage = getLastRequest().input.find((m) => m.role === 'user')
+  assert.match(userMessage.content, /Style: CREATIVE REWRITE/)
 })

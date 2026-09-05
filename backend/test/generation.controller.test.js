@@ -106,7 +106,9 @@ test('postGenerate: 400 for an out-of-range styleIntensity', async () => {
 // Part LL: freeRestyle/strongReferenceInfluence/verbatimCopy default to
 // false rather than hard-failing when missing, so an older/cached client
 // payload that doesn't send them yet still starts a job.
-test('postGenerate: defaults freeRestyle/strongReferenceInfluence/verbatimCopy to false when omitted', async () => {
+// Part MM: creativeCopy, the 4th independent boolean, gets the same
+// missing-defaults-to-false treatment.
+test('postGenerate: defaults freeRestyle/strongReferenceInfluence/verbatimCopy/creativeCopy to false when omitted', async () => {
   const res = makeRes()
   let captured
   await postGenerate(
@@ -118,13 +120,18 @@ test('postGenerate: defaults freeRestyle/strongReferenceInfluence/verbatimCopy t
   assert.equal(captured.freeRestyle, false)
   assert.equal(captured.strongReferenceInfluence, false)
   assert.equal(captured.verbatimCopy, false)
+  assert.equal(captured.creativeCopy, false)
 })
 
-test('postGenerate: passes explicit freeRestyle/strongReferenceInfluence/verbatimCopy through as booleans', async () => {
+test('postGenerate: passes explicit freeRestyle/strongReferenceInfluence/verbatimCopy/creativeCopy through as booleans', async () => {
   const res = makeRes()
   let captured
   await postGenerate(
-    { body: validGenerateBody({ freeRestyle: true, strongReferenceInfluence: true, verbatimCopy: true }) },
+    {
+      body: validGenerateBody({
+        freeRestyle: true, strongReferenceInfluence: true, verbatimCopy: true, creativeCopy: true,
+      }),
+    },
     res, makeNext(),
     { startGenerationFn: async (input) => { captured = input; return 'job-1' } }
   )
@@ -132,6 +139,7 @@ test('postGenerate: passes explicit freeRestyle/strongReferenceInfluence/verbati
   assert.equal(captured.freeRestyle, true)
   assert.equal(captured.strongReferenceInfluence, true)
   assert.equal(captured.verbatimCopy, true)
+  assert.equal(captured.creativeCopy, true)
 })
 
 test('postGenerate: err.badRequest from startGeneration maps to 400', async () => {

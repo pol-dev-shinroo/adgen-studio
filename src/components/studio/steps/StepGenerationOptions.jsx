@@ -10,7 +10,8 @@ export default function StepGenerationOptions() {
     refAdIds, refAdConfigs, toggleAdFormat, setAdQuantity,
     styleIntensity, updateStyleIntensity,
     freeRestyle, setFreeRestyle, strongReferenceInfluence, setStrongReferenceInfluence,
-    verbatimCopy, setVerbatimCopy, hasStyleReferenceForBrand, hasAdCopyOverrideForBrand,
+    verbatimCopy, setVerbatimCopy, creativeCopy, setCreativeCopy,
+    hasStyleReferenceForBrand, hasAdCopyOverrideForBrand,
     instructions, setInstructions,
   } = useStudio()
 
@@ -112,6 +113,19 @@ export default function StepGenerationOptions() {
           />
           선택한 카피 문구를 각색 없이 그대로 사용
           {!hasAdCopyOverrideForBrand && <span className="hint"> — 3단계에서 가격·프로모션·후킹을 먼저 선택해주세요</span>}
+        </label>
+        {/* Part MM: independent of the 3 above and never wired to the
+            slider — an opt-in creative-rewrite mode, not a stronger version
+            of "use our wording verbatim." Always enabled (doesn't depend on
+            any Step 3 selection the way checkboxes 2/3 do) — it changes HOW
+            the model writes the hook, not which facts/phrasing it draws on. */}
+        <label className="style-checkbox">
+          <input
+            type="checkbox"
+            checked={creativeCopy}
+            onChange={(e) => setCreativeCopy(e.target.checked)}
+          />
+          카피를 AI가 창의적으로 재구성 (사실 나열이 아닌 설득력 있는 문구로)
         </label>
       </div>
 

@@ -14,13 +14,16 @@ const jobStore = createJobStore()
 const RECENT_ITEMS_LIMIT = 20
 
 // Input: { refBrand, refAdConfigs, brand:{key,productIds}, styleIntensity,
-// freeRestyle, strongReferenceInfluence, verbatimCopy, instructions,
-// adCopyOverride, referenceSheetImageUrl, styleReferenceType }.
+// freeRestyle, strongReferenceInfluence, verbatimCopy, creativeCopy,
+// instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType }.
 // Part LL: freeRestyle/strongReferenceInfluence/verbatimCopy are the 3
 // independent booleans that now actually drive styleInstructionFor's/
 // styleIntensityInstructionFor's branch selection — styleIntensity itself
 // is threaded through unchanged too, but only for the generated-row sheet
 // record; it plays no part in what gets rendered/written any more.
+// Part MM: creativeCopy is a 4th, independent copy-only boolean that takes
+// priority over verbatimCopy entirely when true (see
+// styleIntensityInstructionFor's own comment) rather than combining with it.
 // Part DD: refAdConfigs replaces the old flat refAdIds/formats/quantity —
 // each entry is { adId, formats: string[], quantity: number }, since the
 // client's real need is per-reference-ad format/quantity (e.g. ad A -> 1
@@ -57,7 +60,7 @@ const RECENT_ITEMS_LIMIT = 20
 export async function startGeneration(input, deps = {}) {
   const {
     refBrand, refAdConfigs, brand, styleIntensity, freeRestyle, strongReferenceInfluence, verbatimCopy,
-    instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
+    creativeCopy, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
   } = input
   const { prepareInputsFn = prepareInputs } = deps
   // prepareInputs only ever needs the plain ID list to fetch ad rows, never
@@ -94,7 +97,7 @@ export async function startGeneration(input, deps = {}) {
       job,
       {
         refAds, products, brandDef, refAdConfigs, styleIntensity, freeRestyle, strongReferenceInfluence,
-        verbatimCopy, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType, refBrand,
+        verbatimCopy, creativeCopy, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType, refBrand,
       },
       deps
     ),
@@ -124,7 +127,7 @@ async function runJob(
   job,
   {
     refAds, products, brandDef, refAdConfigs, styleIntensity, freeRestyle, strongReferenceInfluence, verbatimCopy,
-    instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType, refBrand,
+    creativeCopy, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType, refBrand,
   },
   {
     downloadImageAsBase64Fn = downloadImageAsBase64,
@@ -193,7 +196,9 @@ async function runJob(
       // Part LL: verbatimCopy is the copy-side counterpart to
       // freeRestyle/strongReferenceInfluence below — same "competitor
       // original vs our own material" axis, applied to copy instead of image.
-      const { replacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, verbatimCopy)
+      // Part MM: creativeCopy takes priority over verbatimCopy entirely when
+      // true — see styleIntensityInstructionFor's own comment for why.
+      const { replacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, verbatimCopy, creativeCopy)
 
       perAdContext.push({
         adId, imageLink, referenceImageBase64, productInstances: analysis.product_instances, replacements,

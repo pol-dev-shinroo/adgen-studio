@@ -62,6 +62,32 @@ test('renderFinalImage sends exactly two input_image entries and the original tw
   assert.deepEqual(req.tools, [{ type: 'image_generation', action: 'edit', size: '1024x1024', quality: 'high' }])
 })
 
+// Part MM: a live client-caught bug — the model invented a packaging form
+// factor (a torn-open sachet) our product doesn't actually have, because
+// nothing told it fabrication was off the table when a competitor instance's
+// physical form has no equivalent in our single reference photo. Shared by
+// both renderFinalImage and renderConversationalImage since both call
+// productSwapInstructionFor for this paragraph.
+test('renderFinalImage forbids fabricating a packaging form factor our product doesn\'t have', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await renderFinalImage({
+    referenceImageBase64: 'REF_B64',
+    productImageBase64: 'PROD_B64',
+    productInstances: PRODUCT_INSTANCES,
+    replacements: REPLACEMENTS,
+    format: FORMAT,
+    freeRestyle: false,
+    strongReferenceInfluence: false,
+    instructions: '',
+  }, { getClientFn: () => client })
+
+  const text = getLastRequest().input[0].content.find((c) => c.type === 'input_text').text
+  assert.match(text, /EXACTLY the packaging shown in the second reference image/)
+  assert.match(text, /NEVER invent, imagine, or fabricate a packaging form factor/)
+  assert.match(text, /render that instance as our actual product exactly as it appears in the reference photo/)
+})
+
 test('renderFinalImage adds a third input_image and the style-reference instruction when a style reference is given', async () => {
   const { client, getLastRequest } = fakeClient()
 

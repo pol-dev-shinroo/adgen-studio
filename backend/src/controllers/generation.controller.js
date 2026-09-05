@@ -24,7 +24,7 @@ export async function postGenerate(req, res, next, { startGenerationFn = startGe
 
   const {
     refBrand, refAdConfigs, brand, styleIntensity, freeRestyle, strongReferenceInfluence, verbatimCopy,
-    instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
+    creativeCopy, instructions, adCopyOverride, referenceSheetImageUrl, styleReferenceType,
   } = req.body ?? {}
 
   if (!Array.isArray(refAdConfigs) || refAdConfigs.length === 0) {
@@ -64,6 +64,10 @@ export async function postGenerate(req, res, next, { startGenerationFn = startGe
       freeRestyle: Boolean(freeRestyle),
       strongReferenceInfluence: Boolean(strongReferenceInfluence),
       verbatimCopy: Boolean(verbatimCopy),
+      // Part MM: independent 4th checkbox — takes priority over verbatimCopy
+      // entirely when true (see styleIntensityInstructionFor's own comment).
+      // Same missing-defaults-to-false posture as the 3 above.
+      creativeCopy: Boolean(creativeCopy),
       instructions: typeof instructions === 'string' ? instructions : '',
       // Part P: { price, promotion, adHooks } from Step 3's ad-selection
       // panel — real, curated copy the user hand-picked, used instead of

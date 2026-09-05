@@ -70,6 +70,11 @@ export function StudioProvider({ children }) {
   const [freeRestyle, setFreeRestyle] = useState(styleIntensity > 33)
   const [strongReferenceInfluence, setStrongReferenceInfluence] = useState(styleIntensity > 66)
   const [verbatimCopy, setVerbatimCopy] = useState(styleIntensity > 66)
+  // Part MM: a 4th, independent checkbox — not wired to the slider at all
+  // (deliberately: this is an opt-in creative-rewrite mode, not something
+  // dragging the slider should ever silently turn on) and takes priority
+  // over verbatimCopy entirely on the backend when checked. Defaults false.
+  const [creativeCopy, setCreativeCopy] = useState(false)
   const [instructions, setInstructions] = useState('')
 
   const myBrands = productBrands.map((b) => ({ ...b, active: b.key === activeBrandKey }))
@@ -444,6 +449,7 @@ export function StudioProvider({ children }) {
       freeRestyle,
       strongReferenceInfluence,
       verbatimCopy,
+      creativeCopy,
       instructions,
       adCopyOverride,
       referenceSheetImageUrl,
@@ -457,7 +463,7 @@ export function StudioProvider({ children }) {
     go('gallery')
   }, [
     step, refAdIds, myBrands, refAdConfigs, selections, productRefSelections, refBrand, styleIntensity,
-    freeRestyle, strongReferenceInfluence, verbatimCopy, brandRefSel, checkedItemsForBrand,
+    freeRestyle, strongReferenceInfluence, verbatimCopy, creativeCopy, brandRefSel, checkedItemsForBrand,
     styleReferenceItemForBrand, hasAdCopyOverrideForBrand, instructions, startGeneration, showToast, go,
   ])
 
@@ -475,7 +481,7 @@ export function StudioProvider({ children }) {
         totalRenders, activeBrandProductCount,
         styleIntensity, setStyleIntensity, updateStyleIntensity,
         freeRestyle, setFreeRestyle, strongReferenceInfluence, setStrongReferenceInfluence,
-        verbatimCopy, setVerbatimCopy,
+        verbatimCopy, setVerbatimCopy, creativeCopy, setCreativeCopy,
         hasStyleReferenceForBrand, hasAdCopyOverrideForBrand,
         instructions, setInstructions,
         prefillFromAd, prefillFromAds,

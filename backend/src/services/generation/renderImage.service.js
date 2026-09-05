@@ -164,7 +164,23 @@ export function productSwapInstructionFor(productInstances, hasStyleReference, s
 
   return `${framing} Seamlessly replace EVERY instance of the competitor's product shown in the first image with OUR product from the second image, at these instances:\n` +
     `${instanceList}\n\n` +
-    'Ensure each replaced instance perfectly inherits its own perspective, lighting, hand grip placement, finger occlusion, and relative size from the object it\'s replacing, so every swap looks completely authentic. Do not add or remove any product instances beyond what is listed.'
+    'Ensure each replaced instance perfectly inherits its own perspective, lighting, hand grip placement, finger occlusion, and relative size from the object it\'s replacing, so every swap looks completely authentic. Do not add or remove any product instances beyond what is listed.\n\n' +
+    // Part MM: without this, "seamlessly replace... inherits perspective/
+    // size from the object it's replacing" left the model no other way to
+    // satisfy a competitor instance whose physical form (e.g. a torn-open
+    // sachet) has no equivalent in our single reference photo (a sealed
+    // box/bottle) than to fabricate a same-shaped sachet wearing our
+    // branding — a real product that doesn't exist. Caught live by the
+    // client in a 비교 modal screenshot.
+    'CRITICAL: Our product must be rendered using EXACTLY the packaging shown in the second reference image — ' +
+    'the same container type, shape, materials, and design for every single instance. NEVER invent, imagine, ' +
+    'or fabricate a packaging form factor for our product that isn\'t depicted in that reference photo (e.g. ' +
+    'if the competitor\'s original shows a torn-open sachet/pouch, loose powder, or a pill/tablet outside its ' +
+    'container, and our reference photo only shows a sealed box or bottle, do NOT invent a sachet/loose-powder ' +
+    'version of our branding). When an instance\'s physical form has no equivalent in our reference photo, ' +
+    'render that instance as our actual product exactly as it appears in the reference photo instead — ' +
+    'adapting only its perspective, scale, and lighting to fit the scene, even if its resulting shape doesn\'t ' +
+    'exactly mirror the silhouette of the thing it\'s replacing.'
 }
 
 // referenceImageBase64/productImageBase64: raw base64 (no data: prefix).

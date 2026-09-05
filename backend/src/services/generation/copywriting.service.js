@@ -84,7 +84,29 @@ Output ONLY a valid JSON object in the exact format below:
 // (closer in spirit to strict preservation than to "close to verbatim"),
 // so unchecking doesn't read as absolute-zero-tolerance for any real
 // selected phrasing that IS present.
-export function styleIntensityInstructionFor(verbatimCopy) {
+// Part MM: creativeCopy is a fundamentally different instruction from
+// verbatimCopy, not a stronger version of it — SYSTEM_PROMPT above hard-
+// codes a fact-substitution-only approach ("Replace ONLY specific hard
+// facts... Strictly preserve the original marketing hook, tone, and non-
+// essential words") no matter what verbatimCopy says, which is the literal,
+// structural reason client feedback described the result as "우리가
+// 가지고 있는 것만 나열한 느낌" (reads like a flat inventory, not a pitch) —
+// every existing tier only ever adjusted how closely the SUBSTITUTED facts'
+// wording matched the competitor's original vs. our own phrasing; none of
+// them ever permitted rewriting the hook itself. Checked first and takes
+// priority over verbatimCopy entirely when true, rather than combining with
+// it, since "creatively rewrite the whole hook" and "use our exact phrasing
+// verbatim inside the original sentence" are different axes, not adjacent
+// points on the same one.
+export function styleIntensityInstructionFor(verbatimCopy, creativeCopy) {
+  if (creativeCopy) {
+    return 'Style: CREATIVE REWRITE. Do not simply substitute facts into the competitor\'s original sentence ' +
+      'structure. Instead, creatively rewrite each piece of text into a compelling, benefit-driven marketing ' +
+      'hook of your own that persuasively sells our brand facts below — rather than just listing what we have. ' +
+      'You may change the sentence structure, hook, and tone entirely, as long as the result reads as ' +
+      'professional, natural Korean advertising copy consistent with our brand facts. Length only needs to ' +
+      'roughly fit the same visual space as the original text — do not force an exact character-count match.'
+  }
   if (!verbatimCopy) {
     return 'Style intensity: LOW. Strictly preserve the original hook, tone, and wording — replace only the ' +
       'specific facts that must differ. Length Matching: new_text length must stay nearly identical to ' +
@@ -99,8 +121,9 @@ export function styleIntensityInstructionFor(verbatimCopy) {
 
 // extractedTexts: visionAnalysis's identified_texts array.
 // counterFacts: counterFacts.service's counter_facts array.
-// verbatimCopy (Part LL): boolean — see styleIntensityInstructionFor above
-// for what each side actually asks for. Replaces the old 0-100 styleIntensity
+// verbatimCopy (Part LL) / creativeCopy (Part MM): booleans — see
+// styleIntensityInstructionFor above for what each side actually asks for
+// and why creativeCopy takes priority. Replace the old 0-100 styleIntensity
 // number as the actual tier-selection signal.
 //
 // getClientFn is injected (defaulting to the real getClient) purely so
@@ -108,7 +131,7 @@ export function styleIntensityInstructionFor(verbatimCopy) {
 // renderImage.service.js's renderFinalImage and sheets.service.js already
 // use.
 export async function writeReplacementCopy(
-  extractedTexts, counterFacts, verbatimCopy, { getClientFn = getClient } = {}
+  extractedTexts, counterFacts, verbatimCopy, creativeCopy, { getClientFn = getClient } = {}
 ) {
   const userPrompt = `Here is the Vision Analyst's report (Competitor's Original Text):
 ${JSON.stringify(extractedTexts)}
@@ -118,7 +141,7 @@ ${JSON.stringify(counterFacts)}
 
 Based on these two pieces of information, generate the final JSON replacement map perfectly matching the length and tone constraints.
 
-${styleIntensityInstructionFor(verbatimCopy)}`
+${styleIntensityInstructionFor(verbatimCopy, creativeCopy)}`
 
   const response = await getClientFn().responses.create({
     model: MODEL,

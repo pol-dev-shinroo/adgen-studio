@@ -261,6 +261,49 @@ describe('style checkboxes (Part LL)', () => {
   })
 })
 
+// Part MM: creativeCopy is a 4th, independent checkbox — never wired to
+// updateStyleIntensity (a deliberate opt-in, unlike the 3 Part LL checkboxes
+// that auto-derive from the slider) and defaults to false.
+describe('creativeCopy checkbox (Part MM)', () => {
+  it('defaults to false and is untouched by updateStyleIntensity at any position', () => {
+    const { result } = renderStudio()
+    expect(result.current.creativeCopy).toBe(false)
+
+    act(() => result.current.updateStyleIntensity(0))
+    expect(result.current.creativeCopy).toBe(false)
+    act(() => result.current.updateStyleIntensity(100))
+    expect(result.current.creativeCopy).toBe(false)
+  })
+
+  it('can be hand-toggled independently of the other 3 checkboxes', () => {
+    const { result } = renderStudio()
+    act(() => result.current.updateStyleIntensity(20)) // all 3 Part LL checkboxes false
+    act(() => result.current.setCreativeCopy(true))
+
+    expect(result.current.creativeCopy).toBe(true)
+    expect(result.current.freeRestyle).toBe(false)
+    expect(result.current.strongReferenceInfluence).toBe(false)
+    expect(result.current.verbatimCopy).toBe(false)
+  })
+
+  it('goNext includes creativeCopy in the startGeneration payload, independent of verbatimCopy', () => {
+    const { result } = renderStudio()
+    act(() => result.current.setVerbatimCopy(false))
+    act(() => result.current.setCreativeCopy(true))
+
+    act(() => result.current.pickRefBrand('헬시키키'))
+    act(() => result.current.toggleRefAd('ad-1'))
+    act(() => result.current.goNext())
+    act(() => result.current.goNext())
+    act(() => result.current.goNext())
+    act(() => result.current.goNext())
+
+    const payload = mockStartGeneration.mock.calls[0][0]
+    expect(payload.creativeCopy).toBe(true)
+    expect(payload.verbatimCopy).toBe(false)
+  })
+})
+
 describe('goNext guard clauses', () => {
   it('blocks advancing past step 2 with zero refAdIds selected', () => {
     const { result } = renderStudio()

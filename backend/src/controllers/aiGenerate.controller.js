@@ -226,7 +226,10 @@ export async function postRender(req, res, next, {
     // own per-segment explicitness any better than the other) folded into
     // the false/LOW side of that boolean (see copywriting.service.js's own
     // comment), so `false` is the closest equivalent here.
-    const { replacements: baseReplacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, false)
+    // Part MM: creativeCopy is explicitly false here too — this screen's
+    // whole design is per-segment explicit decisions, the opposite of
+    // handing the model creative license over the hook.
+    const { replacements: baseReplacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, false, false)
     const replacements = applyTextDecisionOverrides(baseReplacements, textSegments, decisions.texts)
 
     const instructions = buildConversationalInstructions(decisions, { productInstances: analysis.product_instances, replacements })
