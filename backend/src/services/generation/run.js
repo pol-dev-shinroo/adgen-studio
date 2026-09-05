@@ -186,22 +186,17 @@ async function runJob(
       const { base64: referenceImageBase64 } = await downloadImageAsBase64Fn(imageLink)
       const analysis = await analyzeReferenceAdFn(referenceImageBase64)
 
-      progress.phase = 'researching'
-      // Real, user-picked copy from Step 3's ad-selection panel skips the
-      // Pinecone/embedding lookup entirely when present — not just a
-      // different source of facts, a cheaper path too.
-      const counter_facts = overrideFacts ?? (await findCounterFactsFn(brandDef.key, analysis.identified_texts)).counter_facts
-
-      progress.phase = 'writing'
-      // Part LL: verbatimCopy is the copy-side counterpart to
-      // freeRestyle/strongReferenceInfluence below — same "competitor
-      // original vs our own material" axis, applied to copy instead of image.
-      // Part MM: creativeCopy takes priority over verbatimCopy entirely when
-      // true — see styleIntensityInstructionFor's own comment for why.
-      const { replacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, verbatimCopy, creativeCopy)
-
+      // Part QQ: counter-fact research + copywriting used to happen HERE,
+      // once per ad, and every selected product reused the exact same copy
+      // — fine when copy was purely competitor/ad-driven, but now that it
+      // should be grounded in the SPECIFIC product's own 제품특성/효과효능/
+      // 페인포인트 (see productFacts below), it can no longer be computed
+      // once and shared. Moved into the per-product loop below, keyed by
+      // (adId, productId) instead of just adId — analysis (vision, genuinely
+      // ad-only) stays here, unrepeated per product.
       perAdContext.push({
-        adId, imageLink, referenceImageBase64, productInstances: analysis.product_instances, replacements,
+        adId, imageLink, referenceImageBase64,
+        productInstances: analysis.product_instances, identifiedTexts: analysis.identified_texts,
       })
     } catch (err) {
       summary.failed += products.length * (cfg?.formats.length ?? 0) * (cfg?.quantity ?? 0)
@@ -240,6 +235,49 @@ async function runJob(
     for (const ctx of perAdContext) {
       const cfg = configFor(refAdConfigs, ctx.adId)
       if (!cfg) continue // shouldn't happen — every perAdContext entry originated from refAdConfigs
+
+      // Part QQ: research + copywriting now happen HERE, per (ad, product)
+      // pair, instead of once per ad shared across every product — a
+      // deliberate cost trade-off (one more research + copywriting call per
+      // extra product in a multi-product job) in exchange for ad copy
+      // that's actually grounded in the SPECIFIC product's own real
+      // features/benefits/pain-point, not a generic per-ad fact list reused
+      // regardless of which product is being rendered. Flagging this back
+      // to the client/user rather than silently absorbing the extra API
+      // cost without mention, same transparency AA-5/AA-6's model-choice
+      // comments already model for this codebase.
+      let replacements
+      try {
+        progress.phase = 'researching'
+        // Real, user-picked copy from Step 3's ad-selection panel skips the
+        // Pinecone/embedding lookup entirely when present — not just a
+        // different source of facts, a cheaper path too.
+        const counter_facts = overrideFacts ?? (await findCounterFactsFn(brandDef.key, ctx.identifiedTexts)).counter_facts
+
+        progress.phase = 'writing'
+        const productFacts = {
+          productName: productEntry.productName,
+          productFeatures: productEntry.productFeatures,
+          productBenefits: productEntry.productBenefits,
+          productPainPoint: productEntry.productPainPoint,
+        }
+        // Part LL: verbatimCopy is the copy-side counterpart to
+        // freeRestyle/strongReferenceInfluence below — same "competitor
+        // original vs our own material" axis, applied to copy instead of image.
+        // Part MM: creativeCopy takes priority over verbatimCopy entirely when
+        // true — see styleIntensityInstructionFor's own comment for why.
+        ;({ replacements } = await writeReplacementCopyFn(
+          ctx.identifiedTexts, counter_facts, verbatimCopy, creativeCopy, productFacts
+        ))
+      } catch (err) {
+        summary.failed += cfg.formats.length * cfg.quantity
+        summary.failures.push({
+          adId: ctx.adId, productId: productEntry.productId, error: err.message,
+        })
+        console.warn(`Research/copywriting failed (ad ${ctx.adId}, product ${productEntry.productId}): ${err.message}`)
+        continue
+      }
+
       for (const format of cfg.formats) {
         for (let i = 0; i < cfg.quantity; i++) {
           renderIndex += 1
@@ -252,7 +290,7 @@ async function runJob(
               styleReferenceImageBase64,
               styleReferenceType,
               productInstances: ctx.productInstances,
-              replacements: ctx.replacements,
+              replacements,
               format,
               freeRestyle,
               strongReferenceInfluence,
@@ -279,7 +317,7 @@ async function runJob(
               instructions,
               imageUrl,
               productId: productEntry.productId,
-              replacements: ctx.replacements,
+              replacements,
               // Part V: snapshotted at generation time, for the Gallery's
               // redesigned 비교 view — nothing to look up live for these.
               referenceAdImageUrl: ctx.imageLink,

@@ -125,19 +125,37 @@ export function styleIntensityInstructionFor(verbatimCopy, creativeCopy) {
 // styleIntensityInstructionFor above for what each side actually asks for
 // and why creativeCopy takes priority. Replace the old 0-100 styleIntensity
 // number as the actual tier-selection signal.
+// productFacts (Part QQ): optional/nullable { productName, productFeatures,
+// productBenefits, productPainPoint } — the SPECIFIC selected product's own
+// real analysis (prepareInputs.js), not the competitor-text-driven Pinecone
+// counterFacts above. Additive grounding context, not a replacement for
+// counterFacts (still the right source for direct competitor-claim
+// rebuttals like price/discount) or a real adCopyOverride (still the user's
+// own explicit hand-picked wording — highest priority, unaffected by this).
+// Without this, creativeCopy mode in particular had nothing but a thin,
+// competitor-shaped fact list to draw on when rewriting a hook, which is
+// the literal, structural reason copy could end up disconnected from what
+// the product actually does. The instruction below is deliberately worded
+// as grounding-for-honesty, not "another fact list to substitute" — the
+// goal is copy that's true about the product, not copy that recites
+// 제품특성/효과효능 verbatim either.
 //
 // getClientFn is injected (defaulting to the real getClient) purely so
 // this can be unit-tested without a real OpenAI call — same DI convention
 // renderImage.service.js's renderFinalImage and sheets.service.js already
 // use.
 export async function writeReplacementCopy(
-  extractedTexts, counterFacts, verbatimCopy, creativeCopy, { getClientFn = getClient } = {}
+  extractedTexts, counterFacts, verbatimCopy, creativeCopy, productFacts, { getClientFn = getClient } = {}
 ) {
+  const productFactsBlock = productFacts
+    ? `\n\nHere is what our product actually does (from our own product data — use this to ground any rewritten copy in reality, especially when creatively rewriting the hook; this is context to be honest and consistent with, not a list of facts to recite verbatim):\n${JSON.stringify(productFacts)}`
+    : ''
+
   const userPrompt = `Here is the Vision Analyst's report (Competitor's Original Text):
 ${JSON.stringify(extractedTexts)}
 
 Here is the Research Specialist's data (Our Brand Facts):
-${JSON.stringify(counterFacts)}
+${JSON.stringify(counterFacts)}${productFactsBlock}
 
 Based on these two pieces of information, generate the final JSON replacement map perfectly matching the length and tone constraints.
 

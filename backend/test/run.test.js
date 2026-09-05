@@ -251,3 +251,41 @@ test('startGeneration: threads freeRestyle/strongReferenceInfluence through to r
   assert.equal(capturedCreativeCopy, true)
   assert.equal(capturedVerbatimCopy, true)
 })
+
+// Part QQ: research + copywriting moved from once-per-ad (shared across
+// every product) to once-per-(ad,product) — this is the direct proof the
+// restructuring actually landed, not just that a new parameter exists.
+test('startGeneration: calls writeReplacementCopyFn/findCounterFactsFn once per product (not once per ad, shared), each with that product\'s own productFacts', async () => {
+  const prepareInputsFn = async () => ({
+    brandDef: BRAND_DEF,
+    products: [
+      {
+        productId: '1', extractedImageUrl: 'https://example.com/p1.png',
+        productName: '제품A', productFeatures: '100% 식물성 원료', productBenefits: '탄력 개선', productPainPoint: '피부 탄력 저하',
+      },
+      {
+        productId: '2', extractedImageUrl: 'https://example.com/p2.png',
+        productName: '제품B', productFeatures: '고농축 비타민C', productBenefits: '미백 개선', productPainPoint: '칙칙한 피부톤',
+      },
+    ],
+    refAds: [{ 'Ad Archive ID': 'ad-1', 'Archived Image Links': 'https://example.com/ad1.png' }],
+  })
+
+  let counterFactsCallCount = 0
+  const capturedProductFacts = []
+  const deps = makeDeps({ prepareInputsFn })
+  deps.findCounterFactsFn = async () => { counterFactsCallCount += 1; return { counter_facts: [] } }
+  deps.writeReplacementCopyFn = async (_texts, _facts, _verbatim, _creative, productFacts) => {
+    capturedProductFacts.push(productFacts)
+    return { replacements: [] }
+  }
+
+  const input = baseInput({ brand: { key: 'testbrand', productIds: ['1', '2'] } })
+  const jobId = await startGeneration(input, deps)
+  await waitForJob(jobId)
+
+  assert.equal(counterFactsCallCount, 2, 'one research call per product, not one shared call per ad')
+  assert.equal(capturedProductFacts.length, 2)
+  assert.equal(capturedProductFacts.find((p) => p.productName === '제품A').productFeatures, '100% 식물성 원료')
+  assert.equal(capturedProductFacts.find((p) => p.productName === '제품B').productFeatures, '고농축 비타민C')
+})

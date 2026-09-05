@@ -229,7 +229,18 @@ export async function postRender(req, res, next, {
     // Part MM: creativeCopy is explicitly false here too — this screen's
     // whole design is per-segment explicit decisions, the opposite of
     // handing the model creative license over the hook.
-    const { replacements: baseReplacements } = await writeReplacementCopyFn(analysis.identified_texts, counter_facts, false, false)
+    // Part QQ: ground this base pass in the actually-selected product's own
+    // real 제품특성/효과효능/페인포인트 — `product` is already fetched above,
+    // no extra Sheets read needed.
+    const productFacts = {
+      productName: product['Product Name'] || '',
+      productFeatures: product['제품특성'] || '없음',
+      productBenefits: product['효과효능'] || '없음',
+      productPainPoint: product['페인포인트'] || '없음',
+    }
+    const { replacements: baseReplacements } = await writeReplacementCopyFn(
+      analysis.identified_texts, counter_facts, false, false, productFacts
+    )
     const replacements = applyTextDecisionOverrides(baseReplacements, textSegments, decisions.texts)
 
     const instructions = buildConversationalInstructions(decisions, { productInstances: analysis.product_instances, replacements })

@@ -73,7 +73,7 @@ test('writeReplacementCopy appends the verbatimCopy tier instruction into the us
   await writeReplacementCopy(
     [{ location: 'top', text: '원본 텍스트' }],
     [{ category: '가격', fact: '29,900원' }],
-    true, false,
+    true, false, null,
     { getClientFn: () => client }
   )
 
@@ -95,7 +95,7 @@ test('writeReplacementCopy with verbatimCopy=false, creativeCopy=false appends t
   await writeReplacementCopy(
     [{ location: 'top', text: '원본 텍스트' }],
     [{ category: '가격', fact: '29,900원' }],
-    false, false,
+    false, false, null,
     { getClientFn: () => client }
   )
 
@@ -110,10 +110,74 @@ test('writeReplacementCopy with creativeCopy=true appends the CREATIVE REWRITE i
   await writeReplacementCopy(
     [{ location: 'top', text: '원본 텍스트' }],
     [{ category: '가격', fact: '29,900원' }],
-    true, true,
+    true, true, null,
     { getClientFn: () => client }
   )
 
   const userMessage = getLastRequest().input.find((m) => m.role === 'user')
   assert.match(userMessage.content, /Style: CREATIVE REWRITE/)
+})
+
+// Part QQ: productFacts grounds copy in what the SPECIFIC selected product
+// actually does, additive to (not replacing) counterFacts — especially
+// important for creativeCopy mode, which previously had nothing but a thin
+// competitor-shaped fact list to draw on when rewriting a hook.
+
+test('writeReplacementCopy omits the product-facts block entirely when productFacts is null', async () => {
+  const { client, getLastRequest } = fakeClient()
+
+  await writeReplacementCopy(
+    [{ location: 'top', text: '원본 텍스트' }],
+    [{ category: '가격', fact: '29,900원' }],
+    false, false, null,
+    { getClientFn: () => client }
+  )
+
+  const userMessage = getLastRequest().input.find((m) => m.role === 'user')
+  assert.doesNotMatch(userMessage.content, /what our product actually does/)
+})
+
+test('writeReplacementCopy includes productFacts as grounding context, distinct from counterFacts, when present', async () => {
+  const { client, getLastRequest } = fakeClient()
+  const productFacts = {
+    productName: '컨투올잇', productFeatures: '100% 식물성 원료', productBenefits: '탄력 개선', productPainPoint: '피부 탄력 저하',
+  }
+
+  await writeReplacementCopy(
+    [{ location: 'top', text: '원본 텍스트' }],
+    [{ category: '가격', fact: '29,900원' }],
+    false, true, productFacts,
+    { getClientFn: () => client }
+  )
+
+  const userMessage = getLastRequest().input.find((m) => m.role === 'user')
+  assert.match(userMessage.content, /what our product actually does/)
+  assert.match(userMessage.content, /탄력 개선/)
+  assert.match(userMessage.content, /피부 탄력 저하/)
+  // Grounding context, not another fact list to mechanically recite.
+  assert.match(userMessage.content, /not a list of facts to recite verbatim/)
+})
+
+test('writeReplacementCopy with two different productFacts inputs produces genuinely different prompts for the same competitor text/counterFacts', async () => {
+  const { client: clientA, getLastRequest: getLastA } = fakeClient()
+  const { client: clientB, getLastRequest: getLastB } = fakeClient()
+  const sameExtractedTexts = [{ location: 'top', text: '원본 텍스트' }]
+  const sameCounterFacts = [{ category: '가격', fact: '29,900원' }]
+
+  await writeReplacementCopy(
+    sameExtractedTexts, sameCounterFacts, false, true,
+    { productName: '제품A', productFeatures: '100% 식물성 원료', productBenefits: '탄력 개선', productPainPoint: '피부 탄력 저하' },
+    { getClientFn: () => clientA }
+  )
+  await writeReplacementCopy(
+    sameExtractedTexts, sameCounterFacts, false, true,
+    { productName: '제품B', productFeatures: '고농축 비타민C', productBenefits: '미백 개선', productPainPoint: '칙칙한 피부톤' },
+    { getClientFn: () => clientB }
+  )
+
+  const promptA = getLastA().input.find((m) => m.role === 'user').content
+  const promptB = getLastB().input.find((m) => m.role === 'user').content
+  assert.notEqual(promptA, promptB)
+  assert.match(promptA, /탄력 개선/)
+  assert.match(promptB, /미백 개선/)
 })

@@ -95,6 +95,42 @@ test('prepareInputs resolves multiple productIds against the brand-filtered prod
   assert.equal(refAds[0]['Ad Archive ID'], 'ad-1')
 })
 
+// Part QQ: 제품특성/효과효능/페인포인트 (already fetched with the product row)
+// must survive onto each resolved product entry instead of being discarded
+// — run.js needs these to ground ad copy in what the product actually does.
+test('prepareInputs surfaces productName/productFeatures/productBenefits/productPainPoint on each resolved product', async () => {
+  const productsWithFacts = [
+    ...PRODUCTS,
+    {
+      'Product ID': '7', 'Brand': BRAND_NAME, 'Product Name': '제품 G 사실포함',
+      '제품특성': '100% 식물성 원료', '효과효능': '탄력 개선', '페인포인트': '피부 탄력 저하',
+      'Extracted References JSON': refsJson('https://example.com/g.png'),
+    },
+  ]
+  const { products } = await prepareInputs(
+    { refAdIds: ['ad-1'], brand: { key: BRAND_KEY, productIds: ['7'] } },
+    { ...deps, getAllProductsFn: async () => productsWithFacts }
+  )
+
+  const p = products.find((p) => p.productId === '7')
+  assert.equal(p.productName, '제품 G 사실포함')
+  assert.equal(p.productFeatures, '100% 식물성 원료')
+  assert.equal(p.productBenefits, '탄력 개선')
+  assert.equal(p.productPainPoint, '피부 탄력 저하')
+})
+
+test('prepareInputs defaults productFeatures/productBenefits/productPainPoint to \'없음\' when the sheet columns are blank', async () => {
+  const { products } = await prepareInputs(
+    { refAdIds: ['ad-1'], brand: { key: BRAND_KEY, productIds: ['1'] } },
+    deps
+  )
+
+  const p = products.find((p) => p.productId === '1')
+  assert.equal(p.productFeatures, '없음')
+  assert.equal(p.productBenefits, '없음')
+  assert.equal(p.productPainPoint, '없음')
+})
+
 test('prepareInputs throws, naming the missing productId, when a productId does not resolve for the brand', async () => {
   await assert.rejects(
     () => prepareInputs(

@@ -72,7 +72,20 @@ export async function prepareInputs(
     throw err
   }
 
-  const products = withFirstProductRef.map(({ productId, extractedImageUrl }) => ({ productId, extractedImageUrl }))
+  // Part QQ: keep 제품특성/효과효능/페인포인트 (already fetched above, sitting
+  // right there on `product`) instead of discarding them — run.js needs
+  // these to ground ad copy in what the product actually does, not just
+  // whatever counter_facts a competitor-text-driven Pinecone query happens
+  // to retrieve. '없음' matches this codebase's existing blank-value
+  // convention for these exact columns (see productSync.service.js).
+  const products = withFirstProductRef.map(({ productId, product, extractedImageUrl }) => ({
+    productId,
+    extractedImageUrl,
+    productName: product['Product Name'] || '',
+    productFeatures: product['제품특성'] || '없음',
+    productBenefits: product['효과효능'] || '없음',
+    productPainPoint: product['페인포인트'] || '없음',
+  }))
 
   const allAds = await getAllAdsFn()
   const adsById = new Map(allAds.map((a) => [String(a['Ad Archive ID']), a]))
